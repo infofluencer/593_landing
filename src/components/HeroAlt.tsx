@@ -2,31 +2,24 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useScroll } from "framer-motion";
-import { useCallback, useRef, useState } from "react";
-import HeroAsciiField from "./HeroAsciiField";
+import { useCallback, useState } from "react";
+import HeroArtCanvas from "./HeroArtCanvas";
 import HeroCopy from "./HeroCopy";
 import MenuOverlay from "./MenuOverlay";
 
-export default function Hero() {
-  const sectionRef = useRef<HTMLElement>(null);
+/**
+ * Second hero — Concept A (kinetic word mass + red thread network).
+ * Shown below the primary hero (Concept B / ASCII) for owner A/B comparison.
+ */
+export default function HeroAlt() {
   const [menuOpen, setMenuOpen] = useState(false);
-  const [glitchSignal, setGlitchSignal] = useState(0);
   const closeMenu = useCallback(() => setMenuOpen(false), []);
-  const triggerGlitch = useCallback(
-    () => setGlitchSignal((value) => value + 1),
-    [],
-  );
-
-  const { scrollYProgress } = useScroll({
-    target: sectionRef,
-    offset: ["start start", "end start"],
-  });
 
   return (
     <section
-      ref={sectionRef}
-      className="relative flex min-h-[100svh] flex-col overflow-hidden"
+      id="hero-secenek-a"
+      className="relative flex min-h-[100svh] flex-col overflow-hidden border-t border-line"
+      aria-label="Hero seçenek A — kinetic ağ"
     >
       <div className="hero-glow hero-rings pointer-events-none absolute inset-0" />
       <div className="hero-shifting-glows pointer-events-none absolute inset-0 overflow-hidden">
@@ -35,7 +28,7 @@ export default function Hero() {
       </div>
 
       <div className="relative z-10 mx-auto flex w-full max-w-7xl flex-1 flex-col px-5 pb-28 pt-8 sm:px-8 lg:px-12 lg:pb-16 lg:pt-10">
-        <div className="mb-10 flex items-start justify-between gap-6 sm:mb-14">
+        <div className="mb-6 flex items-start justify-between gap-6 sm:mb-10">
           <Link href="/" className="flex items-center gap-3">
             <Image
               src="/593-logo.png"
@@ -43,7 +36,6 @@ export default function Hero() {
               width={44}
               height={44}
               className="h-10 w-10 object-contain sm:h-11 sm:w-11"
-              priority
             />
             <span className="font-display text-xl font-bold tracking-tight text-white sm:text-2xl">
               593 E-Marketing
@@ -66,17 +58,14 @@ export default function Hero() {
         </div>
 
         <p className="mb-8 font-mono text-[11px] uppercase tracking-[0.18em] text-[#E03820]/80">
-          Seçenek B — ASCII alan
+          Seçenek A — Kinetic ağ
         </p>
 
         <div className="grid flex-1 items-center gap-12 lg:grid-cols-[1.15fr_0.85fr] lg:gap-10">
-          <HeroCopy onGlitch={triggerGlitch} />
+          <HeroCopy />
 
           <div className="relative flex justify-start lg:justify-end">
-            <HeroAsciiField
-              glitchSignal={glitchSignal}
-              scrollProgress={scrollYProgress}
-            />
+            <HeroArtCanvas />
           </div>
         </div>
 
@@ -87,12 +76,12 @@ export default function Hero() {
               <svg viewBox="0 0 100 100" className="h-full w-full">
                 <defs>
                   <path
-                    id="heroDividerCirclePath"
+                    id="heroAltDividerCirclePath"
                     d="M 50, 50 m -36, 0 a 36,36 0 1,1 72,0 a 36,36 0 1,1 -72,0"
                   />
                 </defs>
                 <text className="fill-accent text-[8px] font-medium uppercase tracking-[0.18em]">
-                  <textPath href="#heroDividerCirclePath">
+                  <textPath href="#heroAltDividerCirclePath">
                     Keşfet · Keşfet · Keşfet · Keşfet ·
                   </textPath>
                 </text>

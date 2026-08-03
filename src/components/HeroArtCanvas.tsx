@@ -2,8 +2,7 @@
 
 /**
  * CONCEPT A — Kinetic word mass + red thread network
- * DISABLED / REFERENCE ONLY. Active right-side art is HeroAsciiField.tsx (Concept B).
- * Do not wire this into Hero unless intentionally A/B testing.
+ * Used as the second hero (HeroAlt) for owner A/B comparison vs Concept B (ASCII).
  */
 
 import {
