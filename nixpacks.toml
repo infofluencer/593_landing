@@ -1,6 +1,14 @@
 # Dokploy / Nixpacks: Next.js 16 requires Node >= 20.9
+# cache-bust: 2026-08-04-launchfolio
 [variables]
 NIXPACKS_NODE_VERSION = "20"
+NIXPACKS_NO_CACHE = "1"
 
 [phases.setup]
 nixPkgs = ["nodejs_20", "npm-9_x"]
+
+[phases.build]
+cmds = ["npm run build"]
+
+[start]
+cmd = "npm run start"

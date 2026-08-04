@@ -18,6 +18,9 @@ export const metadata: Metadata = {
   title: "593 EMarketing | Dijital Pazarlama ve Yazılım",
   description:
     "Veriye dayalı stratejiler ve mühendislik gücümüzle dijital pazarlamada sürdürülebilir başarı. İstanbul, Türkiye.",
+  other: {
+    "x-build": "launchfolio-2026-08-04",
+  },
 };
 
 export default function RootLayout({
