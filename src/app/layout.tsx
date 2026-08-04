@@ -30,7 +30,7 @@ export default function RootLayout({
       lang="tr"
       className={`${syne.variable} ${dmSans.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col bg-bg text-text">{children}</body>
+      <body className="min-h-full flex flex-col bg-white text-black">{children}</body>
     </html>
   );
 }
