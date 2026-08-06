@@ -1,13 +1,13 @@
 @import "tailwindcss";
 
 :root {
-  --bg: #f6f6f4;
+  --bg: #ffffff;
   --bg-elevated: #ffffff;
-  --text: #0a0a0a;
-  --text-muted: #6b6b6b;
-  --accent: #e03820;
-  --accent-soft: rgba(224, 56, 32, 0.12);
-  --line: rgba(0, 0, 0, 0.08);
+  --text: #111111;
+  --text-muted: #666666;
+  --accent: #e91825;
+  --accent-soft: rgba(233, 24, 37, 0.12);
+  --line: rgba(17, 17, 17, 0.08);
 }
 
 @theme inline {
@@ -20,6 +20,7 @@
   --color-line: var(--line);
   --font-display: var(--font-syne);
   --font-sans: var(--font-dm-sans);
+  --font-logo: var(--font-montserrat);
 }
 
 html {
@@ -27,9 +28,17 @@ html {
 }
 
 body {
-  background: #ffffff;
-  color: #0a0a0a;
+  background: var(--bg);
+  color: var(--text);
   font-family: var(--font-dm-sans), system-ui, sans-serif;
+}
+
+.off-grid {
+  background-image:
+    linear-gradient(to right, rgba(17, 17, 17, 0.05) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(17, 17, 17, 0.035) 1px, transparent 1px);
+  background-size: calc(100% / 6) 100%, 100% 8rem;
+  mask-image: linear-gradient(to bottom, #000 0%, #000 82%, transparent 100%);
 }
 
 .launch-grid {
@@ -42,85 +51,20 @@ body {
   mask-image: linear-gradient(to bottom, #000 0%, #000 85%, transparent 100%);
 }
 
-@keyframes launch-fade-up {
-  from {
-    opacity: 0;
-    transform: translateY(22px);
+@media (max-width: 767px) {
+  .off-grid {
+    background-size: calc(100% / 4) 100%, 100% 6rem;
   }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
 
-.launch-fade {
-  opacity: 0;
-  animation: launch-fade-up 0.8s cubic-bezier(0.22, 1, 0.36, 1) both;
-}
-
-.launch-delay-1 {
-  animation-delay: 0.06s;
-}
-
-.launch-delay-2 {
-  animation-delay: 0.12s;
-}
-
-.launch-delay-3 {
-  animation-delay: 0.2s;
-}
-
-.launch-delay-4 {
-  animation-delay: 0.28s;
-}
-
-.launch-delay-5 {
-  animation-delay: 0.36s;
-}
-
-@keyframes menu-overlay-in {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
+  .launch-grid {
+    background-size: calc(100% / 4) 100%;
+    opacity: 0.35;
   }
 }
 
-@keyframes menu-link-in {
-  from {
-    opacity: 0;
-    transform: translateY(12px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-.menu-overlay {
-  animation: menu-overlay-in 0.35s ease both;
-}
-
-.menu-overlay-glow {
-  background: radial-gradient(
-    ellipse 55% 45% at 50% 50%,
-    rgba(224, 56, 32, 0.12) 0%,
-    transparent 70%
-  );
-}
-
-.menu-link {
-  opacity: 0;
-  animation: menu-link-in 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    scroll-behavior: auto !important;
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
+@media (pointer: fine) {
+  html.has-cursor-dot,
+  html.has-cursor-dot * {
+    cursor: none !important;
   }
 }

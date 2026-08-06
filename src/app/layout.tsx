@@ -1,6 +1,12 @@
-import type { Metadata } from "next";
-import { DM_Sans, Syne } from "next/font/google";
+import type { Metadata, Viewport } from "next";
+import { DM_Sans, Montserrat, Syne } from "next/font/google";
 import "./globals.css";
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+};
 
 const syne = Syne({
   variable: "--font-syne",
@@ -14,13 +20,16 @@ const dmSans = DM_Sans({
   weight: ["400", "500", "600", "700"],
 });
 
+const montserrat = Montserrat({
+  variable: "--font-montserrat",
+  subsets: ["latin", "latin-ext"],
+  weight: ["700", "800"],
+});
+
 export const metadata: Metadata = {
-  title: "593 EMarketing | Dijital Pazarlama ve Yazılım",
+  title: "593 E-Marketing | Creative Marketing Studio",
   description:
-    "Veriye dayalı stratejiler ve mühendislik gücümüzle dijital pazarlamada sürdürülebilir başarı. İstanbul, Türkiye.",
-  other: {
-    "x-build": "launchfolio-2026-08-04",
-  },
+    "593 E-Marketing icin editorial hissi tasiyan yeni nesil yaratıcı pazarlama ve dijital deneyim landing sayfasi.",
 };
 
 export default function RootLayout({
@@ -31,7 +40,7 @@ export default function RootLayout({
   return (
     <html
       lang="tr"
-      className={`${syne.variable} ${dmSans.variable} h-full antialiased`}
+      className={`${syne.variable} ${dmSans.variable} ${montserrat.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col bg-white text-black">{children}</body>
     </html>
