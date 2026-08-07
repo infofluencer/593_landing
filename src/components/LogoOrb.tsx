@@ -39,17 +39,14 @@ float noise(vec3 x) {
   );
 }
 
-// Expanding ring that blooms then pops (idle water bubbles)
-float bubblePop(vec3 n, vec3 center, float t, float speed, float size) {
-  float phase = fract(t * speed + hash(center) * 7.13);
-  // grow 0→1, snap-fade near end
-  float life = smoothstep(0.0, 0.25, phase) * (1.0 - smoothstep(0.55, 0.92, phase));
-  float pop = exp(-pow((phase - 0.72) * 12.0, 2.0)); // sharp pop kick
-  float dist = length(n - normalize(center));
-  float radius = phase * size;
-  float ring = exp(-pow((dist - radius) * 14.0, 2.0));
-  float mound = exp(-dist * dist * (8.0 / max(size, 0.2))) * life;
-  return (mound * 0.65 + ring * (0.45 + pop * 1.2)) * life;
+// Expanding ripple rings from a center (su dalgası)
+float ripple(vec3 n, vec2 center, float t, float speed, float width) {
+  float d = length(n.xy - center);
+  float phase = d * 9.0 - t * speed;
+  float crest = exp(-pow(sin(phase) * 0.5 + 0.5 - 0.85, 2.0) * 40.0);
+  float falloff = exp(-d * d * 1.4);
+  float envelope = smoothstep(1.4, 0.15, d);
+  return crest * falloff * envelope * width;
 }
 
 void main() {
@@ -58,46 +55,61 @@ void main() {
   vec3 n = normalize(normal);
   vec3 pos = n;
 
-  // Continuous water field (always on)
-  float n1 = noise(n * 1.6 + vec3(uTime * 0.55, uTime * 0.32, -uTime * 0.28));
-  float n2 = noise(n * 3.2 + vec3(-uTime * 0.7, uTime * 0.48, uTime * 0.35));
-  float n3 = noise(n * 6.5 + vec3(uTime * 1.1, -uTime * 0.9, uTime * 0.6));
-  float swell = sin(uTime * 1.15 + n.x * 3.0 + n.y * 2.4) * 0.01;
-  // Quiet water on the front face so logo strokes stay continuous
-  float frontFace = smoothstep(0.15, 0.55, n.z);
-  float water =
-    (n1 * 0.028 +
-    n2 * 0.014 +
-    n3 * 0.007 +
-    swell) * mix(1.0, 0.35, frontFace);
+  // Rolling swells — stronger ocean waves
+  float swell1 = sin(n.x * 4.2 + n.y * 2.1 + uTime * 1.45) * 0.032;
+  float swell2 = sin(n.y * 5.0 - n.x * 2.8 - uTime * 1.15) * 0.026;
+  float swell3 = sin((n.x + n.y) * 6.5 + uTime * 1.95) * 0.018;
+  float swell4 = cos(n.x * 3.0 - n.y * 4.5 + uTime * 0.85) * 0.022;
+  float swell5 = sin(n.x * 7.0 + n.y * 5.5 - uTime * 2.2) * 0.012;
 
-  // Idle bubble pops across the surface
-  float idle = 1.0 - uHover * 0.35; // still present on hover, stronger when idle
-  float pops = 0.0;
-  pops += bubblePop(n, vec3( 0.7,  0.4,  0.55), uTime, 0.22, 0.55);
-  pops += bubblePop(n, vec3(-0.65, 0.2,  0.7), uTime, 0.18, 0.48);
-  pops += bubblePop(n, vec3( 0.15,-0.75, 0.55), uTime, 0.26, 0.42);
-  pops += bubblePop(n, vec3(-0.3,  0.6, -0.55), uTime, 0.2, 0.5);
-  pops += bubblePop(n, vec3( 0.55,-0.35,-0.65), uTime, 0.24, 0.45);
-  pops += bubblePop(n, vec3(-0.1, -0.15, 0.95), uTime, 0.16, 0.6);
-  water += pops * 0.045 * idle * mix(1.0, 0.25, frontFace);
+  // Fine surface chop
+  float n1 = noise(n * 2.2 + vec3(uTime * 0.5, uTime * 0.32, -uTime * 0.25));
+  float n2 = noise(n * 4.8 + vec3(-uTime * 0.7, uTime * 0.45, uTime * 0.35));
+  float n3 = noise(n * 8.0 + vec3(uTime * 0.9, -uTime * 0.55, uTime * 0.4));
+  float chop = (n1 - 0.5) * 0.028 + (n2 - 0.5) * 0.016 + (n3 - 0.5) * 0.008;
 
-  // Pointer taşma (radial only)
+  // Softer on logo face so strokes stay readable — but still wave
+  float frontFace = smoothstep(0.1, 0.6, n.z);
+  float waterAmp = mix(1.15, 0.55, frontFace);
+
+  float water = (swell1 + swell2 + swell3 + swell4 + swell5 + chop) * waterAmp;
+
+  // Mouse ripples — stronger concentric waves
   vec2 pn = uPointer;
   float d = length(n.xy - pn);
-  float influence = exp(-d * d * 2.8);
-  float speed = min(length(uVelocity), 1.8);
+  float influence = exp(-d * d * 1.9);
+  float speed = min(length(uVelocity), 2.2);
+
+  float rip = 0.0;
+  rip += ripple(n, pn, uTime, 3.6, 0.045);
+  rip += ripple(n, pn, uTime + 1.7, 2.8, 0.032) * 0.85;
+  rip += ripple(n, pn * 0.55, uTime * 0.9, 2.2, 0.022) * 0.65;
+  rip += ripple(n, pn + vec2(0.15, -0.1), uTime * 1.1 + 0.8, 2.6, 0.018) * 0.4;
+  water += rip * (0.65 + uHover * 1.1) * waterAmp;
+
+  // Liquid push under cursor
   float bulge =
-    influence * (0.02 + uHover * 0.05) +
-    influence * speed * 0.035;
+    influence * (0.022 + uHover * 0.06) +
+    influence * speed * 0.055 +
+    sin(d * 12.0 - uTime * 4.5) * influence * uHover * 0.02;
 
   float radial = 1.0 + water + bulge;
-  radial = min(radial, 1.09);
+  radial = min(radial, 1.12);
   pos = n * radial;
 
+  // Stronger wavy normal for wet look
+  float eps = 0.035;
+  float wx =
+    sin((n.x + eps) * 4.2 + n.y * 2.1 + uTime * 1.45) * 0.032 -
+    sin((n.x - eps) * 4.2 + n.y * 2.1 + uTime * 1.45) * 0.032;
+  float wy =
+    sin(n.x * 4.2 + (n.y + eps) * 2.1 + uTime * 1.45) * 0.032 -
+    sin(n.x * 4.2 + (n.y - eps) * 2.1 + uTime * 1.45) * 0.032;
+  vec3 wavy = normalize(n + vec3(wx, wy, 0.0) * 3.8 * waterAmp);
+
   vWater = water;
-  vBulge = bulge + pops * 0.04 * idle;
-  vNormal = normalize(normalMatrix * n);
+  vBulge = bulge + rip * 0.5;
+  vNormal = normalize(normalMatrix * wavy);
   vec4 world = modelMatrix * vec4(pos * 1.6, 1.0);
   vWorldPos = world.xyz;
   gl_Position = projectionMatrix * viewMatrix * world;
@@ -118,31 +130,47 @@ varying vec3 vWorldPos;
 varying float vBulge;
 varying float vWater;
 
+float hash1(vec3 p) {
+  return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453);
+}
+
+float noise(vec3 x) {
+  vec3 i = floor(x);
+  vec3 f = fract(x);
+  f = f * f * (3.0 - 2.0 * f);
+  return mix(
+    mix(mix(hash1(i), hash1(i + vec3(1,0,0)), f.x),
+        mix(hash1(i + vec3(0,1,0)), hash1(i + vec3(1,1,0)), f.x), f.y),
+    mix(mix(hash1(i + vec3(0,0,1)), hash1(i + vec3(1,0,1)), f.x),
+        mix(hash1(i + vec3(0,1,1)), hash1(i + vec3(1,1,1)), f.x), f.y),
+    f.z
+  );
+}
+
 void main() {
   vec3 N = normalize(vNormal);
   vec3 V = normalize(cameraPosition - vWorldPos);
-  float fresnel = pow(1.0 - max(dot(N, V), 0.0), 2.2);
+  float fresnel = pow(1.0 - max(dot(N, V), 0.0), 2.0);
   float facing = max(N.z, 0.0);
 
   vec3 brand = vec3(233.0, 24.0, 37.0) / 255.0;
 
-  // Soft hover tint — eases in gently
   float h = smoothstep(0.0, 0.65, clamp(uHover, 0.0, 1.0));
-  vec3 body = mix(brand, uTint, h * 0.92);
-  body = mix(body, uRim, fresnel * h * 0.28);
+  // Solid opaque body color — less wash-out
+  vec3 body = mix(brand, uTint, h * 0.95);
+  body = mix(body, uRim, fresnel * h * 0.18);
 
   float dist = length(N.xy - uPointer);
   float prox = exp(-dist * 1.2) * h;
-  body = mix(body, uRim, prox * 0.22);
+  body = mix(body, uRim, prox * 0.15);
 
   vec2 logoUv = N.xy * 0.48 + 0.5;
-  // Keep logo strokes sharp — minimal UV warp so thin whites don't tear
-  logoUv += uPointer * (0.006 + uHover * 0.012);
-  logoUv += uVelocity * 0.012;
+  logoUv += uPointer * (0.005 + uHover * 0.008);
+  logoUv += uVelocity * 0.008;
   logoUv += vec2(
-    sin(uTime * 1.1 + N.y * 6.0 + vWater * 30.0),
-    cos(uTime * 0.95 + N.x * 6.0 - vWater * 28.0)
-  ) * (0.002 + abs(vWater) * 0.12 + uHover * 0.002);
+    sin(uTime * 1.2 + N.y * 5.0 + vWater * 14.0),
+    cos(uTime * 1.0 + N.x * 5.0 - vWater * 12.0)
+  ) * (0.0025 + abs(vWater) * 0.14);
 
   float decalR = length(logoUv - 0.5);
   float circleMask = smoothstep(0.50, 0.46, decalR);
@@ -151,25 +179,44 @@ void main() {
   vec4 logo = texture2D(uLogo, clamp(logoUv, 0.0, 1.0));
   float logoVis = logo.a * circleMask * front;
   float luma = (logo.r + logo.g + logo.b) / 3.0;
-  // Catch near-white AA so thin 9 strokes don't tear into body color
-  float isWhite = smoothstep(0.55, 0.82, luma);
+  // 5/9/3 — more opaque pure white
+  float isWhite = smoothstep(0.45, 0.72, luma);
   vec3 logoMapped = mix(body, vec3(1.0), isWhite);
 
   vec3 base = body;
   base = mix(base, logoMapped, logoVis);
+  // Force opaque white mark (no translucent bleed)
+  base = mix(base, vec3(1.0), isWhite * logoVis * 0.92);
 
-  float spark = smoothstep(0.014, 0.03, abs(vWater)) * (1.0 - uHover * 0.35);
-  base += vec3(1.0) * spark * 0.05 * (1.0 - isWhite * logoVis);
+  // Stronger wave crest shimmer + troughs
+  float crest = smoothstep(0.006, 0.028, vWater);
+  float trough = smoothstep(-0.028, -0.006, vWater);
+  float spark = crest * (0.5 + 0.5 * abs(sin(vWater * 55.0 + uTime * 3.2)));
+  base += vec3(1.0) * spark * 0.2 * (1.0 - isWhite * logoVis);
+  base *= 1.0 - trough * 0.1 * (1.0 - isWhite * logoVis);
 
-  float spec = pow(
-    max(dot(reflect(-V, N), normalize(vec3(0.15 + uPointer.x * 0.5, 0.4 + uPointer.y * 0.5, 1.0))), 0.0),
-    40.0
-  );
+  vec3 lightDir = normalize(vec3(
+    0.2 + uPointer.x * 0.55 + sin(uTime * 0.7) * 0.2,
+    0.45 + uPointer.y * 0.4 + cos(uTime * 0.55) * 0.1,
+    1.0
+  ));
+  float spec = pow(max(dot(reflect(-V, N), lightDir), 0.0), 36.0);
+  float specWide = pow(max(dot(reflect(-V, N), lightDir), 0.0), 10.0);
+  float specSharp = pow(max(dot(reflect(-V, N), lightDir), 0.0), 80.0);
 
   vec3 color = base;
-  color += uRim * fresnel * abs(vWater) * 0.25 * h * (1.0 - isWhite * logoVis);
-  color += vec3(1.0) * spec * (0.03 + uHover * 0.07 + spark * 0.1);
+  color += uRim * fresnel * (0.15 + abs(vWater) * 3.2) * (0.4 + h * 0.7) * (1.0 - isWhite * logoVis);
+  color += vec3(1.0) * spec * (0.07 + uHover * 0.1 + spark * 0.28);
+  color += vec3(1.0) * specSharp * 0.08 * (1.0 - isWhite * logoVis);
+  color += body * specWide * 0.08 * (1.0 - isWhite * logoVis);
+  color += vec3(1.0) * fresnel * 0.055;
 
+  // Stronger caustic flicker on body
+  float caustic = noise(vec3(N.xy * 7.0 + uPointer * 0.6, uTime * 0.75));
+  float caustic2 = noise(vec3(N.yx * 11.0 - uPointer * 0.4, uTime * 1.1 + 2.0));
+  color += body * (caustic * 0.07 + caustic2 * 0.04) * (1.0 - isWhite * logoVis) * (0.55 + h * 0.55);
+
+  // Re-assert opaque white 5/9/3
   color = mix(color, vec3(1.0), isWhite * logoVis);
 
   gl_FragColor = vec4(color, 1.0);
