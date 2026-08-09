@@ -23,7 +23,7 @@ const dmSans = DM_Sans({
 const montserrat = Montserrat({
   variable: "--font-montserrat",
   subsets: ["latin", "latin-ext"],
-  weight: ["700", "800"],
+  weight: ["600", "700", "800"],
 });
 
 export const metadata: Metadata = {
@@ -42,7 +42,7 @@ export default function RootLayout({
       lang="tr"
       className={`${syne.variable} ${dmSans.variable} ${montserrat.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col bg-white text-black">{children}</body>
+      <body className="min-h-full flex flex-col bg-[#141111] text-[#f4f1ea]">{children}</body>
     </html>
   );
 }

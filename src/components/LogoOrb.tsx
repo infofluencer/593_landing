@@ -444,7 +444,7 @@ export default function LogoOrb() {
   return (
     <div
       ref={wrapRef}
-      className="logo-orb relative mx-auto aspect-square w-full max-w-[min(82vw,38rem)]"
+      className="logo-orb relative mx-auto aspect-square h-full w-full"
     >
       <canvas
         ref={canvasRef}

@@ -1,13 +1,13 @@
 @import "tailwindcss";
 
 :root {
-  --bg: #ffffff;
-  --bg-elevated: #ffffff;
-  --text: #111111;
-  --text-muted: #666666;
+  --bg: #141111;
+  --bg-elevated: #1c1818;
+  --text: #f4f1ea;
+  --text-muted: #9a9590;
   --accent: #e91825;
-  --accent-soft: rgba(233, 24, 37, 0.12);
-  --line: rgba(17, 17, 17, 0.08);
+  --accent-soft: rgba(233, 24, 37, 0.16);
+  --line: rgba(244, 241, 234, 0.1);
 }
 
 @theme inline {
