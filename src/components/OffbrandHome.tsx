@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import CursorDot from "./CursorDot";
@@ -38,10 +38,76 @@ const services = [
     image: "/services/kreatif-icerik.jpg",
     line: "Fotoğraf, video ve metni tek bir hikâyenin parçası gibi üretiriz. Her kare markanın sesini netleştirir, her satır aynı dünyada durur.",
   },
+];
+
+const infofluencer = {
+  title: "Infofluencer",
+  image: "/main_dikey.svg",
+  href: "https://infofluencer.co/tr",
+  tagline: "Doğru influencer. Net sonuç.",
+  line: "Markanı tahminle değil veriyle büyütür: doğru isimleri bulur, AI ile eşleştirir, kampanyayı yönetir ve her iş birliğini ölçülebilir hale getirir.",
+};
+
+const infoGallery = [
   {
-    title: "Infofluencer",
-    image: "/services/infofluencer.jpg",
-    line: "Doğru isimle, veriye dayalı iş birlikleri kurarız. Hedef ham etkileşim değil; ölçülebilir dönüşüm ve markaya yakışan bir eşleşmedir.",
+    thumb: "/infofluencer/Db53F7GDobq.jpg",
+    href: "https://www.instagram.com/infofluencertr/p/Db53F7GDobq/",
+    label: "Instagram",
+    video: true,
+  },
+  {
+    thumb: "/infofluencer/influencer-1.jpeg",
+    href: "https://infofluencer.co/tr",
+    label: "Infofluencer",
+    video: false,
+  },
+  {
+    thumb: "/infofluencer/DZfx7xWOq_8.jpg",
+    href: "https://www.instagram.com/infofluencertr/reel/DZfx7xWOq_8/",
+    label: "Reel",
+    video: true,
+  },
+  {
+    thumb: "/infofluencer/influencer-17.jpeg",
+    href: "https://infofluencer.co/tr",
+    label: "Infofluencer",
+    video: false,
+  },
+  {
+    thumb: "/infofluencer/Db3ZyofDIaU.jpg",
+    href: "https://www.instagram.com/infofluencertr/p/Db3ZyofDIaU/",
+    label: "Instagram",
+    video: true,
+  },
+  {
+    thumb: "/infofluencer/influencer-4.jpeg",
+    href: "https://infofluencer.co/tr",
+    label: "Infofluencer",
+    video: false,
+  },
+  {
+    thumb: "/infofluencer/DZIMAqism3e.jpg",
+    href: "https://www.instagram.com/infofluencertr/reel/DZIMAqism3e/",
+    label: "Reel",
+    video: true,
+  },
+  {
+    thumb: "/infofluencer/influencer-2.jpeg",
+    href: "https://infofluencer.co/tr",
+    label: "Infofluencer",
+    video: false,
+  },
+  {
+    thumb: "/infofluencer/DbBYerXtPR-.jpg",
+    href: "https://www.instagram.com/infofluencertr/reel/DbBYerXtPR-/",
+    label: "Reel",
+    video: true,
+  },
+  {
+    thumb: "/infofluencer/influencer-5.jpeg",
+    href: "https://infofluencer.co/tr",
+    label: "Infofluencer",
+    video: false,
   },
 ];
 
@@ -58,7 +124,7 @@ const testimonials = [
       "593 eMarketing ile çalışmaya başladıktan sonra dijital görünürlüğümüz büyük ölçüde arttı. SEO, web site tasarımı, Google Ads, Meta Ads, TikTok Ads, LinkedIn Ads ve kreatif çekim hizmetleriyle markamız dijitalde net bir ivme kazandı.",
     company: "Endospine İstanbul",
     name: "Op. Dr. Eyüp Baykara",
-    logo: "/testimonials/endospine-istanbul.webp",
+    logo: "/testimonials/endospine-istanbul.png",
   },
   {
     quote:
@@ -80,6 +146,69 @@ const testimonials = [
     company: "Ramtech Bilgisayar",
     name: "Murat Şengül",
     logo: "/testimonials/ramtech-bilgisayar.png",
+  },
+];
+
+const brands = [
+  {
+    name: "Tevalli Parasol's",
+    logo: "/brands/tevalli-parasols.png",
+    href: "https://593emarketing.com/portfolio/tevalli-parasols-yaz-kampanyasi/",
+  },
+  {
+    name: "Endospine İstanbul",
+    logo: "/brands/endospine-istanbul.png",
+    href: "https://593emarketing.com/portfolio/endospine-istanbul-dijital-pazarlama-yolculugu/",
+  },
+  {
+    name: "Armonia Davet",
+    logo: "/brands/armonia-davet.png",
+    href: "https://593emarketing.com/projeler/",
+  },
+  {
+    name: "Yıldız Teknik Üniversitesi",
+    logo: "/brands/yildiz-teknik.png",
+    href: "https://593emarketing.com/portfolio/yildiz-teknik-universitesi/",
+  },
+  {
+    name: "Ramtech Bilgisayar",
+    logo: "/brands/ramtech-bilgisayar.png",
+    href: "https://593emarketing.com/portfolio/ramtech-bilgisayar-okula-donus-kampanyasi/",
+  },
+  {
+    name: "Türkler Şemsiye",
+    logo: "/brands/turkler-semsiye.png",
+    href: "https://593emarketing.com/portfolio/1742-2/",
+  },
+  {
+    name: "Zeynep Özel Bridal",
+    logo: "/brands/zeynep-ozel.png",
+    href: "https://593emarketing.com/portfolio/zeynep-ozel-bridal-dijital-donusum-sureci/",
+  },
+  {
+    name: "MAREEN",
+    logo: "/brands/mareen.png",
+    href: "https://593emarketing.com/portfolio/mareen-marka-insasi-ve-performans-odakli-e-ticaret-sistemi/",
+  },
+  {
+    name: "Güler Kuyumculuk",
+    logo: "/brands/guler-kuyumculuk.png",
+    href: "https://593emarketing.com/portfolio/guler-kuyumculuk-anlik-altin-kuru-entegrasyonlu-e-ticaret-sistemi/",
+  },
+  {
+    name: "Elis Terlik",
+    logo: "/brands/elis-terlik.png",
+    href: "https://593emarketing.com/portfolio/elis-terlik-web-sitesi-tasarimi-ve-seo-sureci/",
+  },
+  {
+    name: "CWA İnşaat",
+    logo: "/brands/cwa-insaat.png",
+    href: "https://593emarketing.com/portfolio/cwa-insaat-web-design/",
+  },
+  {
+    name: "Bi Anne Atölyesi",
+    logo: "/brands/bi-anne-atolyesi.png",
+    href: "https://593emarketing.com/portfolio/bi-anne-atolyesi-2021den-bugune-dijital-buyume-yolculugu/",
   },
 ];
 
@@ -126,8 +255,15 @@ export default function OffbrandHome() {
   const servicesRef = useRef<HTMLElement>(null);
   const cardsStageRef = useRef<HTMLDivElement>(null);
   const servicesCopyRef = useRef<HTMLDivElement>(null);
+  const servicesHeadingRef = useRef<HTMLDivElement>(null);
+  const infoRef = useRef<HTMLElement>(null);
+  const infoStageRef = useRef<HTMLDivElement>(null);
   const closeRef = useRef<HTMLElement>(null);
   const closeCopyRef = useRef<HTMLDivElement>(null);
+  const brandsRef = useRef<HTMLElement>(null);
+  const [activeBrand, setActiveBrand] = useState<(typeof brands)[number] | null>(
+    null,
+  );
 
   useEffect(() => {
     const orb = orbRef.current;
@@ -144,7 +280,12 @@ export default function OffbrandHome() {
     let textT = 0;
     let cardsT = 0;
     let copyT = 0;
+    let infoT = 0;
+    let infoLiftT = 0;
+    let infoGalleryT = 0;
     let closeT = 0;
+    let orbVisT = 1;
+    let svcExitT = 0;
     let x = tx;
     let y = ty;
     let s = ts;
@@ -152,7 +293,12 @@ export default function OffbrandHome() {
     let textP = 0;
     let cardsP = 0;
     let copyP = 0;
+    let infoP = 0;
+    let infoLiftP = 0;
+    let infoGalleryP = 0;
     let closeP = 0;
+    let orbVisP = 1;
+    let svcExitP = 0;
     let last = performance.now();
 
     const layout = () => {
@@ -167,30 +313,51 @@ export default function OffbrandHome() {
       const h = window.innerHeight;
       const cover = Math.min(w * 0.82, h * 1.25);
       const scaleBig = cover / base;
+      const scaleBrands = Math.min(w * 0.92, h * 1.05) / base;
 
       const hero = { x: w * 0.5, y: h * 0.54, s: 1 };
       const man = { x: w * 0.82, y: h * 0.5, s: scaleBig };
       const svc = { x: w * 0.18, y: h * 0.5, s: scaleBig };
+      const vanish = { x: w * 0.5, y: h * 0.5, s: 0.04 };
       const close = { x: w * 0.82, y: h * 0.78, s: scaleBig };
+      const brandsPos = { x: w * 0.5, y: 0, s: scaleBrands };
 
       const manEl = manifestoRef.current;
       const svcEl = servicesRef.current;
+      const infoEl = infoRef.current;
       const closeEl = closeRef.current;
+      const brandsEl = brandsRef.current;
       const manTop = manEl ? manEl.getBoundingClientRect().top + window.scrollY : h;
       const manH = manEl?.offsetHeight ?? h;
       const svcTop = svcEl ? svcEl.getBoundingClientRect().top + window.scrollY : manTop + manH;
-      const svcH = svcEl?.offsetHeight ?? h * 7;
+      const svcH = svcEl?.offsetHeight ?? h * 6;
+      const infoTop = infoEl
+        ? infoEl.getBoundingClientRect().top + window.scrollY
+        : svcTop + svcH;
+      const infoH = infoEl?.offsetHeight ?? h * 2.2;
       const closeTop = closeEl
         ? closeEl.getBoundingClientRect().top + window.scrollY
-        : svcTop + svcH;
+        : infoTop + infoH;
+      const closeH = closeEl?.offsetHeight ?? h * 2;
+      const brandsTop = brandsEl
+        ? brandsEl.getBoundingClientRect().top + window.scrollY
+        : closeTop + closeH;
+
       const yArrive = Math.max(1, manTop - h * 0.12);
       const yText = Math.max(yArrive + 1, manTop + h * 0.08);
       const yReveal = Math.max(yText + 1, manTop + manH * 0.5);
       const yLeave = Math.max(yReveal + 1, svcTop - h * 0.08);
       const yCards = Math.max(yLeave + 1, svcTop + h * 0.18);
-      const yCardsEnd = Math.max(yCards + 1, svcTop + svcH - h * 0.12);
-      const yClose = Math.max(yLeave + 1, Math.min(yCardsEnd - h * 0.08, closeTop - h * 0.82));
-      const yCloseArrive = Math.max(yClose + 1, closeTop - h * 0.48);
+      const yCardsEnd = Math.max(yCards + 1, svcTop + svcH - h * 0.15);
+      // Orb relocate windows: long scroll for shrink-out and bloom-back.
+      const yOrbShrink = Math.max(yCardsEnd, infoTop - h * 0.25);
+      const yOrbGone = yOrbShrink + h * 1.45;
+      const yInfoIn = Math.max(yOrbGone + 1, infoTop + h * 0.2);
+      const yInfoPeak = Math.max(yInfoIn + 1, infoTop + infoH * 0.48);
+      const yClose = Math.max(yInfoPeak + h * 0.15, closeTop - h * 1.55);
+      const yCloseArrive = yClose + h * 1.35;
+      const yBrands = Math.max(yCloseArrive + 1, brandsTop - h * 0.65);
+      const yBrandsArrive = Math.max(yBrands + 1, brandsTop - h * 0.2);
       const sy = window.scrollY;
 
       let a = hero;
@@ -199,6 +366,10 @@ export default function OffbrandHome() {
       let fade = t;
       let reveal = 0;
       let closeReveal = 0;
+      let infoReveal = 0;
+      let infoLift = 0;
+      let infoGallery = 0;
+      let orbVis = 1;
 
       if (sy >= yArrive && sy < yText) {
         a = man;
@@ -212,19 +383,74 @@ export default function OffbrandHome() {
         t = 1;
         fade = 1;
         reveal = (sy - yText) / (yReveal - yText);
-      } else if (sy >= yReveal && sy < yClose) {
+      } else if (sy >= yReveal && sy < yOrbShrink) {
         a = man;
         b = svc;
         t = Math.min(1, (sy - yReveal) / (yLeave - yReveal));
+        if (sy >= yLeave) {
+          a = svc;
+          b = svc;
+          t = 1;
+        }
         fade = 1;
         reveal = 1;
-      } else if (sy >= yClose) {
+      } else if (sy >= yOrbShrink && sy < yOrbGone) {
         a = svc;
+        b = vanish;
+        t = (sy - yOrbShrink) / (yOrbGone - yOrbShrink);
+        fade = 1;
+        reveal = 1;
+        orbVis = 1 - smoothstep(Math.pow(Math.min(1, Math.max(0, t)), 0.72));
+        infoReveal = smoothstep(t) * 0.12;
+      } else if (sy >= yOrbGone && sy < yClose) {
+        a = vanish;
+        b = vanish;
+        t = 1;
+        fade = 1;
+        reveal = 1;
+        orbVis = 0;
+        const span = Math.max(1, yClose - yOrbGone);
+        const p = Math.min(1, Math.max(0, (sy - yOrbGone) / span));
+        // 0–0.18 enter · 0.18–0.38 logo lifts · 0.34–0.58 gallery · then hold · fade out
+        if (p < 0.18) {
+          infoReveal = p / 0.18;
+          infoLift = 0;
+          infoGallery = 0;
+        } else if (p < 0.38) {
+          infoReveal = 1;
+          infoLift = (p - 0.18) / 0.2;
+          infoGallery = Math.max(0, (p - 0.34) / 0.24);
+        } else if (p < 0.72) {
+          infoReveal = 1;
+          infoLift = 1;
+          infoGallery = Math.min(1, (p - 0.34) / 0.24);
+        } else {
+          infoLift = 1;
+          infoGallery = 1;
+          infoReveal = Math.max(0, 1 - (p - 0.72) / 0.22);
+        }
+      } else if (sy >= yClose && sy < yBrands) {
+        a = vanish;
         b = close;
         t = Math.min(1, (sy - yClose) / (yCloseArrive - yClose));
         fade = 1;
         reveal = 1;
-        closeReveal = t;
+        closeReveal = Math.min(1, t / 0.42);
+        orbVis = smoothstep(Math.pow(Math.min(1, Math.max(0, t)), 1.35));
+        infoReveal = 0;
+        infoLift = 1;
+        infoGallery = 0;
+      } else if (sy >= yBrands) {
+        a = close;
+        b = brandsPos;
+        t = Math.min(1, (sy - yBrands) / (yBrandsArrive - yBrands));
+        fade = 1;
+        reveal = 1;
+        closeReveal = 1;
+        orbVis = 1;
+        infoReveal = 0;
+        infoLift = 1;
+        infoGallery = 0;
       }
 
       t = reduced ? (t > 0.45 ? 1 : 0) : smoothstep(t);
@@ -237,6 +463,21 @@ export default function OffbrandHome() {
       const cards = sy <= yCards ? 0 : (sy - yCards) / (yCardsEnd - yCards);
       cardsT = reduced ? (cards > 0.08 ? 1 : 0) : Math.min(1, Math.max(0, cards));
       closeT = reduced ? (closeReveal > 0.2 ? 1 : 0) : smoothstep(closeReveal);
+      infoT = reduced ? (infoReveal > 0.2 ? 1 : 0) : smoothstep(Math.min(1, Math.max(0, infoReveal)));
+      infoLiftT = reduced ? (infoLift > 0.45 ? 1 : 0) : smoothstep(Math.min(1, Math.max(0, infoLift)));
+      infoGalleryT = reduced
+        ? infoGallery > 0.45
+          ? 1
+          : 0
+        : smoothstep(Math.min(1, Math.max(0, infoGallery)));
+      orbVisT = reduced ? (orbVis > 0.45 ? 1 : 0) : Math.min(1, Math.max(0, orbVis));
+      const svcExit =
+        sy < yOrbShrink
+          ? 0
+          : sy >= yOrbGone
+            ? 1
+            : (sy - yOrbShrink) / (yOrbGone - yOrbShrink);
+      svcExitT = reduced ? (svcExit > 0.45 ? 1 : 0) : smoothstep(svcExit);
       const copyStart = yLeave - h * 0.18;
       copyT =
         sy <= copyStart
@@ -254,6 +495,7 @@ export default function OffbrandHome() {
       const els = layer.querySelectorAll<HTMLElement>("[data-service-card]");
       const n = services.length;
       let active = -1;
+      const hide = 1 - svcExitP;
 
       els.forEach((el, i) => {
         const local = p * n - i * 0.88;
@@ -277,17 +519,79 @@ export default function OffbrandHome() {
           }
         }
 
-        const hide = 1 - closeP;
         el.style.opacity = String(opacity * hide);
         el.style.transform = `translate3d(${slideX}px, -50%, 0)`;
       });
 
+      // Fade heading with the last service card, not after orb exit.
+      const lastLocal = p * n - (n - 1) * 0.88;
+      let lastOut = 1;
+      if (lastLocal >= 0.62) {
+        lastOut =
+          lastLocal >= 0.92
+            ? 0
+            : 1 - smoothstep(Math.min(1, (lastLocal - 0.62) / 0.3));
+      }
+      const headingShow =
+        Math.min(1, Math.max(copyP, cardsP > 0.02 ? 1 : cardsP * 20)) *
+        lastOut *
+        hide;
+      const heading = servicesHeadingRef.current;
+      if (heading) {
+        heading.style.opacity = String(headingShow);
+        heading.style.transform = `translate3d(0, ${(1 - headingShow) * 12}px, 0)`;
+      }
+
       const copy = servicesCopyRef.current;
       if (copy) {
-        const showIntro = copyP * (active >= 0 ? 0 : 1);
+        const showIntro = copyP * (active >= 0 ? 0 : 1) * hide;
         copy.style.opacity = String(showIntro);
         copy.style.transform = `translate3d(0, ${(1 - copyP) * 16}px, 0)`;
       }
+    };
+
+    const applyInfo = () => {
+      const stage = infoStageRef.current;
+      if (!stage) return;
+      const h = window.innerHeight;
+      const enter = smoothstep(infoP);
+      const lift = smoothstep(infoLiftP);
+      const gallery = smoothstep(infoGalleryP);
+
+      stage.style.opacity = String(enter);
+      stage.style.pointerEvents = enter > 0.2 ? "auto" : "none";
+
+      const logo = stage.querySelector<HTMLElement>("[data-info-media]");
+      if (logo) {
+        const scale = lerp(1, 0.48, lift);
+        const top = lerp(h * 0.42, h * 0.11, lift);
+        logo.style.top = `${top}px`;
+        logo.style.transform = `translate(-50%, -50%) scale(${scale})`;
+      }
+
+      const copy = stage.querySelector<HTMLElement>("[data-info-copy]");
+      if (copy) {
+        const show = Math.max(0, 1 - lift * 1.4);
+        copy.style.opacity = String(show);
+        copy.style.top = `${lerp(h * 0.58, h * 0.5, lift)}px`;
+        copy.style.transform = `translate(-50%, 0)`;
+        copy.style.pointerEvents = show > 0.4 ? "auto" : "none";
+      }
+
+      const grid = stage.querySelector<HTMLElement>("[data-info-gallery]");
+      if (grid) {
+        grid.style.opacity = String(gallery);
+        grid.style.top = `${lerp(h * 0.26, h * 0.2, gallery)}px`;
+        grid.style.transform = `translate(-50%, ${(1 - gallery) * 36}px)`;
+        grid.style.pointerEvents = gallery > 0.35 ? "auto" : "none";
+      }
+
+      grid?.querySelectorAll<HTMLElement>("[data-info-card]").forEach((card, i) => {
+        const local = Math.min(1, Math.max(0, gallery * 1.4 - i * 0.06));
+        const e = smoothstep(local);
+        card.style.opacity = String(e);
+        card.style.transform = `translate3d(0, ${(1 - e) * 24}px, 0) scale(${lerp(0.94, 1, e)})`;
+      });
     };
 
     const tick = (now: number) => {
@@ -302,9 +606,16 @@ export default function OffbrandHome() {
       textP += (textT - textP) * follow;
       cardsP += (cardsT - cardsP) * follow;
       copyP += (copyT - copyP) * follow;
+      infoP += (infoT - infoP) * follow;
+      infoLiftP += (infoLiftT - infoLiftP) * follow;
+      infoGalleryP += (infoGalleryT - infoGalleryP) * follow;
       closeP += (closeT - closeP) * follow;
+      orbVisP += (orbVisT - orbVisP) * (reduced ? 1 : 1 - Math.exp(-3.8 * dt));
+      svcExitP += (svcExitT - svcExitP) * follow;
 
       orb.style.transform = `translate3d(${x - base / 2}px, ${y - base / 2}px, 0) scale(${s})`;
+      orb.style.opacity = String(orbVisP);
+      orb.style.pointerEvents = orbVisP < 0.08 ? "none" : "auto";
       if (ringsRef.current) ringsRef.current.style.opacity = String(1 - fp);
       if (hintRef.current) hintRef.current.style.opacity = String(1 - fp);
 
@@ -326,6 +637,7 @@ export default function OffbrandHome() {
       }
 
       applyCards(cardsP, window.innerWidth);
+      applyInfo();
 
       const closeCopy = closeCopyRef.current;
       if (closeCopy) {
@@ -393,15 +705,24 @@ export default function OffbrandHome() {
         ref={cardsStageRef}
         className="pointer-events-none fixed inset-y-0 right-0 z-[4] flex w-1/2 items-center px-4 sm:px-6 lg:px-10"
       >
+        <div
+          ref={servicesHeadingRef}
+          className="absolute inset-x-4 top-[max(4.5rem,12vh)] z-[1] text-center opacity-0 will-change-transform sm:inset-x-6 lg:inset-x-10"
+        >
+          <h2 className="font-display text-[clamp(1.6rem,2.8vw,2.35rem)] font-bold tracking-[-0.05em] text-[#f4f1ea]">
+            Hizmetlerimiz
+          </h2>
+        </div>
+
         {services.map((service) => (
           <article
             key={service.title}
             data-service-card
-            className="absolute inset-x-4 top-1/2 w-[calc(100%-2rem)] opacity-0 will-change-transform sm:inset-x-6 sm:w-[calc(100%-3rem)] lg:inset-x-10 lg:w-[calc(100%-5rem)]"
+            className="absolute inset-x-4 top-[52%] w-[calc(100%-2rem)] opacity-0 will-change-transform sm:inset-x-6 sm:w-[calc(100%-3rem)] lg:inset-x-10 lg:w-[calc(100%-5rem)]"
           >
             <div
               data-card-visual
-              className="relative h-[min(62vh,36rem)] w-full overflow-hidden rounded-[1.75rem] bg-[#111]"
+              className="relative h-[min(56vh,32rem)] w-full overflow-hidden rounded-[1.75rem] bg-[#111]"
             >
               <img
                 src={service.image}
@@ -425,13 +746,7 @@ export default function OffbrandHome() {
         ref={servicesCopyRef}
         className="pointer-events-none fixed top-1/2 right-0 z-[4] w-1/2 -translate-y-1/2 px-4 text-left opacity-0 will-change-transform sm:px-6 lg:px-10"
       >
-        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/40">
-          Hizmetler
-        </p>
-        <h2 className="mt-3 font-display text-[clamp(1.8rem,3vw,2.6rem)] font-bold tracking-[-0.05em] text-[#f4f1ea]">
-          Hizmetlerimiz
-        </h2>
-        <p className="mt-2 max-w-md text-[15px] leading-7 text-white/50">
+        <p className="mt-16 max-w-md text-[15px] leading-7 text-white/50 sm:mt-20">
           Markanın her katmanını tek bir ritimde kuruyoruz.
         </p>
       </div>
@@ -524,13 +839,106 @@ export default function OffbrandHome() {
       <section
         ref={servicesRef}
         id="services"
-        className="relative z-0 min-h-[380vh] bg-[#141111]"
+        className="relative z-0 min-h-[320vh] bg-[#141111]"
       />
+
+      <section
+        ref={infoRef}
+        id="infofluencer"
+        className="relative z-0 min-h-[460vh] bg-[#141111]"
+      >
+        <div className="sticky top-0 h-dvh overflow-hidden">
+          <div
+            ref={infoStageRef}
+            className="relative h-full w-full opacity-0"
+          >
+            <div
+              data-info-media
+              className="absolute left-1/2 z-[3] w-[min(88vw,34rem)] will-change-transform"
+              style={{ top: "42%", transform: "translate(-50%, -50%)" }}
+            >
+              <img
+                src={infofluencer.image}
+                alt={infofluencer.title}
+                className="h-auto w-full object-contain"
+              />
+            </div>
+
+            <div
+              data-info-copy
+              className="absolute left-1/2 z-[2] w-[min(92vw,36rem)] px-4 text-center will-change-transform"
+              style={{ top: "58%", transform: "translate(-50%, 0)" }}
+            >
+              <p className="font-display text-[clamp(1.35rem,2.8vw,1.85rem)] font-bold tracking-[-0.04em] text-[#f4f1ea]">
+                {infofluencer.tagline}
+              </p>
+              <p className="mx-auto mt-3 max-w-lg text-[15px] leading-7 text-white/50">
+                {infofluencer.line}
+              </p>
+              <a
+                href={infofluencer.href}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-7 inline-flex rounded-full bg-[#f4f1ea] px-6 py-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#141111] transition duration-300 hover:bg-[#e91825] hover:text-white"
+              >
+                Infofluencer’ı İncele
+              </a>
+            </div>
+
+            <div
+              data-info-gallery
+              className="absolute left-1/2 z-[1] w-[min(98vw,72rem)] px-3 opacity-0 will-change-transform sm:px-5"
+              style={{ top: "20%", transform: "translate(-50%, 36px)" }}
+            >
+              <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-3.5 md:grid-cols-5 md:gap-4">
+                {infoGallery.map((item) => (
+                  <li
+                    key={item.thumb}
+                    data-info-card
+                    className="opacity-0 will-change-transform"
+                  >
+                    <a
+                      href={item.href}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      aria-label={item.label}
+                      className="group relative block aspect-[3/4] overflow-hidden rounded-[1.35rem] bg-[#1c1818]"
+                    >
+                      <img
+                        src={item.thumb}
+                        alt=""
+                        className="h-full w-full object-cover transition duration-500 group-hover:scale-[1.04]"
+                      />
+                      <span className="absolute inset-0 bg-gradient-to-t from-black/55 via-transparent to-transparent" />
+                      {item.video ? (
+                        <span
+                          aria-hidden
+                          className="absolute inset-0 flex items-center justify-center"
+                        >
+                          <span className="flex size-10 items-center justify-center rounded-full bg-white/90 text-[#141111] shadow-lg transition group-hover:scale-105">
+                            <svg
+                              viewBox="0 0 24 24"
+                              className="ml-0.5 size-4 fill-current"
+                              aria-hidden
+                            >
+                              <path d="M8 5v14l11-7z" />
+                            </svg>
+                          </span>
+                        </span>
+                      ) : null}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        </div>
+      </section>
 
       <section
         ref={closeRef}
         id="contact"
-        className="relative z-0 min-h-[280vh] bg-[#141111] px-4 pb-24 sm:px-6 lg:px-8"
+        className="relative z-0 bg-[#141111] px-4 pb-16 pt-[min(55vh,22rem)] sm:px-6 lg:px-8 lg:pb-20"
       >
         <div className="w-full max-w-[min(40rem,52vw)] pr-4 sm:pr-6">
           <div className="sticky top-0 z-[3] pt-8 sm:pt-10 lg:pt-12">
@@ -553,7 +961,7 @@ export default function OffbrandHome() {
             </div>
           </div>
 
-          <div className="flex flex-col gap-10 pt-[42vh] pb-[70vh]">
+          <div className="flex flex-col gap-8 pt-[min(28vh,12rem)] pb-10 sm:gap-10">
             {testimonials.map((item) => (
               <article
                 key={item.company}
@@ -590,7 +998,7 @@ export default function OffbrandHome() {
             ))}
           </div>
 
-          <div className="flex flex-wrap items-center gap-4 pb-10">
+          <div className="flex flex-wrap items-center gap-4 pb-6 pt-2">
             <Link
               href="mailto:hello@593emarketing.com"
               className="rounded-full bg-[#f4f1ea] px-6 py-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#141111] transition duration-300 hover:bg-[#e91825] hover:text-white"
@@ -606,6 +1014,252 @@ export default function OffbrandHome() {
           </div>
         </div>
       </section>
+
+      <section
+        ref={brandsRef}
+        id="brands"
+        className="relative flex min-h-dvh items-center justify-center overflow-x-hidden border-t border-white/8 bg-[#141111] px-4 pb-20 pt-[min(38vh,16rem)] sm:px-6 lg:px-8"
+      >
+        <div
+          className="relative mx-auto w-full max-w-6xl"
+          onMouseLeave={() => setActiveBrand(null)}
+        >
+          <div className="relative z-[7] mb-8 mix-blend-difference sm:mb-10">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white">
+              İş ortaklarımız
+            </p>
+            <h2 className="mt-3 font-display text-[clamp(2rem,4.4vw,3.4rem)] font-bold leading-[0.95] tracking-[-0.06em] text-white">
+              Markalarımız
+            </h2>
+            <p className="mt-3 max-w-md text-[15px] leading-7 text-white/80">
+              Birlikte büyüttüğümüz markalar.
+            </p>
+          </div>
+
+          <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 md:grid-cols-4 lg:grid-cols-6">
+            {brands.map((brand) => {
+              const isActive = activeBrand?.name === brand.name;
+              return (
+                <li
+                  key={brand.name}
+                  className="relative aspect-square"
+                  onMouseEnter={() => setActiveBrand(brand)}
+                  onMouseLeave={() => setActiveBrand(null)}
+                  onFocus={() => setActiveBrand(brand)}
+                  onBlur={() => setActiveBrand(null)}
+                >
+                  <a
+                    href={brand.href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    aria-label={`${brand.name} — incele`}
+                    className={[
+                      "absolute inset-x-0 top-0 flex flex-col overflow-hidden rounded-[1.35rem] transition duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]",
+                      isActive
+                        ? "z-20 -translate-y-[4.75rem] bg-[#1a1616] shadow-[0_28px_50px_-22px_rgba(0,0,0,0.95)]"
+                        : "z-10 bg-[#161212]",
+                    ].join(" ")}
+                  >
+                    <div className="aspect-square w-full shrink-0 p-2.5 sm:p-3">
+                      <div
+                        className={[
+                          "flex h-full w-full items-center justify-center overflow-hidden rounded-[1rem] bg-[#f4f1ea] transition duration-500",
+                          isActive ? "opacity-100" : "opacity-85",
+                        ].join(" ")}
+                      >
+                        <img
+                          src={brand.logo}
+                          alt=""
+                          className={[
+                            "h-full w-full object-contain p-2 transition duration-500 ease-out sm:p-2.5",
+                            isActive
+                              ? "scale-[1.02] grayscale-0"
+                              : "grayscale",
+                          ].join(" ")}
+                        />
+                      </div>
+                    </div>
+
+                    <div
+                      className={[
+                        "overflow-hidden transition-[max-height,opacity] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]",
+                        isActive
+                          ? "max-h-28 opacity-100"
+                          : "max-h-0 opacity-0",
+                      ].join(" ")}
+                    >
+                      <div className="flex flex-col items-center px-3 pb-4 pt-0.5 text-center">
+                        <p className="line-clamp-2 font-display text-[11px] font-medium leading-snug tracking-[-0.02em] text-white/50 sm:text-[12px]">
+                          {brand.name}
+                        </p>
+                        <span className="mt-2.5 inline-flex rounded-full bg-[#f4f1ea] px-3.5 py-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-[#141111] transition duration-300 hover:bg-[#e91825] hover:text-white">
+                          İncele
+                        </span>
+                      </div>
+                    </div>
+                  </a>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      </section>
+
+      <footer className="relative z-10 border-t border-white/8 bg-[#141111] text-[#f4f1ea]">
+        <div className="mx-auto max-w-7xl px-4 pb-10 pt-16 sm:px-6 sm:pb-12 sm:pt-20 lg:px-8 lg:pt-24">
+          <div className="flex flex-col gap-8 lg:flex-row lg:items-end lg:justify-between lg:gap-12">
+            <div className="max-w-3xl">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/40">
+                Sonraki adım
+              </p>
+              <h2 className="mt-4 font-display text-[clamp(2.2rem,5.5vw,4.25rem)] font-bold leading-[0.95] tracking-[-0.06em]">
+                Markanı doğru
+                <br />
+                ritimde büyütelim.
+              </h2>
+              <p className="mt-5 max-w-md text-[15px] leading-7 text-white/45">
+                Tasarım, strateji ve büyüme tek elde. Kısa bir brifle başlayalım;
+                gerisini birlikte netleştirelim.
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-4">
+              <a
+                href="mailto:hello@593emarketing.com"
+                className="rounded-full bg-[#f4f1ea] px-6 py-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#141111] transition duration-300 hover:bg-[#e91825] hover:text-white"
+              >
+                Proje Başlat
+              </a>
+              <a
+                href="tel:+905435939533"
+                className="text-sm text-white/50 transition hover:text-[#f4f1ea]"
+              >
+                +90 543 593 95 33
+              </a>
+            </div>
+          </div>
+
+          <div className="mt-16 grid grid-cols-2 gap-x-8 gap-y-10 border-t border-white/8 pt-12 sm:mt-20 sm:grid-cols-4 sm:pt-14">
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/40">
+                Sayfalar
+              </p>
+              <ul className="mt-4 space-y-3">
+                {[
+                  { label: "Manifesto", href: "#manifesto" },
+                  { label: "Hizmetler", href: "#services" },
+                  { label: "Markalar", href: "#brands" },
+                  { label: "Referanslar", href: "#contact" },
+                ].map((item) => (
+                  <li key={item.label}>
+                    <Link
+                      href={item.href}
+                      className="text-[14px] text-[#f4f1ea]/75 transition hover:text-[#f4f1ea]"
+                    >
+                      {item.label}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/40">
+                Hizmetler
+              </p>
+              <ul className="mt-4 space-y-3">
+                {services.slice(0, 4).map((service) => (
+                  <li key={service.title}>
+                    <Link
+                      href="#services"
+                      className="text-[14px] text-[#f4f1ea]/75 transition hover:text-[#f4f1ea]"
+                    >
+                      {service.title}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/40">
+                Sosyal
+              </p>
+              <ul className="mt-4 space-y-3">
+                <li>
+                  <a
+                    href="https://www.instagram.com/593emarketing/"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-[14px] text-[#f4f1ea]/75 transition hover:text-[#f4f1ea]"
+                  >
+                    Instagram
+                  </a>
+                </li>
+                <li>
+                  <a
+                    href="https://www.linkedin.com/company/593-emarketing"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-[14px] text-[#f4f1ea]/75 transition hover:text-[#f4f1ea]"
+                  >
+                    LinkedIn
+                  </a>
+                </li>
+                <li>
+                  <a
+                    href="https://593emarketing.com/"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-[14px] text-[#f4f1ea]/75 transition hover:text-[#f4f1ea]"
+                  >
+                    593emarketing.com
+                  </a>
+                </li>
+              </ul>
+            </div>
+
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/40">
+                İletişim
+              </p>
+              <ul className="mt-4 space-y-3 text-[14px] text-[#f4f1ea]/75">
+                <li>İstanbul, Türkiye</li>
+                <li>
+                  <a
+                    href="mailto:hello@593emarketing.com"
+                    className="transition hover:text-[#f4f1ea]"
+                  >
+                    hello@593emarketing.com
+                  </a>
+                </li>
+                <li>
+                  <a
+                    href="tel:+905435939533"
+                    className="transition hover:text-[#f4f1ea]"
+                  >
+                    +90 543 593 95 33
+                  </a>
+                </li>
+              </ul>
+            </div>
+          </div>
+
+          <div className="mt-14 flex flex-col gap-2 sm:mt-16 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-[12px] text-white/35">
+              © {new Date().getFullYear()} 593 E-Marketing
+            </p>
+            <p className="text-[12px] text-white/25">
+              Tasarım · Strateji · Dönüşüm
+            </p>
+          </div>
+        </div>
+
+        <div className="pointer-events-none select-none px-2 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-6 sm:px-4">
+          <p className="font-logo whitespace-nowrap text-center text-[clamp(2.4rem,11vw,9.5rem)] font-extrabold leading-[1.2] tracking-[-0.055em] text-[#f4f1ea]/[0.1]">
+            593 E-MARKETİNG
+          </p>
+        </div>
+      </footer>
     </main>
   );
 }

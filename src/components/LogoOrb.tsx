@@ -60,19 +60,17 @@ void main() {
   float swell2 = sin(n.y * 5.0 - n.x * 2.8 - uTime * 1.15) * 0.026;
   float swell3 = sin((n.x + n.y) * 6.5 + uTime * 1.95) * 0.018;
   float swell4 = cos(n.x * 3.0 - n.y * 4.5 + uTime * 0.85) * 0.022;
-  float swell5 = sin(n.x * 7.0 + n.y * 5.5 - uTime * 2.2) * 0.012;
 
   // Fine surface chop
   float n1 = noise(n * 2.2 + vec3(uTime * 0.5, uTime * 0.32, -uTime * 0.25));
   float n2 = noise(n * 4.8 + vec3(-uTime * 0.7, uTime * 0.45, uTime * 0.35));
-  float n3 = noise(n * 8.0 + vec3(uTime * 0.9, -uTime * 0.55, uTime * 0.4));
-  float chop = (n1 - 0.5) * 0.028 + (n2 - 0.5) * 0.016 + (n3 - 0.5) * 0.008;
+  float chop = (n1 - 0.5) * 0.028 + (n2 - 0.5) * 0.016;
 
   // Softer on logo face so strokes stay readable — but still wave
   float frontFace = smoothstep(0.1, 0.6, n.z);
   float waterAmp = mix(1.15, 0.55, frontFace);
 
-  float water = (swell1 + swell2 + swell3 + swell4 + swell5 + chop) * waterAmp;
+  float water = (swell1 + swell2 + swell3 + swell4 + chop) * waterAmp;
 
   // Mouse ripples — stronger concentric waves
   vec2 pn = uPointer;
@@ -83,8 +81,6 @@ void main() {
   float rip = 0.0;
   rip += ripple(n, pn, uTime, 3.6, 0.045);
   rip += ripple(n, pn, uTime + 1.7, 2.8, 0.032) * 0.85;
-  rip += ripple(n, pn * 0.55, uTime * 0.9, 2.2, 0.022) * 0.65;
-  rip += ripple(n, pn + vec2(0.15, -0.1), uTime * 1.1 + 0.8, 2.6, 0.018) * 0.4;
   water += rip * (0.65 + uHover * 1.1) * waterAmp;
 
   // Liquid push under cursor
@@ -240,13 +236,14 @@ export default function LogoOrb() {
     if (!wrap || !canvas) return;
 
     const reduced = prefersReducedMotion();
+    const dprCap = Math.min(window.devicePixelRatio || 1, 1.5);
     const renderer = new THREE.WebGLRenderer({
       canvas,
-      antialias: true,
+      antialias: dprCap < 1.5,
       alpha: true,
       powerPreference: "high-performance",
     });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setPixelRatio(dprCap);
     renderer.setClearColor(0x000000, 0);
 
     const scene = new THREE.Scene();
@@ -258,6 +255,7 @@ export default function LogoOrb() {
     const colorPointer = new THREE.Vector2(0, 0);
     const velocity = new THREE.Vector2(0, 0);
     const prevPointer = new THREE.Vector2(0, 0);
+    const velSample = new THREE.Vector2(0, 0);
     const tint = new THREE.Color(0xe91825);
     const tintTarget = new THREE.Color(0xe91825);
     const rim = new THREE.Color(0xff9ec8);
@@ -266,6 +264,9 @@ export default function LogoOrb() {
     let hoverTarget = 0;
     let raf = 0;
     let disposed = false;
+    let visible = true;
+    let start = performance.now();
+    let last = start;
 
     // Vivid stops — one dominates at a time (no muddy average)
     const palette = [
@@ -299,7 +300,8 @@ export default function LogoOrb() {
       uVelocity: { value: new THREE.Vector2(0, 0) },
     };
 
-    const geometry = new THREE.SphereGeometry(1, 160, 160);
+    // 64 segs is smooth enough; 160 was crushing the GPU
+    const geometry = new THREE.SphereGeometry(1, 64, 64);
     const material = new THREE.ShaderMaterial({
       uniforms,
       vertexShader,
@@ -311,7 +313,7 @@ export default function LogoOrb() {
     const loader = new THREE.TextureLoader();
     loader.load(LOGO_URL, (tex) => {
       tex.colorSpace = THREE.SRGBColorSpace;
-      tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+      tex.anisotropy = Math.min(4, renderer.capabilities.getMaxAnisotropy());
       tex.generateMipmaps = true;
       tex.minFilter = THREE.LinearMipmapLinearFilter;
       tex.magFilter = THREE.LinearFilter;
@@ -333,7 +335,6 @@ export default function LogoOrb() {
 
     const onMove = (e: PointerEvent) => {
       const rect = wrap.getBoundingClientRect();
-      // Normalize against orb bounds; still react a bit outside (hero feel)
       const x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
       const y = -(((e.clientY - rect.top) / rect.height) * 2 - 1);
       pointerTarget.set(
@@ -346,7 +347,6 @@ export default function LogoOrb() {
       const dx = (e.clientX - cx) / (rect.width * 0.55);
       const dy = (e.clientY - cy) / (rect.height * 0.55);
       const dist = Math.hypot(dx, dy);
-      // Soft hover: full when over orb, fades as you leave
       hoverTarget = THREE.MathUtils.clamp(1.15 - dist * 0.75, 0, 1);
     };
 
@@ -354,31 +354,41 @@ export default function LogoOrb() {
       hoverTarget = 0;
     };
 
+    const onVisibility = () => {
+      visible = document.visibilityState === "visible";
+      if (visible && !disposed) {
+        last = performance.now();
+        raf = requestAnimationFrame(tick);
+      }
+    };
+
     window.addEventListener("pointermove", onMove, { passive: true });
     wrap.addEventListener("pointerleave", onLeave);
+    document.addEventListener("visibilitychange", onVisibility);
 
-    const clock = new THREE.Clock();
     const tick = () => {
       if (disposed) return;
-      const dt = Math.min(clock.getDelta(), 0.05);
-      const t = clock.elapsedTime;
+      if (!visible) {
+        raf = 0;
+        return;
+      }
 
-      // Motion follow
+      const now = performance.now();
+      const dt = Math.min((now - last) / 1000, 0.05);
+      last = now;
+      const t = (now - start) / 1000;
+
       pointer.lerp(pointerTarget, 1 - Math.exp(-4.0 * dt));
-      // Soft color follow — slower so hues ease, don't snap
       colorPointer.lerp(pointerTarget, 1 - Math.exp(-2.0 * dt));
-      velocity.lerp(
-        new THREE.Vector2(
-          (pointer.x - prevPointer.x) / Math.max(dt, 0.001),
-          (pointer.y - prevPointer.y) / Math.max(dt, 0.001),
-        ),
-        0.15,
+      velSample.set(
+        (pointer.x - prevPointer.x) / Math.max(dt, 0.001),
+        (pointer.y - prevPointer.y) / Math.max(dt, 0.001),
       );
+      velocity.lerp(velSample, 0.15);
       velocity.multiplyScalar(0.94);
       prevPointer.copy(pointer);
       hover += (hoverTarget - hover) * (1 - Math.exp(-2.4 * dt));
 
-      // Neighbor blend with smootherstep — soft handoff between hues
       const n = palette.length;
       const ang = Math.atan2(colorPointer.y, colorPointer.x);
       const slot = ((ang / (Math.PI * 2) + 0.5) * n + n) % n;
@@ -426,7 +436,7 @@ export default function LogoOrb() {
       renderer.render(scene, camera);
       raf = requestAnimationFrame(tick);
     };
-    tick();
+    raf = requestAnimationFrame(tick);
 
     return () => {
       disposed = true;
@@ -434,6 +444,7 @@ export default function LogoOrb() {
       ro.disconnect();
       window.removeEventListener("pointermove", onMove);
       wrap.removeEventListener("pointerleave", onLeave);
+      document.removeEventListener("visibilitychange", onVisibility);
       geometry.dispose();
       material.dispose();
       uniforms.uLogo.value?.dispose();

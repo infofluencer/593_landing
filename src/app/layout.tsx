@@ -41,8 +41,14 @@ export default function RootLayout({
     <html
       lang="tr"
       className={`${syne.variable} ${dmSans.variable} ${montserrat.variable} h-full antialiased`}
+      suppressHydrationWarning
     >
-      <body className="min-h-full flex flex-col bg-[#141111] text-[#f4f1ea]">{children}</body>
+      <body
+        className="min-h-full flex flex-col bg-[#141111] text-[#f4f1ea]"
+        suppressHydrationWarning
+      >
+        {children}
+      </body>
     </html>
   );
 }
