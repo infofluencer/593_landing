@@ -196,14 +196,44 @@ const brands = [
     href: "https://593emarketing.com/portfolio/guler-kuyumculuk-anlik-altin-kuru-entegrasyonlu-e-ticaret-sistemi/",
   },
   {
-    name: "Elis Terlik",
-    logo: "/brands/elis-terlik.png",
-    href: "https://593emarketing.com/portfolio/elis-terlik-web-sitesi-tasarimi-ve-seo-sureci/",
+    name: "Bahex Mobilya",
+    logo: "/brands/bahex-mobilya.png",
+    href: "https://bahexmobilya.com/",
   },
   {
-    name: "CWA İnşaat",
-    logo: "/brands/cwa-insaat.png",
-    href: "https://593emarketing.com/portfolio/cwa-insaat-web-design/",
+    name: "Yedi Mavi Cadde",
+    logo: "/brands/yedi-mavi-cadde.png",
+    href: "https://www.yedimavicadde.com/",
+  },
+  {
+    name: "Anadolu Hastaneleri",
+    logo: "/brands/anadolu-hastaneleri.png",
+    href: "https://www.anadoluhastaneleri.com/",
+  },
+  {
+    name: "Suare Davet",
+    logo: "/brands/suare-davet.png",
+    href: "https://suaredavet.co/",
+  },
+  {
+    name: "Mokan Travel",
+    logo: "/brands/mokan-travel.svg",
+    href: "https://www.mokantravel.com/tr",
+  },
+  {
+    name: "Op. Dr. Eyüp Baykara",
+    logo: "/brands/eyup-baykara.png",
+    href: "https://www.eyupbaykara.com/",
+  },
+  {
+    name: "Infofluencer",
+    logo: "/brands/infofluencer.svg",
+    href: "https://infofluencer.co/tr",
+  },
+  {
+    name: "Sekiz Ocakbaşı",
+    logo: "/brands/sekiz-ocakbasi.png",
+    href: "https://sekizocakbasi.com/",
   },
   {
     name: "Bi Anne Atölyesi",
