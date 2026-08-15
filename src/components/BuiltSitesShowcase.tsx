@@ -1,3 +1,4 @@
+import Image from "next/image";
 import type { BuiltSite } from "@/data/builtSites";
 import { builtSites } from "@/data/builtSites";
 
@@ -24,10 +25,12 @@ function SiteTile({
           : "min-h-[min(30vh,16rem)]"
       }`}
     >
-      <img
-        src={`${site.image}?v=3`}
+      <Image
+        src={site.image}
         alt={`${site.brand} web sitesi`}
-        className={`absolute inset-0 h-full w-full transition duration-700 group-hover:scale-[1.02] ${
+        fill
+        sizes={tall ? "(max-width: 1023px) 100vw, 58vw" : "(max-width: 639px) 100vw, (max-width: 1023px) 50vw, 40vw"}
+        className={`transition duration-700 group-hover:scale-[1.02] ${
           contain
             ? "object-contain object-center"
             : "object-cover object-top"
@@ -76,7 +79,7 @@ export default function BuiltSitesShowcase({
 
   return (
     <section className={`relative border-t border-white/8 ${className}`}>
-      <div className="mx-auto max-w-7xl px-4 py-14 sm:px-6 sm:py-16 lg:px-8 lg:py-20">
+      <div className="page-x mx-auto max-w-7xl py-14 sm:py-16 lg:py-20">
         <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/40">
           Canlıda
         </p>

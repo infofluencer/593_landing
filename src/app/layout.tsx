@@ -5,7 +5,11 @@ import "./globals.css";
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
+  maximumScale: 5,
+  userScalable: true,
   viewportFit: "cover",
+  colorScheme: "dark",
+  themeColor: "#141111",
 };
 
 const syne = Syne({
@@ -30,6 +34,17 @@ export const metadata: Metadata = {
   title: "593 E-Marketing | Creative Marketing Studio",
   description:
     "593 E-Marketing icin editorial hissi tasiyan yeni nesil yaratıcı pazarlama ve dijital deneyim landing sayfasi.",
+  applicationName: "593 E-Marketing",
+  appleWebApp: {
+    capable: true,
+    title: "593",
+    statusBarStyle: "black-translucent",
+  },
+  formatDetection: {
+    telephone: false,
+    address: false,
+    email: false,
+  },
 };
 
 export default function RootLayout({

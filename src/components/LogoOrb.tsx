@@ -236,7 +236,10 @@ export default function LogoOrb() {
     if (!wrap || !canvas) return;
 
     const reduced = prefersReducedMotion();
-    const dprCap = Math.min(window.devicePixelRatio || 1, 1.5);
+    // Phones run this shader over a near-fullscreen sphere; render below native
+    // density and let the browser upscale rather than burn fill rate.
+    const touch = window.matchMedia("(pointer: coarse)").matches;
+    const dprCap = Math.min(window.devicePixelRatio || 1, touch ? 1.15 : 1.5);
     const renderer = new THREE.WebGLRenderer({
       canvas,
       antialias: dprCap < 1.5,
@@ -264,8 +267,10 @@ export default function LogoOrb() {
     let hoverTarget = 0;
     let raf = 0;
     let disposed = false;
+    let tabVisible = true;
+    let onScreen = true;
     let visible = true;
-    let start = performance.now();
+    const start = performance.now();
     let last = start;
 
     // Vivid stops — one dominates at a time (no muddy average)
@@ -301,7 +306,8 @@ export default function LogoOrb() {
     };
 
     // 64 segs is smooth enough; 160 was crushing the GPU
-    const geometry = new THREE.SphereGeometry(1, 64, 64);
+    const segments = touch ? 48 : 64;
+    const geometry = new THREE.SphereGeometry(1, segments, segments);
     const material = new THREE.ShaderMaterial({
       uniforms,
       vertexShader,
@@ -354,16 +360,38 @@ export default function LogoOrb() {
       hoverTarget = 0;
     };
 
-    const onVisibility = () => {
-      visible = document.visibilityState === "visible";
-      if (visible && !disposed) {
+    const sync = () => {
+      const next = tabVisible && onScreen;
+      if (next === visible) return;
+      visible = next;
+      if (visible && !disposed && !raf) {
         last = performance.now();
         raf = requestAnimationFrame(tick);
       }
     };
 
-    window.addEventListener("pointermove", onMove, { passive: true });
-    wrap.addEventListener("pointerleave", onLeave);
+    const onVisibility = () => {
+      tabVisible = document.visibilityState === "visible";
+      sync();
+    };
+
+    // The orb is parked far off-viewport whenever the page choreography fades
+    // it out, so this also stops the shader while it is invisible.
+    const io = new IntersectionObserver(
+      ([entry]) => {
+        onScreen = entry.isIntersecting;
+        sync();
+      },
+      { rootMargin: "20% 0px" },
+    );
+    io.observe(wrap);
+
+    // Pointer tracking measures the wrapper on every move; on touch that fires
+    // during scroll and forces a reflow per frame for an effect nobody sees.
+    if (!touch) {
+      window.addEventListener("pointermove", onMove, { passive: true });
+      wrap.addEventListener("pointerleave", onLeave);
+    }
     document.addEventListener("visibilitychange", onVisibility);
 
     const tick = () => {
@@ -377,6 +405,12 @@ export default function LogoOrb() {
       const dt = Math.min((now - last) / 1000, 0.05);
       last = now;
       const t = (now - start) / 1000;
+
+      // No pointer on touch, so drive the colour sweep on a slow orbit instead.
+      if (touch && !reduced) {
+        pointerTarget.set(Math.cos(t * 0.22) * 0.72, Math.sin(t * 0.17) * 0.62);
+        hoverTarget = 0.38;
+      }
 
       pointer.lerp(pointerTarget, 1 - Math.exp(-4.0 * dt));
       colorPointer.lerp(pointerTarget, 1 - Math.exp(-2.0 * dt));
@@ -442,6 +476,7 @@ export default function LogoOrb() {
       disposed = true;
       cancelAnimationFrame(raf);
       ro.disconnect();
+      io.disconnect();
       window.removeEventListener("pointermove", onMove);
       wrap.removeEventListener("pointerleave", onLeave);
       document.removeEventListener("visibilitychange", onVisibility);

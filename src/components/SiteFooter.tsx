@@ -1,34 +1,23 @@
 import Link from "next/link";
 import { services } from "@/data/services";
 
-export default function SiteFooter({
-  homeAnchors = false,
-}: {
-  /** When true, page links use /#section (for non-home pages). */
-  homeAnchors?: boolean;
-}) {
-  const pageLinks = [
-    {
-      label: "Manifesto",
-      href: homeAnchors ? "/#manifesto" : "#manifesto",
-    },
-    {
-      label: "Hizmetler",
-      href: "/hizmetlerimiz",
-    },
-    {
-      label: "Markalar",
-      href: homeAnchors ? "/#brands" : "#brands",
-    },
-    {
-      label: "Referanslar",
-      href: homeAnchors ? "/#contact" : "#contact",
-    },
-  ];
+/** 44px rows through the tablet range, tight rhythm on pointer-sized screens. */
+const linkClass =
+  "flex min-h-11 items-center text-[14px] text-[#f4f1ea]/75 transition hover:text-[#f4f1ea] lg:inline-flex lg:min-h-0";
 
+const pageLinks = [
+  { label: "Ana Sayfa", href: "/" },
+  { label: "Hakkımızda", href: "/hakkimizda" },
+  { label: "Hizmetler", href: "/hizmetlerimiz" },
+];
+
+export default function SiteFooter() {
   return (
-    <footer className="relative z-10 border-t border-white/8 bg-[#141111] text-[#f4f1ea]">
-      <div className="mx-auto max-w-7xl px-4 pb-10 pt-16 sm:px-6 sm:pb-12 sm:pt-20 lg:px-8 lg:pt-24">
+    <footer
+      id="site-footer"
+      className="relative z-10 overflow-x-clip border-t border-white/8 bg-[#141111] text-[#f4f1ea]"
+    >
+      <div className="page-x mx-auto max-w-7xl pb-10 pt-16 sm:pb-12 sm:pt-20 lg:pt-24">
         <div className="flex flex-col gap-8 lg:flex-row lg:items-end lg:justify-between lg:gap-12">
           <div className="max-w-3xl">
             <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/40">
@@ -44,16 +33,16 @@ export default function SiteFooter({
               gerisini birlikte netleştirelim.
             </p>
           </div>
-          <div className="flex flex-wrap items-center gap-4">
+          <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:flex-wrap sm:items-center sm:gap-4">
             <a
               href="mailto:info@593emarketing.com"
-              className="rounded-full bg-[#f4f1ea] px-6 py-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#141111] transition duration-300 hover:bg-[#e91825] hover:text-white"
+              className="flex min-h-[3.25rem] items-center justify-center rounded-full bg-[#f4f1ea] px-6 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#141111] transition duration-300 hover:bg-[#e91825] hover:text-white lg:min-h-0 lg:py-3"
             >
               Proje Başlat
             </a>
             <a
               href="tel:+905435939533"
-              className="text-sm text-white/50 transition hover:text-[#f4f1ea]"
+              className="flex min-h-[3.25rem] items-center justify-center rounded-full border border-white/15 px-6 text-sm text-white/70 transition hover:text-[#f4f1ea] lg:min-h-0 lg:border-0 lg:px-0 lg:text-white/50"
             >
               +90 543 593 95 33
             </a>
@@ -65,13 +54,10 @@ export default function SiteFooter({
             <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/40">
               Sayfalar
             </p>
-            <ul className="mt-4 space-y-3">
+            <ul className="mt-2 space-y-0 sm:mt-4 lg:space-y-3">
               {pageLinks.map((item) => (
                 <li key={item.label}>
-                  <Link
-                    href={item.href}
-                    className="text-[14px] text-[#f4f1ea]/75 transition hover:text-[#f4f1ea]"
-                  >
+                  <Link href={item.href} className={linkClass}>
                     {item.label}
                   </Link>
                 </li>
@@ -83,12 +69,12 @@ export default function SiteFooter({
             <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/40">
               Hizmetler
             </p>
-            <ul className="mt-4 space-y-3">
+            <ul className="mt-2 space-y-0 sm:mt-4 lg:space-y-3">
               {services.slice(0, 4).map((service) => (
                 <li key={service.slug}>
                   <Link
                     href={`/hizmetlerimiz/${service.slug}`}
-                    className="text-[14px] text-[#f4f1ea]/75 transition hover:text-[#f4f1ea]"
+                    className={linkClass}
                   >
                     {service.title}
                   </Link>
@@ -101,13 +87,13 @@ export default function SiteFooter({
             <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/40">
               Sosyal
             </p>
-            <ul className="mt-4 space-y-3">
+            <ul className="mt-2 space-y-0 sm:mt-4 lg:space-y-3">
               <li>
                 <a
                   href="https://www.instagram.com/593emarketing/"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-[14px] text-[#f4f1ea]/75 transition hover:text-[#f4f1ea]"
+                  className={linkClass}
                 >
                   Instagram
                 </a>
@@ -117,7 +103,7 @@ export default function SiteFooter({
                   href="https://www.linkedin.com/company/593-emarketing"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-[14px] text-[#f4f1ea]/75 transition hover:text-[#f4f1ea]"
+                  className={linkClass}
                 >
                   LinkedIn
                 </a>
@@ -127,7 +113,7 @@ export default function SiteFooter({
                   href="https://593emarketing.com/"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-[14px] text-[#f4f1ea]/75 transition hover:text-[#f4f1ea]"
+                  className={linkClass}
                 >
                   593emarketing.com
                 </a>
@@ -139,21 +125,17 @@ export default function SiteFooter({
             <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/40">
               İletişim
             </p>
-            <ul className="mt-4 space-y-3 text-[14px] text-[#f4f1ea]/75">
-              <li>İstanbul, Türkiye</li>
+            <ul className="mt-2 space-y-0 text-[14px] text-[#f4f1ea]/75 sm:mt-4 lg:space-y-3">
+              <li className="flex min-h-11 items-center lg:min-h-0">
+                İstanbul, Türkiye
+              </li>
               <li>
-                <a
-                  href="mailto:info@593emarketing.com"
-                  className="transition hover:text-[#f4f1ea]"
-                >
+                <a href="mailto:info@593emarketing.com" className={linkClass}>
                   info@593emarketing.com
                 </a>
               </li>
               <li>
-                <a
-                  href="tel:+905435939533"
-                  className="transition hover:text-[#f4f1ea]"
-                >
+                <a href="tel:+905435939533" className={linkClass}>
                   +90 543 593 95 33
                 </a>
               </li>
@@ -171,8 +153,8 @@ export default function SiteFooter({
         </div>
       </div>
 
-      <div className="pointer-events-none select-none px-2 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-6 sm:px-4">
-        <p className="font-logo whitespace-nowrap text-center text-[clamp(2.4rem,11vw,9.5rem)] font-extrabold leading-[1.2] tracking-[-0.055em] text-[#f4f1ea]/[0.1]">
+      <div className="pointer-events-none max-w-full select-none overflow-hidden px-2 pb-[max(0.75rem,var(--safe-b))] pt-6 sm:px-4">
+        <p className="font-logo whitespace-nowrap text-center text-[clamp(1.9rem,10.5vw,9.5rem)] font-extrabold leading-[1.2] tracking-[-0.055em] text-[#f4f1ea]/[0.1]">
           593 E-MARKETİNG
         </p>
       </div>

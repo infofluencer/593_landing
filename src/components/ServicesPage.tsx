@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import CursorDot from "./CursorDot";
 import SiteHeader from "./SiteHeader";
 import SiteFooter from "./SiteFooter";
@@ -34,7 +35,7 @@ export default function ServicesPage() {
 
       <SiteHeader contactHref="mailto:hello@593emarketing.com" />
 
-      <section className="relative mx-auto max-w-6xl px-4 pb-10 pt-14 sm:px-6 sm:pt-20 lg:px-8 lg:pt-24">
+      <section className="page-x relative mx-auto max-w-6xl pb-10 pt-10 sm:pt-20 lg:pt-24">
         <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/40">
           593 E-Marketing
         </p>
@@ -47,16 +48,18 @@ export default function ServicesPage() {
         </p>
       </section>
 
-      <section className="relative mx-auto max-w-6xl px-4 pb-12 sm:px-6 lg:px-8 lg:pb-8">
+      <section className="page-x relative mx-auto max-w-6xl pb-12 lg:pb-8">
         <ul className="grid gap-5 sm:grid-cols-2 lg:gap-6">
           {serviceCards.map((service) => {
             const CardInner = (
               <>
                 <div className="relative aspect-square overflow-hidden bg-[#111]">
-                  <img
+                  <Image
                     src={service.image}
                     alt={service.title}
-                    className="h-full w-full object-cover transition duration-700 group-hover:scale-[1.03]"
+                    fill
+                    sizes="(max-width: 639px) 100vw, (max-width: 1023px) 50vw, 40vw"
+                    className="object-cover transition duration-700 group-hover:scale-[1.03]"
                   />
                 </div>
                 <div className="p-6 sm:p-7">
@@ -98,7 +101,7 @@ export default function ServicesPage() {
         </ul>
       </section>
 
-      <SiteFooter homeAnchors />
+      <SiteFooter />
     </main>
   );
 }

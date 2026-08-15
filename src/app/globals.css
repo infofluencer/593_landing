@@ -8,6 +8,28 @@
   --accent: #e91825;
   --accent-soft: rgba(233, 24, 37, 0.16);
   --line: rgba(244, 241, 234, 0.1);
+
+  --safe-t: env(safe-area-inset-top, 0px);
+  --safe-r: env(safe-area-inset-right, 0px);
+  --safe-b: env(safe-area-inset-bottom, 0px);
+  --safe-l: env(safe-area-inset-left, 0px);
+
+  /* Horizontal page gutter, grows with the viewport. */
+  --gutter: 1.125rem;
+  /* Height reserved by the fixed thumb-zone action bar on phones. */
+  --dock-h: 0px;
+}
+
+@media (min-width: 640px) {
+  :root {
+    --gutter: 1.5rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  :root {
+    --gutter: 2rem;
+  }
 }
 
 @theme inline {
@@ -23,14 +45,46 @@
   --font-logo: var(--font-montserrat);
 }
 
+/*
+ * `clip` instead of `hidden` so the page keeps a single scroll container and
+ * `position: sticky` inside sections keeps working.
+ */
 html {
-  scroll-behavior: smooth;
+  overflow-x: clip;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  html {
+    scroll-behavior: smooth;
+  }
 }
 
 body {
+  overflow-x: clip;
   background: var(--bg);
   color: var(--text);
   font-family: var(--font-dm-sans), system-ui, sans-serif;
+  -webkit-tap-highlight-color: transparent;
+}
+
+img,
+svg,
+video,
+canvas {
+  max-width: 100%;
+}
+
+/* Flex/grid children collapse instead of forcing the page wider than the screen. */
+:where(main, section, article, div, ul, li, p, h1, h2, h3) {
+  min-width: 0;
+}
+
+:where(a, button):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: 4px;
 }
 
 .off-grid {
@@ -66,5 +120,119 @@ body {
   html.has-cursor-dot,
   html.has-cursor-dot * {
     cursor: none !important;
+  }
+}
+
+/* Locks background scrolling while the mobile nav sheet is open. */
+html.nav-open,
+html.nav-open body {
+  overflow: hidden;
+  touch-action: none;
+}
+
+/** Page gutter that also clears notches in landscape. */
+@utility page-x {
+  padding-inline: max(var(--gutter), var(--safe-l)) max(var(--gutter), var(--safe-r));
+}
+
+/** Horizontal snap rails: hides the scrollbar, keeps momentum scrolling. */
+@utility rail {
+  display: flex;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+
+@utility rail-item {
+  flex: none;
+  scroll-snap-align: center;
+  scroll-snap-stop: always;
+}
+
+@utility no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.rail::-webkit-scrollbar,
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/**
+ * 44x44 minimum hit area (WCAG 2.5.5 / Apple HIG) without changing the visual
+ * box — the pseudo element does the work.
+ */
+@utility tap {
+  position: relative;
+
+  &::after {
+    content: "";
+    position: absolute;
+    inset: 50% auto auto 50%;
+    translate: -50% -50%;
+    min-width: 44px;
+    min-height: 44px;
+    width: 100%;
+    height: 100%;
+  }
+}
+
+@keyframes mockup-float {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0);
+  }
+  50% {
+    transform: translate3d(0, -10px, 0);
+  }
+}
+
+.mockup-float {
+  animation: mockup-float 4.8s ease-in-out infinite;
+  will-change: transform;
+}
+
+.mockup-float-delay {
+  animation: mockup-float 5.4s ease-in-out 0.7s infinite;
+  will-change: transform;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mockup-float,
+  .mockup-float-delay {
+    animation: none;
+  }
+}
+
+/*
+ * Phone reveals. Desktop drives the same elements from its rAF rig, so these
+ * only exist below the `md` breakpoint.
+ */
+@media (max-width: 767px) {
+  [data-reveal] {
+    opacity: 0;
+    transform: translate3d(0, 20px, 0);
+    transition:
+      opacity 0.7s cubic-bezier(0.22, 1, 0.36, 1),
+      transform 0.7s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  [data-reveal][data-in] {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
   }
 }

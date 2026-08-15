@@ -1,3 +1,13 @@
+export type ServiceOffering = {
+  title: string;
+  desc: string;
+};
+
+export type ServiceStat = {
+  value: string;
+  label: string;
+};
+
 export type Service = {
   slug: string;
   title: string;
@@ -6,6 +16,10 @@ export type Service = {
   headline: string;
   body: string;
   points: readonly string[];
+  heroLead: string;
+  heroBody: string;
+  offerings: readonly ServiceOffering[];
+  stats: readonly ServiceStat[];
 };
 
 export const services: readonly Service[] = [
@@ -22,6 +36,20 @@ export const services: readonly Service[] = [
       "Marka kimliğiyle uyumlu tipografi ve görsel sistem",
       "Hız, erişilebilirlik ve ölçülebilir dönüşüm noktaları",
     ],
+    heroLead: "İlk bakışta güven. İlk tıkta yön.",
+    heroBody:
+      "Estetik, hız ve dönüşümü tek ritimde kuruyoruz; her ekran markayı anlatır, her adım satışa yaklaştırır.",
+    offerings: [
+      { title: "Kurumsal Site", desc: "Marka odaklı kurumsal kimlik" },
+      { title: "E-Ticaret", desc: "Dönüşüm odaklı mağaza" },
+      { title: "Landing", desc: "Kampanyaya özel açılış" },
+      { title: "Web App", desc: "Panel ve özel arayüz" },
+    ],
+    stats: [
+      { value: "120+", label: "Tamamlanan proje" },
+      { value: "%98", label: "Core Web Vitals" },
+      { value: "3 hafta", label: "Ortalama teslim" },
+    ],
   },
   {
     slug: "dijital-pazarlama",
@@ -35,6 +63,20 @@ export const services: readonly Service[] = [
       "Hedef kitle, teklif ve mesaj hizalaması",
       "Funnel kurgusu ve dönüşüm takibi",
       "Haftalık optimizasyon ve net raporlama",
+    ],
+    heroLead: "Bütçe harcanmaz. Büyüme kurulur.",
+    heroBody:
+      "Kanal, mesaj ve kitleyi aynı ritimde yönetiyoruz; her hamle ölçülür, her hafta sadeleşir.",
+    offerings: [
+      { title: "Meta Ads", desc: "Performans odaklı kampanya" },
+      { title: "Google Ads", desc: "Arama ve display büyümesi" },
+      { title: "Funnel", desc: "Dönüşüm yolu kurgusu" },
+      { title: "Raporlama", desc: "Haftalık net optimizasyon" },
+    ],
+    stats: [
+      { value: "4.2x", label: "Ortalama ROAS" },
+      { value: "%38", label: "CPA düşüşü" },
+      { value: "7 gün", label: "İlk optimizasyon" },
     ],
   },
   {
@@ -50,6 +92,20 @@ export const services: readonly Service[] = [
       "İçerik mimarisi ve sayfa optimizasyonu",
       "Yerel görünürlük ve otorite büyümesi",
     ],
+    heroLead: "Bulunmak yetmez. Doğru niyetle seçil.",
+    heroBody:
+      "Teknik temel, içerik ve otoriteyi birlikte büyütüyoruz; trafik kalıcı, niyet net kalır.",
+    offerings: [
+      { title: "Teknik SEO", desc: "Site sağlığı ve hız" },
+      { title: "Anahtar Kelime", desc: "Niyet odaklı analiz" },
+      { title: "İçerik", desc: "Sayfa ve mimari optimizasyon" },
+      { title: "Otorite", desc: "Yerel ve bağlantı büyümesi" },
+    ],
+    stats: [
+      { value: "%65", label: "Organik artış" },
+      { value: "Top 10", label: "Hedef kelime oranı" },
+      { value: "90 gün", label: "İlk görünür etki" },
+    ],
   },
   {
     slug: "sosyal-medya",
@@ -64,6 +120,20 @@ export const services: readonly Service[] = [
       "Topluluk yönetimi ve etkileşim",
       "Organik büyüme ile reklamın birlikte kurgulanması",
     ],
+    heroLead: "Akışta kaybolma. Marka olarak dur.",
+    heroBody:
+      "Ton, tempo ve topluluğu aynı çizgide yönetiyoruz; her paylaşım bir sonraki adımı hazırlar.",
+    offerings: [
+      { title: "Strateji", desc: "İçerik ve yayın takvimi" },
+      { title: "Görsel Dil", desc: "Ton ve kimlik sistemi" },
+      { title: "Topluluk", desc: "Etkileşim ve yönetim" },
+      { title: "Büyüme", desc: "Organik + reklam kurgusu" },
+    ],
+    stats: [
+      { value: "3x", label: "Etkileşim artışı" },
+      { value: "%45", label: "Takipçi kalitesi" },
+      { value: "30 gün", label: "İlk ritim kurulumu" },
+    ],
   },
   {
     slug: "kreatif-icerik",
@@ -77,6 +147,20 @@ export const services: readonly Service[] = [
       "Marka filmleri ve kampanya görselleri",
       "Metin, senaryo ve içerik yönlendirmesi",
       "Kanal bazlı uyarlama ve yayın formatları",
+    ],
+    heroLead: "Her kare aynı hikâyeden gelsin.",
+    heroBody:
+      "Fotoğraf, video ve metni tek dünyada üretiyoruz; her çıktı markanın sesini netleştirir.",
+    offerings: [
+      { title: "Prodüksiyon", desc: "Fotoğraf ve video" },
+      { title: "Kampanya", desc: "Film ve görsel set" },
+      { title: "Senaryo", desc: "Metin ve yönlendirme" },
+      { title: "Adaptasyon", desc: "Kanal bazlı formatlar" },
+    ],
+    stats: [
+      { value: "200+", label: "Üretilen varlık" },
+      { value: "1 dil", label: "Tek görsel sistem" },
+      { value: "2 hafta", label: "Ortalama set teslimi" },
     ],
   },
 ] as const;
