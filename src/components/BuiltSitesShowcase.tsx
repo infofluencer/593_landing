@@ -16,14 +16,12 @@ function SiteTile({
       href={site.href}
       target="_blank"
       rel="noopener noreferrer"
-      className={`group relative block overflow-hidden ${
+      className={`group relative block h-full overflow-hidden ${
         contain ? "bg-[#0c0b0b]" : "bg-[#111]"
       } ${
-        contain
-          ? "aspect-[16/10] min-h-0"
-          : tall
-            ? "min-h-[min(62vh,34rem)]"
-            : "min-h-[min(30vh,16rem)]"
+        tall
+          ? "min-h-[min(62vh,34rem)]"
+          : "min-h-[min(30vh,16rem)]"
       }`}
     >
       <img
@@ -90,9 +88,11 @@ export default function BuiltSitesShowcase({
           markalar, gerçek sonuç.
         </p>
 
-        <div className="mt-10 grid gap-4 lg:mt-12 lg:grid-cols-12 lg:gap-5">
-          <div className="lg:col-span-7">{a ? <SiteTile site={a} size="lg" /> : null}</div>
-          <div className="grid gap-4 lg:col-span-5 lg:grid-rows-2 lg:gap-5">
+        <div className="mt-10 grid items-stretch gap-4 lg:mt-12 lg:grid-cols-12 lg:gap-5">
+          <div className="h-full lg:col-span-7">
+            {a ? <SiteTile site={a} size="lg" /> : null}
+          </div>
+          <div className="grid h-full gap-4 lg:col-span-5 lg:grid-rows-2 lg:gap-5">
             {b ? <SiteTile site={b} size="sm" /> : null}
             {c ? <SiteTile site={c} size="sm" /> : null}
           </div>

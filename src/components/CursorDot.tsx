@@ -3,8 +3,8 @@
 import { useEffect, useRef } from "react";
 
 /**
- * Soft circular cursor — translucent disk with difference blend
- * (inverts over text / bg like the reference). Desktop only.
+ * Soft glass cursor — no hard border; sheen + light frost.
+ * Desktop / fine pointer only.
  */
 export default function CursorDot() {
   const dotRef = useRef<HTMLDivElement>(null);
@@ -68,7 +68,20 @@ export default function CursorDot() {
     <div
       ref={dotRef}
       aria-hidden
-      className="pointer-events-none fixed top-0 left-0 z-[9999] h-11 w-11 rounded-full bg-[rgba(120,120,120,0.28)] opacity-0 transition-opacity duration-200 will-change-transform"
+      className="pointer-events-none fixed top-0 left-0 z-[9999] h-16 w-16 rounded-full opacity-0 transition-opacity duration-200 will-change-transform"
+      style={{
+        background: `
+          radial-gradient(circle at 30% 24%, rgba(255,255,255,0.42) 0%, rgba(255,255,255,0.12) 22%, rgba(255,255,255,0.04) 48%, rgba(255,255,255,0.015) 72%, transparent 100%)
+        `,
+        boxShadow: `
+          inset 0 1.5px 1px rgba(255,255,255,0.35),
+          inset 0 -10px 18px rgba(255,255,255,0.04),
+          0 0 0 1px rgba(255,255,255,0.06),
+          0 10px 28px rgba(0,0,0,0.12)
+        `,
+        backdropFilter: "blur(3px) saturate(1.2)",
+        WebkitBackdropFilter: "blur(3px) saturate(1.2)",
+      }}
     />
   );
 }
