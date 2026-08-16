@@ -6,6 +6,7 @@ import dynamic from "next/dynamic";
 import CursorDot from "./CursorDot";
 import SiteHeader from "./SiteHeader";
 import SiteFooter from "./SiteFooter";
+import OutArrow from "./OutArrow";
 
 const LogoOrb = dynamic(() => import("./LogoOrb"), {
   ssr: false,
@@ -152,9 +153,10 @@ export default function AboutPage() {
                 </a>
                 <Link
                   href="/hizmetlerimiz"
-                  className="inline-flex min-h-11 items-center text-[14px] text-white/45 transition hover:text-[#f4f1ea] lg:min-h-0"
+                  className="inline-flex min-h-11 items-center gap-1.5 text-[14px] text-white/45 transition hover:text-[#f4f1ea] lg:min-h-0"
                 >
-                  Hizmetlerimize bak ↗
+                  Hizmetlerimize bak
+                  <OutArrow className="size-3.5" />
                 </Link>
               </div>
             </section>

@@ -1,4 +1,5 @@
 import Image from "next/image";
+import OutArrow from "./OutArrow";
 import type { BuiltSite } from "@/data/builtSites";
 import { builtSites } from "@/data/builtSites";
 
@@ -59,12 +60,7 @@ function SiteTile({
             {site.note}
           </p>
         </div>
-        <span
-          aria-hidden
-          className="mb-1 shrink-0 text-[1.15rem] text-white/40 transition group-hover:translate-x-0.5 group-hover:text-[#e91825]"
-        >
-          ↗
-        </span>
+        <OutArrow className="mb-1 size-4 shrink-0 text-white/40 transition group-hover:translate-x-0.5 group-hover:-translate-y-0.5 group-hover:text-[#e91825]" />
       </div>
     </a>
   );

@@ -5,6 +5,8 @@ import Image from "next/image";
 import CursorDot from "./CursorDot";
 import SiteHeader from "./SiteHeader";
 import SiteFooter from "./SiteFooter";
+import MobileActionDock from "./MobileActionDock";
+import OutArrow from "./OutArrow";
 import { infofluencerService, services } from "@/data/services";
 
 const serviceCards = [
@@ -65,9 +67,7 @@ export default function ServicesPage() {
                 <div className="p-6 sm:p-7">
                   <h2 className="inline-flex items-center gap-2 font-display text-[clamp(1.35rem,2.4vw,1.85rem)] font-bold tracking-[-0.04em]">
                     {service.title}
-                    <span aria-hidden className="text-[0.85em] text-white/40">
-                      ↗
-                    </span>
+                    <OutArrow className="size-[0.85em] text-white/40" />
                   </h2>
                   <p className="mt-3 text-[14px] leading-7 text-white/50 sm:text-[15px]">
                     {service.line}
@@ -102,6 +102,7 @@ export default function ServicesPage() {
       </section>
 
       <SiteFooter />
+      <MobileActionDock />
     </main>
   );
 }

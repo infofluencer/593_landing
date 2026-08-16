@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { services } from "@/data/services";
+import OutArrow from "./OutArrow";
 
 export default function SiteHeader({
   contactHref = "/#contact",
@@ -106,9 +107,7 @@ export default function SiteHeader({
               className="inline-flex min-h-11 items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#f4f1ea] transition hover:text-[#e91825] lg:min-h-0 lg:border-b lg:border-[#f4f1ea]/70 lg:pb-0.5 lg:hover:border-[#e91825]"
             >
               Hizmetler
-              <span aria-hidden className="text-[12px] leading-none">
-                ↗
-              </span>
+              <OutArrow className="size-3 text-current" />
             </Link>
             <Link
               href={contactHref}
@@ -185,9 +184,7 @@ export default function SiteHeader({
                     className="flex items-center justify-between gap-4 border-b border-white/10 py-3.5 font-display text-[1.75rem] font-bold leading-none tracking-[-0.05em] text-[#f4f1ea] active:text-[#e91825]"
                   >
                     {item.label}
-                    <span aria-hidden className="text-[1.1rem] text-white/30">
-                      ↗
-                    </span>
+                    <OutArrow className="size-4 text-white/30" />
                   </Link>
                 </li>
               ))}

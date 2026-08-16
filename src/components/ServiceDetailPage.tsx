@@ -7,6 +7,8 @@ import CursorDot from "./CursorDot";
 import SiteHeader from "./SiteHeader";
 import SiteFooter from "./SiteFooter";
 import BuiltSitesShowcase from "./BuiltSitesShowcase";
+import MobileActionDock from "./MobileActionDock";
+import OutArrow from "./OutArrow";
 import type { Service } from "@/data/services";
 import { services } from "@/data/services";
 
@@ -88,30 +90,65 @@ export default function ServiceDetailPage({ service }: { service: Service }) {
 
       <SiteHeader contactHref="mailto:info@593emarketing.com" />
 
-      {/* Orb — larger, pinned to the right */}
+      {/* Orb — pinned to the right of the hero. Offsets are absolute lengths on
+          purpose: a percentage `top` resolves against the whole document, which
+          dropped the orb hundreds of pixels into the copy on long pages. */}
       <div
-        className={`pointer-events-auto absolute z-[5] aspect-square transition duration-1000 delay-150 ease-out ${
+        className={`pointer-events-none absolute right-0 z-[5] aspect-square transition duration-1000 delay-150 ease-out ${
           ready ? "scale-100 opacity-100" : "scale-95 opacity-0"
-        } right-0 top-[14%] w-[min(92vw,42rem)] translate-x-[18%] sm:top-[8%] sm:w-[min(72vw,52rem)] sm:translate-x-[20%] lg:top-[2%] lg:w-[min(62vw,62rem)] lg:translate-x-[22%] xl:w-[min(56vw,70rem)] xl:translate-x-[18%]`}
+        } top-[-2.5rem] w-[min(56vw,16rem)] translate-x-[36%] sm:top-[-3rem] sm:w-[min(46vw,20rem)] sm:translate-x-[30%] md:top-[5rem] md:w-[min(34vw,20rem)] md:translate-x-[34%] lg:pointer-events-auto lg:top-[5.5rem] lg:w-[min(62vw,62rem)] lg:translate-x-[22%] xl:w-[min(56vw,70rem)] xl:translate-x-[18%]`}
       >
         <LogoOrb />
       </div>
 
-      <section className="relative z-10 min-h-[calc(100dvh-4.5rem)]">
-        <div className="page-x relative mx-auto flex min-h-[calc(100dvh-4.5rem)] max-w-7xl">
+      {/* Phones/small tablets tuck the orb under the bar, so darken the strip
+          behind the logo and the menu button to keep them readable. */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-x-0 top-0 z-[6] h-[6.5rem] bg-gradient-to-b from-[#141111] via-[#141111]/55 to-transparent md:hidden"
+      />
+
+      {/* Only the two-column lg layout needs a viewport-tall hero; below that a
+          forced 100dvh just leaves a void under short copy. */}
+      <section className="relative z-10 lg:min-h-[calc(100dvh-4.5rem)]">
+        <div className="page-x relative mx-auto flex max-w-7xl lg:min-h-[calc(100dvh-4.5rem)]">
           <div
             className={`relative z-[6] w-full max-w-xl pt-8 pb-10 transition duration-700 ease-out lg:w-[52%] lg:max-w-none lg:pb-16 lg:pt-10 ${
               ready ? "translate-y-0 opacity-100" : "translate-y-5 opacity-0"
             }`}
           >
+            {/* Below lg the orb already occupies the top-right corner. */}
             <p
               aria-hidden
-              className="pointer-events-none absolute top-6 right-0 select-none font-display text-[clamp(5rem,16vw,10rem)] font-bold leading-none tracking-[-0.08em] text-white/[0.035] lg:-right-8"
+              className="pointer-events-none absolute top-6 right-0 hidden select-none font-display text-[clamp(5rem,16vw,10rem)] font-bold leading-none tracking-[-0.08em] text-white/[0.035] lg:block lg:-right-8"
             >
               593
             </p>
 
-            <h1 className="relative mt-0 font-display text-[clamp(2.4rem,6vw,4rem)] font-bold leading-[0.95] tracking-[-0.055em] text-[#f4f1ea]">
+            <Link
+              href="/hizmetlerimiz"
+              className="relative -ml-1 inline-flex min-h-11 items-center gap-1.5 pr-2 pl-1 text-[12px] font-semibold uppercase tracking-[0.14em] text-white/45 transition active:text-[#f4f1ea] md:hidden"
+            >
+              <svg
+                viewBox="0 0 16 16"
+                className="size-3.5"
+                fill="none"
+                aria-hidden
+              >
+                <path
+                  d="M9.5 3.5 5 8l4.5 4.5"
+                  stroke="currentColor"
+                  strokeWidth="1.7"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+              Hizmetler
+            </Link>
+
+            {/* Capped on phones so long titles wrap instead of running under
+                the orb parked at the right edge. */}
+            <h1 className="relative mt-1 max-w-[58vw] font-display text-[clamp(2.4rem,6vw,4rem)] font-bold leading-[0.95] tracking-[-0.055em] text-[#f4f1ea] sm:max-w-none lg:mt-0">
               {service.title}
             </h1>
 
@@ -149,18 +186,20 @@ export default function ServiceDetailPage({ service }: { service: Service }) {
               </li>
             </ul>
 
-            <dl className="relative mt-8 grid grid-cols-3 gap-3 border-t border-white/10 pt-6 sm:gap-0">
+            <dl className="relative mt-8 grid grid-cols-3 gap-x-3 border-t border-white/10 pt-6 sm:gap-0">
               {service.stats.map((stat, i) => (
                 <div
                   key={stat.label}
                   className={`min-w-0 ${
-                    i > 0 ? "sm:border-l sm:border-white/10 sm:pl-5" : ""
+                    i > 0
+                      ? "border-l border-white/10 pl-3 sm:border-white/10 sm:pl-5"
+                      : ""
                   }`}
                 >
-                  <dt className="font-display text-[clamp(1.2rem,2.4vw,1.55rem)] font-bold tracking-[-0.04em] text-[#f4f1ea]">
+                  <dt className="font-display text-[clamp(1.35rem,5vw,1.55rem)] font-bold tracking-[-0.04em] text-[#f4f1ea]">
                     {stat.value}
                   </dt>
-                  <dd className="mt-1 text-[9px] font-semibold uppercase tracking-[0.12em] text-white/35 sm:text-[10px]">
+                  <dd className="mt-1.5 text-[10px] font-semibold uppercase leading-[1.35] tracking-[0.1em] text-white/40 sm:tracking-[0.12em]">
                     {stat.label}
                   </dd>
                 </div>
@@ -242,9 +281,10 @@ export default function ServiceDetailPage({ service }: { service: Service }) {
             </div>
             <Link
               href="/hizmetlerimiz"
-              className="inline-flex min-h-11 w-fit items-center text-[13px] text-white/45 transition hover:text-[#f4f1ea] lg:min-h-0"
+              className="inline-flex min-h-11 w-fit items-center gap-1.5 text-[13px] text-white/45 transition hover:text-[#f4f1ea] lg:min-h-0"
             >
-              Tüm hizmetler ↗
+              Tüm hizmetler
+              <OutArrow className="size-3.5" />
             </Link>
           </div>
 
@@ -258,12 +298,7 @@ export default function ServiceDetailPage({ service }: { service: Service }) {
                   <span className="font-display text-[clamp(1.2rem,2.5vw,1.7rem)] font-bold tracking-[-0.04em] text-[#f4f1ea]/85 transition group-hover:text-[#f4f1ea]">
                     {item.title}
                   </span>
-                  <span
-                    aria-hidden
-                    className="text-[1.1rem] text-white/35 transition group-hover:translate-x-0.5 group-hover:text-[#e91825]"
-                  >
-                    ↗
-                  </span>
+                  <OutArrow className="size-4 text-white/35 transition group-hover:translate-x-0.5 group-hover:-translate-y-0.5 group-hover:text-[#e91825]" />
                 </Link>
               </li>
             ))}
@@ -272,6 +307,7 @@ export default function ServiceDetailPage({ service }: { service: Service }) {
       </section>
 
       <SiteFooter />
+      <MobileActionDock />
     </main>
   );
 }

@@ -8,6 +8,7 @@ import CursorDot from "./CursorDot";
 import SiteHeader from "./SiteHeader";
 import SiteFooter from "./SiteFooter";
 import MobileActionDock from "./MobileActionDock";
+import OutArrow from "./OutArrow";
 import { infofluencerService, services } from "@/data/services";
 
 const LogoOrb = dynamic(() => import("./LogoOrb"), {
@@ -793,7 +794,7 @@ export default function OffbrandHome() {
 
       if (infoLogo) {
         const scale = lerp(1, desktop ? 0.48 : 0.5, lift);
-        const top = lerp(h * (desktop ? 0.4 : 0.3), desktop ? h * 0.11 : h * 0.13, lift);
+        const top = lerp(h * (desktop ? 0.4 : 0.24), desktop ? h * 0.11 : h * 0.13, lift);
         infoLogo.style.top = `${top}px`;
         infoLogo.style.transform = `translate(-50%, -50%) scale(${scale})`;
       }
@@ -1145,32 +1146,21 @@ export default function OffbrandHome() {
                     />
                   </div>
 
-                  <h3 className="mt-5 font-display text-[clamp(1.6rem,7vw,2.4rem)] font-bold leading-[1] tracking-[-0.045em] text-[#f4f1ea]">
-                    {service.title}
-                  </h3>
+                  <Link
+                    href={`/hizmetlerimiz/${service.slug}`}
+                    className="mt-5 inline-flex min-h-11 items-center gap-2.5 active:text-[#e91825]"
+                  >
+                    <h3 className="font-display text-[clamp(1.6rem,7vw,2.4rem)] font-bold leading-[1] tracking-[-0.045em] text-[#f4f1ea]">
+                      {service.title}
+                    </h3>
+                    <OutArrow className="size-[0.9rem] shrink-0 text-white/40" />
+                  </Link>
                   <p className="mt-2 line-clamp-3 text-[14px] leading-6 text-white/50">
                     {service.line}
                   </p>
-
-                  <Link
-                    href={`/hizmetlerimiz/${service.slug}`}
-                    className="mt-2 inline-flex min-h-11 w-fit items-center gap-2 text-[12px] font-semibold uppercase tracking-[0.14em] text-[#f4f1ea] active:text-[#e91825]"
-                  >
-                    Detaylara bak
-                    <span aria-hidden>↗</span>
-                  </Link>
                 </article>
               </div>
             ))}
-          </div>
-
-          <div className="page-x pb-16 pt-14" data-reveal>
-            <Link
-              href="/hizmetlerimiz"
-              className="flex min-h-[3.25rem] items-center justify-center rounded-full border border-white/15 px-6 text-[12px] font-semibold uppercase tracking-[0.14em] text-[#f4f1ea] active:border-[#e91825]/70"
-            >
-              Tüm hizmetler
-            </Link>
           </div>
         </div>
       </section>
@@ -1178,7 +1168,9 @@ export default function OffbrandHome() {
       <section
         ref={infoRef}
         id="infofluencer"
-        className="relative z-[1] min-h-[300vh] bg-[#141111] md:z-0 md:min-h-[460vh]"
+        /* Overlaps the last service card by less than its dock clearance, so the
+           panel closes the gap without ever covering the card's copy. */
+        className="relative z-[1] -mt-16 min-h-[300vh] bg-[#141111] md:z-0 md:mt-0 md:min-h-[460vh]"
       >
         <div className="sticky top-0 h-[100svh] overflow-hidden md:h-dvh">
           <div ref={infoStageRef} className="relative h-full w-full opacity-0">
