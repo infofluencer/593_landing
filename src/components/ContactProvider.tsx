@@ -141,17 +141,12 @@ function ContactModal({
         />
         <div className="relative px-5 pb-[max(1.5rem,var(--safe-b))] pt-5 sm:px-7 sm:pb-7 sm:pt-6">
           <div className="flex items-start justify-between gap-4">
-            <div>
-              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/40">
-                İletişim
-              </p>
-              <h2
-                id={titleId}
-                className="mt-2 font-display text-[1.65rem] font-bold leading-none tracking-[-0.05em] text-[#f4f1ea] sm:text-[1.85rem]"
-              >
-                Kısa bir brifle başlayalım.
-              </h2>
-            </div>
+            <h2
+              id={titleId}
+              className="pt-2.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-white/40"
+            >
+              İletişim
+            </h2>
             <button
               type="button"
               onClick={onClose}

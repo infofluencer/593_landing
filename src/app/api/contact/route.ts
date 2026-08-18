@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
 import nodemailer from "nodemailer";
+import { loadContactEnv } from "@/lib/loadContactEnv";
 
 export const runtime = "nodejs";
 
-const TO = process.env.CONTACT_TO || "info@593emarketing.com";
 const hits = new Map<string, { count: number; resetAt: number }>();
 
 function rateLimited(ip: string) {
@@ -66,10 +66,15 @@ export async function POST(request: Request) {
     );
   }
 
-  const host = process.env.SMTP_HOST;
-  const user = process.env.SMTP_USER;
-  const pass = process.env.SMTP_PASS;
-  const port = Number(process.env.SMTP_PORT || 465);
+  loadContactEnv();
+
+  const host = process.env["SMTP_HOST"];
+  const user = process.env["SMTP_USER"];
+  const pass = process.env["SMTP_PASS"];
+  const port = Number(process.env["SMTP_PORT"] || 465);
+  const to = process.env["CONTACT_TO"] || "info@593emarketing.com";
+  const secure =
+    process.env["SMTP_SECURE"] !== "false" && port === 465;
 
   if (!host || !user || !pass) {
     console.error("Contact form: SMTP env vars missing");
@@ -82,7 +87,7 @@ export async function POST(request: Request) {
   const transporter = nodemailer.createTransport({
     host,
     port,
-    secure: process.env.SMTP_SECURE !== "false" && port === 465,
+    secure,
     auth: { user, pass },
   });
 
@@ -91,7 +96,7 @@ export async function POST(request: Request) {
   try {
     await transporter.sendMail({
       from: `"593 Web" <${user}>`,
-      to: TO,
+      to,
       replyTo: user,
       subject: `Yeni iletişim talebi: ${fullName} — ${company}`,
       text: [
