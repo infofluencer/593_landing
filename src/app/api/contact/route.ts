@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import nodemailer from "nodemailer";
-import { loadContactEnv } from "@/lib/loadContactEnv";
 
 export const runtime = "nodejs";
 
@@ -65,8 +64,6 @@ export async function POST(request: Request) {
       { status: 400 },
     );
   }
-
-  loadContactEnv();
 
   const host = process.env["SMTP_HOST"];
   const user = process.env["SMTP_USER"];
