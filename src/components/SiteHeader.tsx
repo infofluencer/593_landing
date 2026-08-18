@@ -4,13 +4,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { services } from "@/data/services";
+import ContactTrigger from "./ContactTrigger";
 import OutArrow from "./OutArrow";
 
 export default function SiteHeader({
-  contactHref = "/#contact",
   floating = false,
 }: {
-  contactHref?: string;
   /** Set when the page draws its own content behind the bar (the home hero). */
   floating?: boolean;
 }) {
@@ -109,12 +108,9 @@ export default function SiteHeader({
               Hizmetler
               <OutArrow className="size-3 text-current" />
             </Link>
-            <Link
-              href={contactHref}
-              className="rounded-full bg-[#f4f1ea] px-5 py-2.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#141111] transition duration-300 hover:bg-[#e91825] hover:text-white lg:px-6 lg:py-3"
-            >
+            <ContactTrigger className="rounded-full bg-[#f4f1ea] px-5 py-2.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#141111] transition duration-300 hover:bg-[#e91825] hover:text-white lg:px-6 lg:py-3">
               İletişim
-            </Link>
+            </ContactTrigger>
           </nav>
 
           <button
@@ -210,14 +206,16 @@ export default function SiteHeader({
 
           <div className="mt-auto pt-8">
             <div className="flex flex-col gap-2.5">
-              <a
-                href="mailto:info@593emarketing.com"
+              <ContactTrigger
+                onClick={close}
                 className="flex min-h-[3.25rem] items-center justify-center rounded-full bg-[#f4f1ea] px-6 text-[12px] font-semibold uppercase tracking-[0.14em] text-[#141111] transition active:bg-[#e91825] active:text-white"
               >
                 Proje Başlat
-              </a>
+              </ContactTrigger>
               <a
-                href="tel:+905435939533"
+                href="https://wa.me/905435939533"
+                target="_blank"
+                rel="noopener noreferrer"
                 className="flex min-h-[3.25rem] items-center justify-center rounded-full border border-white/15 px-6 text-[12px] font-semibold uppercase tracking-[0.14em] text-[#f4f1ea] transition active:border-white/40"
               >
                 +90 543 593 95 33

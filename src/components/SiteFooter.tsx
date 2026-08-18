@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { services } from "@/data/services";
+import ContactTrigger from "./ContactTrigger";
 
 /** 44px rows through the tablet range, tight rhythm on pointer-sized screens. */
 const linkClass =
@@ -34,14 +35,13 @@ export default function SiteFooter() {
             </p>
           </div>
           <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:flex-wrap sm:items-center sm:gap-4">
-            <a
-              href="mailto:info@593emarketing.com"
-              className="flex min-h-[3.25rem] items-center justify-center rounded-full bg-[#f4f1ea] px-6 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#141111] transition duration-300 hover:bg-[#e91825] hover:text-white lg:min-h-0 lg:py-3"
-            >
+            <ContactTrigger className="flex min-h-[3.25rem] items-center justify-center rounded-full bg-[#f4f1ea] px-6 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#141111] transition duration-300 hover:bg-[#e91825] hover:text-white lg:min-h-0 lg:py-3">
               Proje Başlat
-            </a>
+            </ContactTrigger>
             <a
-              href="tel:+905435939533"
+              href="https://wa.me/905435939533"
+              target="_blank"
+              rel="noopener noreferrer"
               className="flex min-h-[3.25rem] items-center justify-center rounded-full border border-white/15 px-6 text-sm text-white/70 transition hover:text-[#f4f1ea] lg:min-h-0 lg:border-0 lg:px-0 lg:text-white/50"
             >
               +90 543 593 95 33
@@ -130,12 +130,17 @@ export default function SiteFooter() {
                 İstanbul, Türkiye
               </li>
               <li>
-                <a href="mailto:info@593emarketing.com" className={linkClass}>
+                <ContactTrigger className={linkClass}>
                   info@593emarketing.com
-                </a>
+                </ContactTrigger>
               </li>
               <li>
-                <a href="tel:+905435939533" className={linkClass}>
+                <a
+                  href="https://wa.me/905435939533"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={linkClass}
+                >
                   +90 543 593 95 33
                 </a>
               </li>

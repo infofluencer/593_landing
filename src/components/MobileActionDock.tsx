@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import ContactTrigger from "./ContactTrigger";
 
 /**
  * Thumb-zone action bar for phones. Appears once the hero is behind you and
@@ -68,15 +69,14 @@ export default function MobileActionDock() {
           shown ? "pointer-events-auto" : "pointer-events-none",
         ].join(" ")}
       >
-        <a
-          href="mailto:info@593emarketing.com"
-          className="flex min-h-[3.25rem] flex-1 items-center justify-center rounded-full bg-[#f4f1ea] px-5 text-[12px] font-semibold uppercase tracking-[0.14em] text-[#141111] shadow-[0_16px_40px_-18px_rgba(0,0,0,0.9)] transition active:scale-[0.98] active:bg-[#e91825] active:text-white"
-        >
+        <ContactTrigger className="flex min-h-[3.25rem] flex-1 items-center justify-center rounded-full bg-[#f4f1ea] px-5 text-[12px] font-semibold uppercase tracking-[0.14em] text-[#141111] shadow-[0_16px_40px_-18px_rgba(0,0,0,0.9)] transition active:scale-[0.98] active:bg-[#e91825] active:text-white">
           Proje Başlat
-        </a>
+        </ContactTrigger>
         <a
-          href="tel:+905435939533"
-          aria-label="Telefonla ara: +90 543 593 95 33"
+          href="https://wa.me/905435939533"
+          target="_blank"
+          rel="noopener noreferrer"
+          aria-label="WhatsApp ile yaz: +90 543 593 95 33"
           className="flex size-[3.25rem] shrink-0 items-center justify-center rounded-full border border-white/15 bg-[#1c1818]/90 text-[#f4f1ea] backdrop-blur-xl transition active:scale-[0.98] active:border-[#e91825]/70"
         >
           <svg viewBox="0 0 24 24" className="size-5 fill-current" aria-hidden>

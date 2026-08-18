@@ -9,6 +9,7 @@ import SiteHeader from "./SiteHeader";
 import SiteFooter from "./SiteFooter";
 import MobileActionDock from "./MobileActionDock";
 import OutArrow from "./OutArrow";
+import ContactTrigger from "./ContactTrigger";
 import { infofluencerService, services } from "@/data/services";
 
 const LogoOrb = dynamic(() => import("./LogoOrb"), {
@@ -1356,18 +1357,12 @@ export default function OffbrandHome() {
           </div>
 
           <div className="page-x flex flex-col gap-3 pb-6 pt-10 sm:flex-row sm:flex-wrap sm:items-center sm:gap-4 md:px-0 md:pt-2">
-            <Link
-              href="mailto:hello@593emarketing.com"
-              className="flex min-h-[3.25rem] items-center justify-center rounded-full bg-[#f4f1ea] px-6 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#141111] transition duration-300 hover:bg-[#e91825] hover:text-white lg:min-h-0 lg:py-3"
-            >
+            <ContactTrigger className="flex min-h-[3.25rem] items-center justify-center rounded-full bg-[#f4f1ea] px-6 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#141111] transition duration-300 hover:bg-[#e91825] hover:text-white lg:min-h-0 lg:py-3">
               İletişim
-            </Link>
-            <a
-              href="mailto:hello@593emarketing.com"
-              className="flex min-h-11 items-center justify-center text-sm text-white/50 transition hover:text-[#f4f1ea] lg:min-h-0"
-            >
-              hello@593emarketing.com
-            </a>
+            </ContactTrigger>
+            <ContactTrigger className="flex min-h-11 items-center justify-center text-sm text-white/50 transition hover:text-[#f4f1ea] lg:min-h-0">
+              info@593emarketing.com
+            </ContactTrigger>
           </div>
         </div>
       </section>

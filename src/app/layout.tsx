@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { DM_Sans, Montserrat, Syne } from "next/font/google";
+import ContactProvider from "@/components/ContactProvider";
 import "./globals.css";
 
 export const viewport: Viewport = {
@@ -62,7 +63,7 @@ export default function RootLayout({
         className="min-h-full flex flex-col bg-[#141111] text-[#f4f1ea]"
         suppressHydrationWarning
       >
-        {children}
+        <ContactProvider>{children}</ContactProvider>
       </body>
     </html>
   );
