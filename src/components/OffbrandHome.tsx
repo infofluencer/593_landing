@@ -126,47 +126,47 @@ const brands = [
   {
     name: "Tevalli Parasol's",
     logo: "/brands/tevalli-parasols.png",
-    href: "https://593emarketing.com/portfolio/tevalli-parasols-yaz-kampanyasi/",
+    href: "/#brands",
   },
   {
     name: "Endospine İstanbul",
     logo: "/brands/endospine-istanbul.png",
-    href: "https://593emarketing.com/portfolio/endospine-istanbul-dijital-pazarlama-yolculugu/",
+    href: "/#brands",
   },
   {
     name: "Armonia Davet",
     logo: "/brands/armonia-davet.png",
-    href: "https://593emarketing.com/projeler/",
+    href: "/#brands",
   },
   {
     name: "Yıldız Teknik Üniversitesi",
     logo: "/brands/yildiz-teknik.png",
-    href: "https://593emarketing.com/portfolio/yildiz-teknik-universitesi/",
+    href: "/#brands",
   },
   {
     name: "Ramtech Bilgisayar",
     logo: "/brands/ramtech-bilgisayar.png",
-    href: "https://593emarketing.com/portfolio/ramtech-bilgisayar-okula-donus-kampanyasi/",
+    href: "/#brands",
   },
   {
     name: "Türkler Şemsiye",
     logo: "/brands/turkler-semsiye.png",
-    href: "https://593emarketing.com/portfolio/1742-2/",
+    href: "/#brands",
   },
   {
     name: "Zeynep Özel Bridal",
     logo: "/brands/zeynep-ozel.png",
-    href: "https://593emarketing.com/portfolio/zeynep-ozel-bridal-dijital-donusum-sureci/",
+    href: "/#brands",
   },
   {
     name: "MAREEN",
     logo: "/brands/mareen.png",
-    href: "https://593emarketing.com/portfolio/mareen-marka-insasi-ve-performans-odakli-e-ticaret-sistemi/",
+    href: "/#brands",
   },
   {
     name: "Güler Kuyumculuk",
     logo: "/brands/guler-kuyumculuk.png",
-    href: "https://593emarketing.com/portfolio/guler-kuyumculuk-anlik-altin-kuru-entegrasyonlu-e-ticaret-sistemi/",
+    href: "/#brands",
   },
   {
     name: "Bahex Mobilya",
@@ -211,7 +211,7 @@ const brands = [
   {
     name: "Bi Anne Atölyesi",
     logo: "/brands/bi-anne-atolyesi.png",
-    href: "https://593emarketing.com/portfolio/bi-anne-atolyesi-2021den-bugune-dijital-buyume-yolculugu/",
+    href: "/#brands",
   },
 ];
 
