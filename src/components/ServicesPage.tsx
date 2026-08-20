@@ -35,7 +35,7 @@ export default function ServicesPage() {
         className="pointer-events-none fixed inset-0 bg-[radial-gradient(ellipse_at_top,rgba(233,24,37,0.12),transparent_42%),radial-gradient(ellipse_at_bottom_right,rgba(244,241,234,0.05),transparent_40%)]"
       />
 
-      <SiteHeader contactHref="mailto:hello@593emarketing.com" />
+      <SiteHeader />
 
       <section className="page-x relative mx-auto max-w-6xl pb-10 pt-10 sm:pt-20 lg:pt-24">
         <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/40">

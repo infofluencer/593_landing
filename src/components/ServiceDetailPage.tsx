@@ -88,7 +88,7 @@ export default function ServiceDetailPage({ service }: { service: Service }) {
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_70%_50%_at_15%_8%,rgba(244,241,234,0.04),transparent_50%)]" />
       </div>
 
-      <SiteHeader contactHref="mailto:info@593emarketing.com" />
+      <SiteHeader />
 
       {/* Orb — pinned to the right of the hero. Offsets are absolute lengths on
           purpose: a percentage `top` resolves against the whole document, which

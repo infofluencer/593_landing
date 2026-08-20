@@ -7,6 +7,7 @@ import CursorDot from "./CursorDot";
 import SiteHeader from "./SiteHeader";
 import SiteFooter from "./SiteFooter";
 import OutArrow from "./OutArrow";
+import ContactTrigger from "./ContactTrigger";
 
 const LogoOrb = dynamic(() => import("./LogoOrb"), {
   ssr: false,
@@ -34,7 +35,7 @@ export default function AboutPage() {
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_70%_50%_at_15%_8%,rgba(244,241,234,0.04),transparent_50%)]" />
       </div>
 
-      <SiteHeader contactHref="mailto:info@593emarketing.com" />
+      <SiteHeader />
 
       <div
         className={`pointer-events-none absolute z-[5] aspect-square transition duration-1000 delay-150 ease-out ${
@@ -145,12 +146,9 @@ export default function AboutPage() {
                 aynı ritimde netleştiririz.
               </p>
               <div className="mt-8 flex flex-wrap items-center gap-5">
-                <a
-                  href="mailto:info@593emarketing.com"
-                  className="inline-flex min-h-[3.25rem] items-center rounded-full bg-[#f4f1ea] px-6 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#141111] transition duration-300 hover:bg-[#e91825] hover:text-white lg:min-h-0 lg:py-3"
-                >
+                <ContactTrigger className="inline-flex min-h-[3.25rem] items-center rounded-full bg-[#f4f1ea] px-6 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#141111] transition duration-300 hover:bg-[#e91825] hover:text-white lg:min-h-0 lg:py-3">
                   Proje Başlat
-                </a>
+                </ContactTrigger>
                 <Link
                   href="/hizmetlerimiz"
                   className="inline-flex min-h-11 items-center gap-1.5 text-[14px] text-white/45 transition hover:text-[#f4f1ea] lg:min-h-0"
