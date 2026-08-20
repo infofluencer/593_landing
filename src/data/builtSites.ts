@@ -35,15 +35,15 @@ export const builtSites: readonly BuiltSite[] = [
     note: "Yaşam ve alışveriş merkezi",
   },
   {
-    brand: "Tevalli Shop",
-    href: "https://tevallishop.com/",
-    image: "/works/tevalli.jpg",
-    note: "Şemsiye ve gölgelendirme e-ticaret",
+    brand: "MAREEN",
+    href: "https://mareen.com.tr/",
+    image: "/works/mareen.jpg",
+    note: "Şal ve eşarp e-ticaret",
   },
   {
-    brand: "Sekiz Ocakbaşı",
-    href: "https://sekizocakbasi.com/",
-    image: "/works/sekiz-ocakbasi.jpg",
-    note: "Restoran ve rezervasyon deneyimi",
+    brand: "Op. Dr. Eyüp Baykara",
+    href: "https://endoskopikbelameliyati.com/",
+    image: "/works/endoskopik-bel-ameliyati.jpg",
+    note: "Full endoskopik cerrahi sitesi",
   },
 ] as const;

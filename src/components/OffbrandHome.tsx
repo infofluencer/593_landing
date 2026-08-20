@@ -203,9 +203,9 @@ const brands = [
     href: "https://infofluencer.co/tr",
   },
   {
-    name: "Sekiz Ocakbaşı",
-    logo: "/brands/sekiz-ocakbasi.png",
-    href: "https://sekizocakbasi.com/",
+    name: "Bump",
+    logo: "/brands/bump.jpeg",
+    href: "https://593emarketing.com/projeler/",
   },
   {
     name: "Bi Anne Atölyesi",
