@@ -140,47 +140,47 @@ const brands = [
   {
     name: "Tevalli Parasol's",
     logo: "/brands/tevalli-parasols.png",
-    href: "/#brands",
+    href: "https://tevalliparasols.com.tr/",
   },
   {
     name: "Endospine İstanbul",
     logo: "/brands/endospine-istanbul.png",
-    href: "/#brands",
+    href: "https://endospineistanbul.com/",
   },
   {
     name: "Armonia Davet",
     logo: "/brands/armonia-davet.png",
-    href: "/#brands",
+    href: "https://armoniadavet.com/",
   },
   {
     name: "Yıldız Teknik Üniversitesi",
     logo: "/brands/yildiz-teknik.png",
-    href: "/#brands",
+    href: "https://yildiz.edu.tr/",
   },
   {
     name: "Ramtech Bilgisayar",
     logo: "/brands/ramtech-bilgisayar.png",
-    href: "/#brands",
+    href: "https://www.ramtechbilgisayar.com/",
   },
   {
     name: "Türkler Şemsiye",
     logo: "/brands/turkler-semsiye.png",
-    href: "/#brands",
+    href: "https://turklersemsiye.com.tr/",
   },
   {
     name: "Zeynep Özel Bridal",
     logo: "/brands/zeynep-ozel.png",
-    href: "/#brands",
+    href: "https://www.zeynepozelbridal.com/",
   },
   {
     name: "MAREEN",
     logo: "/brands/mareen.png",
-    href: "/#brands",
+    href: "https://mareen.com.tr/",
   },
   {
     name: "Güler Kuyumculuk",
     logo: "/brands/guler-kuyumculuk.png",
-    href: "/#brands",
+    href: "https://www.gulerkuyumculuk.com/",
   },
   {
     name: "Bahex Mobilya",
@@ -220,12 +220,11 @@ const brands = [
   {
     name: "Bump",
     logo: "/brands/bump.jpeg",
-    href: "https://593emarketing.com/projeler/",
   },
   {
     name: "Bi Anne Atölyesi",
     logo: "/brands/bi-anne-atolyesi.png",
-    href: "/#brands",
+    href: "https://bianneatolyesi.com/",
   },
 ];
 
@@ -1418,6 +1417,56 @@ export default function OffbrandHome() {
           >
             {brands.map((brand) => {
               const isActive = activeBrand?.name === brand.name;
+              const cardClass = [
+                "flex h-full flex-col overflow-hidden rounded-[1.15rem] border border-white/8 bg-white/[0.035] transition duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] sm:rounded-[1.35rem] lg:absolute lg:inset-x-0 lg:top-0 lg:h-auto lg:border-transparent lg:bg-[#161212]",
+                brand.href ? "active:border-[#e91825]/60" : "",
+                isActive
+                  ? "lg:z-20 lg:-translate-y-[4.75rem] lg:bg-[#1a1616] lg:shadow-[0_28px_50px_-22px_rgba(0,0,0,0.95)]"
+                  : "lg:z-10",
+              ].join(" ");
+              const inner = (
+                <>
+                  <div className="aspect-square w-full shrink-0 p-1.5 sm:p-3">
+                    <div
+                      className={[
+                        "flex h-full w-full items-center justify-center overflow-hidden rounded-[0.8rem] bg-[#f4f1ea] transition duration-500 sm:rounded-[1rem]",
+                        isActive ? "lg:opacity-100" : "lg:opacity-85",
+                      ].join(" ")}
+                    >
+                      <img
+                        src={brand.logo}
+                        alt=""
+                        loading="lazy"
+                        decoding="async"
+                        className={[
+                          "h-full w-full object-contain p-1.5 transition duration-500 ease-out sm:p-2.5 lg:grayscale",
+                          isActive ? "lg:scale-[1.02] lg:grayscale-0" : "",
+                        ].join(" ")}
+                      />
+                    </div>
+                  </div>
+
+                  <div
+                    className={[
+                      "flex flex-1 overflow-hidden lg:block lg:flex-none lg:transition-[max-height,opacity] lg:duration-300 lg:ease-[cubic-bezier(0.22,1,0.36,1)]",
+                      isActive
+                        ? "lg:max-h-28 lg:opacity-100"
+                        : "lg:max-h-0 lg:opacity-0",
+                    ].join(" ")}
+                  >
+                    <div className="flex w-full flex-col items-center justify-center px-1.5 pb-2.5 pt-1 text-center sm:px-3 sm:pb-4 sm:pt-0.5">
+                      <p className="line-clamp-2 font-display text-[10px] font-medium leading-tight tracking-[-0.01em] text-white/55 sm:text-[12px] sm:leading-snug sm:tracking-[-0.02em] lg:text-white/50">
+                        {brand.name}
+                      </p>
+                      {brand.href ? (
+                        <span className="mt-2.5 hidden rounded-full bg-[#f4f1ea] px-3.5 py-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-[#141111] transition duration-300 hover:bg-[#e91825] hover:text-white lg:inline-flex">
+                          İncele
+                        </span>
+                      ) : null}
+                    </div>
+                  </div>
+                </>
+              );
               return (
                 <li
                   key={brand.name}
@@ -1427,56 +1476,19 @@ export default function OffbrandHome() {
                   onFocus={() => setActiveBrand(brand)}
                   onBlur={() => setActiveBrand(null)}
                 >
-                  <a
-                    href={brand.href}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    aria-label={`${brand.name} — incele`}
-                    className={[
-                      "flex h-full flex-col overflow-hidden rounded-[1.15rem] border border-white/8 bg-white/[0.035] transition duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] active:border-[#e91825]/60 sm:rounded-[1.35rem] lg:absolute lg:inset-x-0 lg:top-0 lg:h-auto lg:border-transparent lg:bg-[#161212]",
-                      isActive
-                        ? "lg:z-20 lg:-translate-y-[4.75rem] lg:bg-[#1a1616] lg:shadow-[0_28px_50px_-22px_rgba(0,0,0,0.95)]"
-                        : "lg:z-10",
-                    ].join(" ")}
-                  >
-                    <div className="aspect-square w-full shrink-0 p-1.5 sm:p-3">
-                      <div
-                        className={[
-                          "flex h-full w-full items-center justify-center overflow-hidden rounded-[0.8rem] bg-[#f4f1ea] transition duration-500 sm:rounded-[1rem]",
-                          isActive ? "lg:opacity-100" : "lg:opacity-85",
-                        ].join(" ")}
-                      >
-                        <img
-                          src={brand.logo}
-                          alt=""
-                          loading="lazy"
-                          decoding="async"
-                          className={[
-                            "h-full w-full object-contain p-1.5 transition duration-500 ease-out sm:p-2.5 lg:grayscale",
-                            isActive ? "lg:scale-[1.02] lg:grayscale-0" : "",
-                          ].join(" ")}
-                        />
-                      </div>
-                    </div>
-
-                    <div
-                      className={[
-                        "flex flex-1 overflow-hidden lg:block lg:flex-none lg:transition-[max-height,opacity] lg:duration-300 lg:ease-[cubic-bezier(0.22,1,0.36,1)]",
-                        isActive
-                          ? "lg:max-h-28 lg:opacity-100"
-                          : "lg:max-h-0 lg:opacity-0",
-                      ].join(" ")}
+                  {brand.href ? (
+                    <a
+                      href={brand.href}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      aria-label={`${brand.name} — incele`}
+                      className={cardClass}
                     >
-                      <div className="flex w-full flex-col items-center justify-center px-1.5 pb-2.5 pt-1 text-center sm:px-3 sm:pb-4 sm:pt-0.5">
-                        <p className="line-clamp-2 font-display text-[10px] font-medium leading-tight tracking-[-0.01em] text-white/55 sm:text-[12px] sm:leading-snug sm:tracking-[-0.02em] lg:text-white/50">
-                          {brand.name}
-                        </p>
-                        <span className="mt-2.5 hidden rounded-full bg-[#f4f1ea] px-3.5 py-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-[#141111] transition duration-300 hover:bg-[#e91825] hover:text-white lg:inline-flex">
-                          İncele
-                        </span>
-                      </div>
-                    </div>
-                  </a>
+                      {inner}
+                    </a>
+                  ) : (
+                    <div className={cardClass}>{inner}</div>
+                  )}
                 </li>
               );
             })}
