@@ -87,38 +87,52 @@ const infoGallery = [
 const testimonials = [
   {
     quote:
-      "593 EMarketing ile çalışmaya başladığımızda ilk olarak kurumsal web sitemiz ve e-ticaret altyapımız profesyonel şekilde kuruldu. SEO, Google Ads, Meta Ads, kreatif çekim hizmetleri ve sosyal medya yönetimiyle tüm süreç tek elden yürüdü.",
+      "Saha ile vitrin artık aynı dilde. Sezon açılınca stok, sipariş ve görünürlük birbirini bekletmiyor; kampanya günlerinde işin temposu elimizde kalıyor.",
     company: "Tevalli Parasol's",
     name: "Mehmet Emin Türk",
     logo: "/testimonials/tevalli-parasols.png",
   },
   {
     quote:
-      "593 eMarketing ile çalışmaya başladıktan sonra dijital görünürlüğümüz büyük ölçüde arttı. SEO, web site tasarımı, Google Ads, Meta Ads, TikTok Ads, LinkedIn Ads ve kreatif çekim hizmetleriyle markamız dijitalde net bir ivme kazandı.",
+      "Hasta bizi aramadan önce tanıyor. Randevu talepleri daha net geliyor; klinikte güven, ilk ekranda kuruluyor.",
     company: "Endospine İstanbul",
     name: "Op. Dr. Eyüp Baykara",
     logo: "/testimonials/endospine-istanbul.png",
   },
   {
     quote:
-      "593 EMarketing ile çalışmaya başladığımızdan beri tüm dijital ihtiyaçlarımız tek elde toplandı. SEO, web site tasarımı, Google Ads, Meta Ads, TikTok Ads, LinkedIn Ads ve kreatif çekim aynı ritimde ilerliyor.",
+      "On iki salon, on iki ayrı dünya. Her konsept kendi misafirine ulaşınca rezervasyonlar tahmin olmaktan çıktı, plana bağlandı.",
     company: "Armonia Davet",
     name: "Armonia Davet Şirketler Grubu",
     logo: "/testimonials/armonia-davet.png",
   },
   {
     quote:
-      "593 EMarketing ile yürüttüğümüz tercih dönemi kampanyasında TikTok Ads, LinkedIn Ads, Meta Ads ve Google Ads kanallarında kapsamlı bir strateji uyguladık. Kısa sürede yüksek görünürlük elde ederek hedef kitleye doğru anda ulaştık.",
+      "Tercih döneminde timing her şeydi. Öğrenciye ve veliye aynı anda, gürültünün içinde kaybolmadan ulaştık.",
     company: "Yıldız Teknik Üniversitesi",
     name: "Yıldız Teknik Üniversitesi",
     logo: "/testimonials/yildiz-teknik.png",
   },
   {
     quote:
-      "593 EMarketing ile çalışmaya başladıktan sonra dijital pazarlama gücümüzü katladık. SEO, web site tasarımı, Google Ads, Meta Ads, TikTok Ads, kreatif çekim hizmetleri ve sosyal medya yönetimiyle tüm kanallar birlikte büyüdü.",
-    company: "Ramtech Bilgisayar",
-    name: "Murat Şengül",
-    logo: "/testimonials/ramtech-bilgisayar.png",
+      "Markayı vitrin gibi değil, satan bir sistem gibi kurduk. Ürün, görünürlük ve dönüşüm aynı hizada ilerleyince mağaza kendi ritmini buldu.",
+    company: "MAREEN",
+    name: "Nisanur Akçay",
+    logo: "/brands/mareen.png",
+  },
+  {
+    quote:
+      "Mekânın havasını ekrana taşımak zordu. Menüden rezervasyona kadar her adım aynı dilde durunca misafir bizi tanıyarak geliyor.",
+    company: "Yedi Mavi Cadde",
+    name: "Yedi Mavi Cadde",
+    logo: "/brands/yedi-mavi-cadde.png",
+  },
+  {
+    quote:
+      "Atölye büyüdükçe dijital taraf da aynı düzenle büyüdü. Acele yok, dağınıklık yok; kayıtlar artık tahmin değil, takip.",
+    company: "Bi Anne Atölyesi",
+    name: "Bi Anne Atölyesi",
+    logo: "/brands/bi-anne-atolyesi.png",
   },
 ];
 
