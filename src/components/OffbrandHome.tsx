@@ -1309,24 +1309,24 @@ export default function OffbrandHome() {
 
               <div
                 ref={quotesRailRef}
-                className="flex min-h-0 flex-1 items-stretch gap-4 pe-[max(var(--gutter),var(--safe-r))] ps-[max(var(--gutter),var(--safe-l))] pt-6 will-change-transform md:flex-none md:flex-col md:gap-10 md:pe-0 md:ps-0 md:pt-[min(28vh,12rem)] md:pb-10 md:transform-none"
+                className="flex min-h-0 flex-1 items-center gap-4 pe-[max(var(--gutter),var(--safe-r))] ps-[max(var(--gutter),var(--safe-l))] pt-5 will-change-transform md:flex-none md:flex-col md:items-stretch md:gap-10 md:pe-0 md:ps-0 md:pt-[min(28vh,12rem)] md:pb-10 md:transform-none"
               >
                 {testimonials.map((item) => (
                   <article
                     key={item.company}
                     data-testimonial
-                    className="relative flex h-full w-[80vw] shrink-0 flex-col overflow-hidden rounded-[1.75rem] border border-white/10 bg-[#1c1818] p-5 will-change-transform sm:w-[58vw] md:h-auto md:w-auto md:shrink md:p-8 md:opacity-0"
+                    className="relative flex w-[min(84vw,22.5rem)] shrink-0 flex-col rounded-[1.5rem] border border-white/10 bg-[#1c1818] p-5 will-change-transform sm:w-[58vw] md:h-auto md:w-auto md:shrink md:rounded-[1.75rem] md:p-8 md:opacity-0"
                   >
                     <span
                       aria-hidden
-                      className="font-display text-[2.75rem] leading-[0.7] text-[#e91825]/40 md:text-[5rem]"
+                      className="font-display text-[2.4rem] leading-[0.7] text-[#e91825]/40 md:text-[5rem]"
                     >
                       “
                     </span>
-                    <p className="mt-4 min-h-0 flex-1 overflow-hidden font-display text-[clamp(0.9rem,3.7vw,1.1rem)] font-medium leading-[1.5] tracking-[-0.03em] text-[#f4f1ea] md:mt-5 md:flex-none md:overflow-visible md:text-[clamp(1.05rem,2.1vw,1.28rem)] md:leading-[1.45] md:tracking-[-0.035em]">
+                    <p className="mt-3 font-display text-[1.05rem] font-medium leading-[1.45] tracking-[-0.03em] text-[#f4f1ea] md:mt-5 md:text-[clamp(1.05rem,2.1vw,1.28rem)] md:leading-[1.45] md:tracking-[-0.035em]">
                       {item.quote}
                     </p>
-                    <div className="mt-4 flex items-center gap-3.5 border-t border-white/10 pt-4 md:mt-8 md:gap-4 md:pt-5">
+                    <div className="mt-5 flex items-center gap-3.5 border-t border-white/10 pt-4 md:mt-8 md:gap-4 md:pt-5">
                       <div className="size-11 shrink-0 overflow-hidden rounded-2xl bg-[#f4f1ea] p-1.5 md:size-14">
                         <img
                           src={item.logo}
@@ -1340,9 +1340,11 @@ export default function OffbrandHome() {
                         <p className="truncate text-[14px] font-semibold tracking-[-0.02em] text-[#f4f1ea]">
                           {item.company}
                         </p>
-                        <p className="mt-0.5 truncate text-[13px] text-white/45">
-                          {item.name}
-                        </p>
+                        {item.name !== item.company ? (
+                          <p className="mt-0.5 truncate text-[13px] text-white/45">
+                            {item.name}
+                          </p>
+                        ) : null}
                       </div>
                     </div>
                   </article>
