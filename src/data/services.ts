@@ -26,7 +26,7 @@ export const services: readonly Service[] = [
   {
     slug: "web-tasarim",
     title: "Web Tasarım",
-    image: "/services/web-tasarim.jpg",
+    image: "/services/web-tasarim-v3.jpg",
     line: "İlk saniyeden dönüşüme kadar tüm dijital deneyimi tasarlıyoruz: site, ürün arayüzü ve teknik yapı tek bir sistem gibi çalışır; marka her ekranda aynı netlikte görünür.",
     headline: "Ekranda ilk saniye, markanın tamamı.",
     body: "Web’i vitrin gibi değil, satış ve güven üreten bir sistem gibi kuruyoruz. Görsel dil, bilgi mimarisi ve teknik performans aynı brief’ten çıkar; her sayfa bir sonraki adıma taşır.",
@@ -54,7 +54,7 @@ export const services: readonly Service[] = [
   {
     slug: "dijital-pazarlama",
     title: "Dijital Pazarlama",
-    image: "/services/dijital-pazarlama.jpg",
+    image: "/services/dijital-pazarlama-v3.jpg",
     line: "Reklam bütçesini rastgele harcamaz, ölçülebilir büyüme kurgularız. Kanal, mesaj ve hedef kitle aynı ritimde ilerler; her hamle rapora bağlanır.",
     headline: "Bütçe harcanmaz. Büyüme kurulur.",
     body: "Kampanyayı kanal listesi gibi değil, tek bir büyüme ritmi gibi yönetiriz. Mesaj, kitle ve teklif aynı çizgide ilerler; her hamle ölçülür, her hafta sadeleştirilir.",
@@ -82,7 +82,7 @@ export const services: readonly Service[] = [
   {
     slug: "seo",
     title: "SEO",
-    image: "/services/seo.jpg",
+    image: "/services/seo-v3.jpg",
     line: "Arama sonuçlarında görünmek yetmez; doğru niyetle bulunmanı sağlar. İçerik, teknik altyapı ve otoriteyi birlikte büyütürüz ki trafik kalıcı olsun.",
     headline: "Bulunmak yetmez. Doğru niyetle seçilmek gerekir.",
     body: "SEO’yu tek seferlik bir liste gibi değil, markanın arama görünürlüğünü büyüten sürekli bir sistem gibi ele alırız. Teknik temel, içerik ve otorite aynı hedefe bağlanır.",
@@ -110,7 +110,7 @@ export const services: readonly Service[] = [
   {
     slug: "sosyal-medya",
     title: "Sosyal Medya",
-    image: "/services/sosyal-medya.jpg",
+    image: "/services/sosyal-medya-v3.jpg",
     line: "Akışta kaybolan içerik değil, markanı tanıtan bir yayın düzeni kurarız. Ton, tempo ve topluluk aynı çizgide yürür; her paylaşım bir sonraki adımı hazırlar.",
     headline: "Akışta kaybolma. Marka olarak dur.",
     body: "Sosyal medyayı rastgele paylaşım alanı gibi değil, markanın günlük sesi gibi yönetiriz. İçerik planı, görsel dil ve topluluk yönetimi aynı ritimde ilerler.",
@@ -138,7 +138,7 @@ export const services: readonly Service[] = [
   {
     slug: "kreatif-icerik",
     title: "Kreatif İçerik",
-    image: "/services/kreatif-icerik.jpg",
+    image: "/services/kreatif-icerik-v3.jpg",
     line: "Fotoğraf, video ve metni tek bir hikâyenin parçası gibi üretiriz. Her kare markanın sesini netleştirir, her satır aynı dünyada durur.",
     headline: "Her kare aynı hikâyeden gelsin.",
     body: "İçeriği parçalı üretim gibi değil, markanın görsel ve yazılı dilini büyüten bir set gibi kurarız. Fotoğraf, video ve metin aynı dünyada durur; her çıktı bir sonrakini güçlendirir.",
