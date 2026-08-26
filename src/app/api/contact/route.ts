@@ -23,6 +23,18 @@ function clean(value: unknown, max = 120) {
     .slice(0, max);
 }
 
+function cleanNote(value: unknown, max = 1000) {
+  return String(value ?? "")
+    .replace(/\0/g, "")
+    .replace(/\r\n/g, "\n")
+    .trim()
+    .slice(0, max);
+}
+
+function isEmail(value: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+}
+
 export async function POST(request: Request) {
   const ip =
     request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
@@ -46,21 +58,20 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true });
   }
 
-  const firstName = clean(body.firstName, 80);
-  const lastName = clean(body.lastName, 80);
-  const company = clean(body.company, 120);
-  const phone = clean(body.phone, 40);
+  const name = clean(body.name, 120);
+  const note = cleanNote(body.note, 1000);
+  const email = clean(body.email, 160).toLowerCase();
 
-  if (!firstName || !lastName || !company || !phone) {
+  if (!name || !note || !email) {
     return NextResponse.json(
       { error: "Tüm alanları doldurun." },
       { status: 400 },
     );
   }
 
-  if (phone.replace(/\D/g, "").length < 10) {
+  if (!isEmail(email)) {
     return NextResponse.json(
-      { error: "Geçerli bir telefon numarası girin." },
+      { error: "Geçerli bir e-posta adresi girin." },
       { status: 400 },
     );
   }
@@ -88,25 +99,17 @@ export async function POST(request: Request) {
     auth: { user, pass },
   });
 
-  const fullName = `${firstName} ${lastName}`;
-
   try {
     await transporter.sendMail({
       from: `"593 Web" <${user}>`,
       to,
-      replyTo: user,
-      subject: `Yeni iletişim talebi: ${fullName} — ${company}`,
-      text: [
-        `İsim: ${firstName}`,
-        `Soyisim: ${lastName}`,
-        `Firma: ${company}`,
-        `Telefon: ${phone}`,
-      ].join("\n"),
+      replyTo: email,
+      subject: `Yeni iletişim talebi: ${name}`,
+      text: [`İsim: ${name}`, `Not: ${note}`, `Mail: ${email}`].join("\n"),
       html: `
-        <p><strong>İsim:</strong> ${escapeHtml(firstName)}</p>
-        <p><strong>Soyisim:</strong> ${escapeHtml(lastName)}</p>
-        <p><strong>Firma:</strong> ${escapeHtml(company)}</p>
-        <p><strong>Telefon:</strong> ${escapeHtml(phone)}</p>
+        <p><strong>İsim:</strong> ${escapeHtml(name)}</p>
+        <p><strong>Not:</strong> ${escapeHtml(note).replaceAll("\n", "<br>")}</p>
+        <p><strong>Mail:</strong> ${escapeHtml(email)}</p>
       `,
     });
   } catch (err) {

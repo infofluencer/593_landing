@@ -40,7 +40,7 @@ export default function ContactProvider({ children }: { children: ReactNode }) {
   );
 }
 
-type Step = "name" | "company" | "phone" | "sending" | "done" | "error";
+type Step = "name" | "note" | "email" | "sending" | "done" | "error";
 
 type ChatMsg = {
   id: string;
@@ -56,20 +56,14 @@ function nowTime() {
   });
 }
 
-function splitName(full: string) {
-  const parts = full.trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return { firstName: "", lastName: "" };
-  if (parts.length === 1) return { firstName: parts[0], lastName: parts[0] };
-  return {
-    firstName: parts[0],
-    lastName: parts.slice(1).join(" "),
-  };
+function isEmail(value: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 }
 
-const PLACEHOLDERS: Record<"name" | "company" | "phone", string> = {
-  name: "Adınız ve soyadınız",
-  company: "Firma adınız",
-  phone: "Telefon numaranız",
+const PLACEHOLDERS: Record<"name" | "note" | "email", string> = {
+  name: "Adınız",
+  note: "Kısaca notunuz",
+  email: "E-posta adresiniz",
 };
 
 function ContactChat({
@@ -90,10 +84,9 @@ function ContactChat({
   const [error, setError] = useState("");
   const [honeypot, setHoneypot] = useState("");
   const [answers, setAnswers] = useState({
-    firstName: "",
-    lastName: "",
-    company: "",
-    phone: "",
+    name: "",
+    note: "",
+    email: "",
   });
   const [boot, setBoot] = useState(0);
   const [locked, setLocked] = useState(false);
@@ -132,7 +125,7 @@ function ContactChat({
     setDraft("");
     setError("");
     setHoneypot("");
-    setAnswers({ firstName: "", lastName: "", company: "", phone: "" });
+    setAnswers({ name: "", note: "", email: "" });
     setStep("name");
     setBoot(0);
     setLocked(false);
@@ -150,7 +143,7 @@ function ContactChat({
         setBoot(2);
       }, 900),
       window.setTimeout(() => {
-        push("bot", "Öncelikle nasıl hitap etmemizi istersiniz?");
+        push("bot", "Öncelikle adınız nedir?");
         setBoot(3);
       }, 1600),
     ];
@@ -211,45 +204,42 @@ function ContactChat({
     if (!value) return;
 
     if (step === "name") {
-      const { firstName, lastName } = splitName(value);
-      if (!firstName) return;
       push("user", value);
       setDraft("");
       setLocked(true);
-      const next = { ...answers, firstName, lastName };
+      const next = { ...answers, name: value };
       setAnswers(next);
       window.setTimeout(() => {
-        push("bot", `Memnun oldum ${firstName}. Firma adınız nedir?`);
-        setStep("company");
+        push("bot", `Memnun oldum ${value}. Kısaca notunuzu yazar mısınız?`);
+        setStep("note");
         setLocked(false);
       }, 420);
       return;
     }
 
-    if (step === "company") {
+    if (step === "note") {
       push("user", value);
       setDraft("");
       setLocked(true);
-      const next = { ...answers, company: value };
+      const next = { ...answers, note: value };
       setAnswers(next);
       window.setTimeout(() => {
-        push("bot", "Harika. Size ulaşabileceğimiz telefon numaranız?");
-        setStep("phone");
+        push("bot", "Teşekkürler. Size dönüş için e-posta adresiniz?");
+        setStep("email");
         setLocked(false);
       }, 420);
       return;
     }
 
-    if (step === "phone" || step === "error") {
-      const digits = value.replace(/\D/g, "");
-      if (digits.length < 10) {
-        setError("Geçerli bir telefon numarası girin.");
+    if (step === "email" || step === "error") {
+      if (!isEmail(value)) {
+        setError("Geçerli bir e-posta adresi girin.");
         return;
       }
       setError("");
       push("user", value);
       setDraft("");
-      const next = { ...answers, phone: value };
+      const next = { ...answers, email: value };
       setAnswers(next);
       void submitContact(next);
     }
@@ -259,8 +249,8 @@ function ContactChat({
 
   const inputStep =
     step === "error"
-      ? "phone"
-      : step === "name" || step === "company" || step === "phone"
+      ? "email"
+      : step === "name" || step === "note" || step === "email"
         ? step
         : null;
   const showComposer = inputStep !== null && boot >= 3;
@@ -421,14 +411,14 @@ function ContactChat({
                   setDraft(e.target.value);
                   if (error) setError("");
                 }}
-                type={inputStep === "phone" ? "tel" : "text"}
-                inputMode={inputStep === "phone" ? "tel" : "text"}
+                type={inputStep === "email" ? "email" : "text"}
+                inputMode={inputStep === "email" ? "email" : "text"}
                 autoComplete={
                   inputStep === "name"
-                    ? "name"
-                    : inputStep === "company"
-                      ? "organization"
-                      : "tel"
+                    ? "given-name"
+                    : inputStep === "email"
+                      ? "email"
+                      : "off"
                 }
                 disabled={locked}
                 placeholder={PLACEHOLDERS[inputStep]}
