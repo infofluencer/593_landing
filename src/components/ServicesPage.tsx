@@ -13,6 +13,7 @@ const serviceCards = [
   ...services.map((service) => ({
     title: service.title,
     image: service.image,
+    imageMobile: service.imageMobile,
     line: service.line,
     href: `/hizmetlerimiz/${service.slug}`,
     external: false,
@@ -20,6 +21,7 @@ const serviceCards = [
   {
     title: infofluencerService.title,
     image: "/services/infofluencer.jpg",
+    imageMobile: undefined as string | undefined,
     line: infofluencerService.line,
     href: infofluencerService.href,
     external: true,
@@ -56,13 +58,33 @@ export default function ServicesPage() {
             const CardInner = (
               <>
                 <div className="relative aspect-square overflow-hidden bg-[#111]">
-                  <Image
-                    src={service.image}
-                    alt={service.title}
-                    fill
-                    sizes="(max-width: 639px) 100vw, (max-width: 1023px) 50vw, 40vw"
-                    className="object-cover transition duration-700 group-hover:scale-[1.03]"
-                  />
+                  {service.imageMobile ? (
+                    <>
+                      <Image
+                        src={service.imageMobile}
+                        alt={service.title}
+                        fill
+                        sizes="100vw"
+                        className="object-cover transition duration-700 group-hover:scale-[1.03] md:hidden"
+                      />
+                      <Image
+                        src={service.image}
+                        alt=""
+                        fill
+                        sizes="(max-width: 1023px) 50vw, 40vw"
+                        className="hidden object-cover transition duration-700 group-hover:scale-[1.03] md:block"
+                        aria-hidden
+                      />
+                    </>
+                  ) : (
+                    <Image
+                      src={service.image}
+                      alt={service.title}
+                      fill
+                      sizes="(max-width: 639px) 100vw, (max-width: 1023px) 50vw, 40vw"
+                      className="object-cover transition duration-700 group-hover:scale-[1.03]"
+                    />
+                  )}
                 </div>
                 <div className="p-6 sm:p-7">
                   <h2 className="inline-flex items-center gap-2 font-display text-[clamp(1.35rem,2.4vw,1.85rem)] font-bold tracking-[-0.04em]">

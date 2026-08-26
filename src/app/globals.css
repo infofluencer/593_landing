@@ -180,6 +180,21 @@ html.nav-open body {
   }
 }
 
+@keyframes contact-chat-in {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 8px, 0) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.contact-chat-in {
+  animation: contact-chat-in 320ms ease-out both;
+}
+
 @keyframes mockup-float {
   0%,
   100% {

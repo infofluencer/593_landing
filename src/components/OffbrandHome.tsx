@@ -1152,7 +1152,7 @@ export default function OffbrandHome() {
 
                   <div className="relative mt-4 min-h-0 w-full flex-1 overflow-hidden rounded-[1.5rem] bg-[#111]">
                     <Image
-                      src={service.image}
+                      src={service.imageMobile ?? service.image}
                       alt={service.title}
                       fill
                       sizes="100vw"
