@@ -57,7 +57,7 @@ export default function ServicesPage() {
           {serviceCards.map((service) => {
             const CardInner = (
               <>
-                <div className="relative aspect-square overflow-hidden bg-[#111]">
+                <div className="relative aspect-[3/2] overflow-hidden bg-[#111]">
                   {service.imageMobile ? (
                     <>
                       <Image

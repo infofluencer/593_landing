@@ -1150,13 +1150,15 @@ export default function OffbrandHome() {
                     <span>{String(services.length).padStart(2, "0")}</span>
                   </div>
 
-                  <div className="relative mt-4 min-h-0 w-full flex-1 overflow-hidden rounded-[1.5rem] bg-[#111]">
+                  <div className="relative mt-4 w-full shrink-0 overflow-hidden rounded-[1.5rem] bg-[#111]">
                     <Image
                       src={service.imageMobile ?? service.image}
                       alt={service.title}
-                      fill
+                      width={1800}
+                      height={1200}
                       sizes="100vw"
-                      className="object-cover"
+                      className="h-auto w-full"
+                      priority={i === 0}
                     />
                   </div>
 
