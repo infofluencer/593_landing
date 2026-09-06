@@ -1,0 +1,318 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  admin
+  team
+  client
+}
+
+enum Provider {
+  google
+  meta
+}
+
+enum TenantType {
+  ecommerce
+  lead
+}
+
+enum AlertSeverity {
+  ok
+  warn
+  critical
+  unknown
+}
+
+enum ConversionKind {
+  whatsapp
+  form
+  sale
+  other
+}
+
+enum SyncStatus {
+  pending
+  running
+  success
+  error
+}
+
+/// provider = API returned the metric; derived = we computed (e.g. CPA = spend/conv).
+enum MetricOrigin {
+  provider
+  derived
+}
+
+/// Playwright site tag check — GTM config ≠ tags firing on site.
+enum SiteVerifyStatus {
+  not_tested
+  pass
+  fail
+  partial
+  unknown
+  error
+}
+
+/// Agency-level OAuth / system-user (one row per provider).
+/// Tokens NEVER stored raw — secret-store reference only.
+model AgencyConnection {
+  id              String   @id @default(cuid())
+  provider        Provider @unique
+  oauthTokenRef   String
+  loginCustomerId String?
+  businessId      String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+/// Brand sourced from Meta BM ad accounts (metaAccountId = source of truth).
+/// type drives conversion model + which sections render.
+model Tenant {
+  id            String     @id @default(cuid())
+  slug          String     @unique
+  name          String
+  website       String?
+  metaAccountId String     @unique
+  type          TenantType @default(lead)
+  monthlyBudget Decimal?   @db.Decimal(14, 2)
+  timezone      String     @default("Europe/Istanbul")
+  currency      String     @default("TRY")
+  visible       Boolean    @default(true)
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  mapping         TenantMapping?
+  thresholds      TenantThreshold?
+  siteVerification SiteVerification?
+  memberships     Membership[]
+  metaInsights    MetaInsight[]
+  googleAdsMetrics GoogleAdsMetric[]
+  ga4Metrics      Ga4Metric[]
+  conversions     Conversion[]
+  alerts          Alert[]
+  syncJobs        SyncJob[]
+}
+
+model TenantThreshold {
+  id                String   @id @default(cuid())
+  tenantId          String   @unique
+  budgetPaceWarnPct Int      @default(85)
+  convDropoutDays   Int      @default(3)
+  minSpendForAlert  Decimal  @default(100) @db.Decimal(14, 2)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+}
+
+/// Playwright site verification (consent scenarios). Last run only.
+model SiteVerification {
+  id        String           @id @default(cuid())
+  tenantId  String           @unique
+  status    SiteVerifyStatus @default(not_tested)
+  checkedAt DateTime?
+  summary   String?
+  /// Per-scenario results: default / accept / reject
+  scenarios Json             @default("[]")
+  findings  Json             @default("{}")
+  error     String?
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+}
+
+/// Google stack mapped onto a Meta-sourced tenant (nullable = eksik bağlantı).
+model TenantMapping {
+  id             String  @id @default(cuid())
+  tenantId       String  @unique
+  adsCustomerId  String?
+  ga4PropertyId  String?
+  gtmContainerId String?
+  gscSiteUrl     String?
+  merchantId     String?
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  name         String?
+  role         Role
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  memberships    Membership[]
+  assignedAlerts Alert[]      @relation("AlertAssignee")
+}
+
+model Membership {
+  id       String @id @default(cuid())
+  userId   String
+  tenantId String
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, tenantId])
+  @@index([tenantId])
+}
+
+/// Meta Marketing API insights (paid only — no Instagram organic).
+model MetaInsight {
+  id          String   @id @default(cuid())
+  tenantId    String
+  date        DateTime @db.Date
+  campaignId  String   @default("")
+  campaignName String  @default("")
+  objective   String   @default("")
+  spend       Decimal  @default(0) @db.Decimal(14, 2)
+  impressions Int      @default(0)
+  reach       Int      @default(0)
+  frequency   Decimal? @db.Decimal(10, 4)
+  clicks      Int      @default(0)
+  ctr         Decimal? @db.Decimal(10, 6)
+  cpc         Decimal? @db.Decimal(14, 4)
+  /// action_type → count map (purchase, lead, messaging_…, etc.)
+  actions     Json     @default("{}")
+  /// action_type → value map (purchase value etc.)
+  actionValues Json    @default("{}")
+  conversions Decimal? @db.Decimal(14, 4)
+  convValue   Decimal? @db.Decimal(14, 2)
+  cpa         Decimal? @db.Decimal(14, 4)
+  roas        Decimal? @db.Decimal(14, 4)
+  ctrOrigin   MetricOrigin @default(provider)
+  cpcOrigin   MetricOrigin @default(provider)
+  cpaOrigin   MetricOrigin @default(derived)
+  roasOrigin  MetricOrigin @default(provider)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, date, campaignId, objective])
+  @@index([tenantId, date])
+}
+
+/// Google Ads GAQL metrics (account/campaign rows).
+model GoogleAdsMetric {
+  id           String   @id @default(cuid())
+  tenantId     String
+  date         DateTime @db.Date
+  campaignId   String   @default("")
+  campaignName String   @default("")
+  cost         Decimal  @default(0) @db.Decimal(14, 2)
+  impressions  Int      @default(0)
+  clicks       Int      @default(0)
+  ctr          Decimal? @db.Decimal(10, 6)
+  cpc          Decimal? @db.Decimal(14, 4)
+  conversions  Decimal  @default(0) @db.Decimal(14, 4)
+  convValue    Decimal  @default(0) @db.Decimal(14, 2)
+  cpa          Decimal? @db.Decimal(14, 4)
+  roas         Decimal? @db.Decimal(14, 4)
+  ctrOrigin    MetricOrigin @default(provider)
+  cpcOrigin    MetricOrigin @default(provider)
+  cpaOrigin    MetricOrigin @default(provider)
+  roasOrigin   MetricOrigin @default(derived)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, date, campaignId])
+  @@index([tenantId, date])
+}
+
+/// GA4 Data API runReport rows (one dimension breakout per row).
+model Ga4Metric {
+  id             String   @id @default(cuid())
+  tenantId       String
+  date           DateTime @db.Date
+  dimensionType  String
+  dimensionValue String   @default("")
+  totalUsers     Int?
+  sessions       Int?
+  averageSessionDuration Decimal? @db.Decimal(14, 4)
+  bounceRate     Decimal? @db.Decimal(10, 6)
+  screenPageViewsPerSession Decimal? @db.Decimal(10, 4)
+  sessionConversionRate Decimal? @db.Decimal(10, 6)
+  purchaseRevenue Decimal? @db.Decimal(14, 2)
+  transactions   Int?
+  ecommercePurchases Int?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, date, dimensionType, dimensionValue])
+  @@index([tenantId, date])
+  @@index([tenantId, dimensionType])
+}
+
+model Conversion {
+  id        String         @id @default(cuid())
+  tenantId  String
+  date      DateTime       @db.Date
+  name      String
+  source    String
+  primary   Boolean        @default(false)
+  count     Int            @default(0)
+  kind      ConversionKind @default(other)
+  /// Same action measured via GA4 import + Ads tag, etc.
+  dupeFlag  Boolean        @default(false)
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, date])
+  @@index([tenantId, kind])
+}
+
+model Alert {
+  id         String        @id @default(cuid())
+  tenantId   String
+  type       String
+  severity   AlertSeverity
+  message    String?
+  assigneeId String?
+  resolved   Boolean       @default(false)
+  history    Json          @default("[]")
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
+
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  assignee User?  @relation("AlertAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, resolved])
+  @@index([tenantId, severity])
+}
+
+/// Per metric group sync — one failure does not zero other groups.
+model SyncJob {
+  id            String     @id @default(cuid())
+  tenantId      String
+  provider      Provider
+  service       String
+  /// e.g. campaign_insights, gaql_campaign, ga4_channel, gtm_config
+  objective     String     @default("default")
+  status        SyncStatus @default(pending)
+  lastSuccessAt DateTime?
+  error         String?
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, provider, service, objective])
+  @@index([tenantId, status])
+}
