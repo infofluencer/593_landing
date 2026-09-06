@@ -4,7 +4,7 @@ import {
   getGoogleAdsLoginCustomerId,
 } from "@/lib/integrations/tokens";
 
-const ADS_API = "https://googleads.googleapis.com/v18";
+const ADS_API = "https://googleads.googleapis.com/v25";
 
 export type AdsCampaignRow = {
   campaignId: string;
