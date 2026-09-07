@@ -19,6 +19,7 @@ import {
 } from "@/lib/integrations/tokens";
 import { evaluateTenantAlerts } from "@/lib/panel/alerts-engine";
 import { resolveAdsCustomerId } from "@/lib/panel/google-ads-customer-map";
+import { resolveGa4PropertyId } from "@/lib/panel/ga4-property-map";
 import { resolveGtmPublicId } from "@/lib/panel/gtm-container-map";
 import { syncLookbackRange } from "@/lib/panel/period";
 import { runSynced } from "@/lib/panel/sync-job";
@@ -419,7 +420,8 @@ export async function runAgencySync(opts?: {
       }
 
       // --- GA4 (persist) ---
-      if (!mapping?.ga4PropertyId) {
+      const ga4PropertyId = resolveGa4PropertyId(tenant);
+      if (!ga4PropertyId) {
         await runSynced(
           {
             tenantId: tenant.id,
@@ -428,7 +430,7 @@ export async function runAgencySync(opts?: {
             objective: "overview",
           },
           async () => {
-            throw new Error("ga4PropertyId yok — kontrol edilemedi.");
+            throw new Error("ga4PropertyId yok — map / Ayarlar eksik.");
           },
         );
         services.ga4 = { ok: false, error: "ga4PropertyId eksik" };
@@ -442,7 +444,7 @@ export async function runAgencySync(opts?: {
           },
           async () => {
             const snap = await fetchGa4Snapshot({
-              propertyId: mapping.ga4PropertyId!,
+              propertyId: ga4PropertyId,
               from,
               to,
               ecommerce: tenant.type === "ecommerce",

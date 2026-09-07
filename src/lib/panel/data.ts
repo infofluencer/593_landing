@@ -12,6 +12,7 @@ import {
   type MockPeriodMetrics,
   type MockTenantBundle,
 } from "@/lib/panel/mock-data";
+import { resolveGa4PropertyId } from "@/lib/panel/ga4-property-map";
 import { resolveGtmPublicId } from "@/lib/panel/gtm-container-map";
 
 export { TenantAccessError };
@@ -129,11 +130,18 @@ function healthFromJobs(
   jobs: { service: string; status: string; error: string | null }[],
   openAlerts: { severity: AlertSeverity }[],
 ): HealthStatus {
-  if (jobs.some((j) => j.status === "error")) return "unknown";
   if (openAlerts.some((a) => a.severity === "critical")) return "critical";
+
+  const hasSuccess = jobs.some((j) => j.status === "success");
+  const hasError = jobs.some((j) => j.status === "error");
+
+  // Kısmi sync (örn. Ads OK, GTM hata) → warn; hepsi hata/yok → unknown
+  if (hasError && hasSuccess) return "warn";
+  if (hasError && !hasSuccess) return "unknown";
   if (openAlerts.some((a) => a.severity === "warn" || a.severity === "unknown"))
     return "warn";
-  return "ok";
+  if (hasSuccess) return "ok";
+  return "unknown";
 }
 
 async function bundleFromDb(
@@ -184,13 +192,13 @@ async function bundleFromDb(
     (j) => j.provider === "google" && j.service === "ga4",
   );
 
+  // Metrik varsa göster — map/DB eksikliği veya yan kanal hatası veriyi gizlemez.
   const adsUnknown =
-    adsJob?.status === "error" ||
-    !tenant.mapping?.adsCustomerId ||
-    (adsJob?.status !== "success" && tenant.googleAdsMetrics.length === 0);
+    tenant.googleAdsMetrics.length === 0 &&
+    (adsJob?.status === "error" || adsJob?.status !== "success");
   const metaUnknown =
-    metaJob?.status === "error" ||
-    (metaJob?.status !== "success" && tenant.metaInsights.length === 0);
+    tenant.metaInsights.length === 0 &&
+    (metaJob?.status === "error" || metaJob?.status !== "success");
   const health = healthFromJobs(tenant.syncJobs, tenant.alerts);
 
   const from = range.from;
@@ -261,7 +269,7 @@ async function bundleFromDb(
   const ga4Channels: MockTenantBundle["ga4Channels"] = [];
   const ga4Landings: MockTenantBundle["ga4Landings"] = [];
 
-  if (ga4Job?.status === "error") {
+  if (ga4Job?.status === "error" && tenant.ga4Metrics.length === 0) {
     // leave empty — unknown ≠ zero
   } else if (tenant.ga4Metrics.length > 0) {
     const overviewRows = tenant.ga4Metrics.filter(
@@ -321,8 +329,22 @@ async function bundleFromDb(
       visible: tenant.visible,
       mapping: {
         adsCustomerId: tenant.mapping?.adsCustomerId ?? null,
-        ga4PropertyId: tenant.mapping?.ga4PropertyId ?? null,
-        gtmContainerId: tenant.mapping?.gtmContainerId ?? null,
+        ga4PropertyId:
+          resolveGa4PropertyId({
+            slug: tenant.slug,
+            name: tenant.name,
+            mapping: tenant.mapping,
+          }) ??
+          tenant.mapping?.ga4PropertyId ??
+          null,
+        gtmContainerId:
+          resolveGtmPublicId({
+            slug: tenant.slug,
+            name: tenant.name,
+            mapping: tenant.mapping,
+          }) ??
+          tenant.mapping?.gtmContainerId ??
+          null,
         gscSiteUrl: tenant.mapping?.gscSiteUrl ?? null,
         merchantId: tenant.mapping?.merchantId ?? null,
       },
@@ -335,8 +357,8 @@ async function bundleFromDb(
         : 100,
     },
     health: bothUnknown ? "unknown" : health,
-    periodSpend: bothUnknown ? 0 : periodSpend,
-    periodConv: bothUnknown ? 0 : periodConv,
+    periodSpend,
+    periodConv,
     lastCheckAt:
       adsJob?.lastSuccessAt?.toISOString() ??
       metaJob?.lastSuccessAt?.toISOString() ??

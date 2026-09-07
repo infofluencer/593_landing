@@ -111,10 +111,10 @@ function channelStatus(
       note: "Henüz başarılı sync yok — kontrol edilemedi.",
     };
   }
+  // Kanal kendi verisiyle OK; ajans geneli warn (GTM vb.) bu kanalı sıfırlamaz.
   if (bundle.health === "critical" && provider === "meta") {
     return { status: "critical" };
   }
-  if (bundle.health === "warn") return { status: "warn" };
   return { status: "ok" };
 }
 

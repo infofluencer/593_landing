@@ -16,6 +16,7 @@ export default async function ConversionsPage() {
   const slug = h.get("x-tenant-slug")!;
   const bundle = await requireBundle(slug);
   const { conversions, health } = bundle;
+  const hasConv = conversions.length > 0;
 
   const byKind = {
     sale: conversions.filter((c) => c.kind === "sale"),
@@ -35,7 +36,7 @@ export default async function ConversionsPage() {
             Aksiyon · kaynak · birincil/ikincil · mükerrer sayım riski
           </p>
         </div>
-        <StatusBadge status={health} />
+        <StatusBadge status={hasConv ? (health === "unknown" ? "ok" : health) : "unknown"} />
       </div>
 
       <div className="grid gap-3 sm:grid-cols-3">
@@ -50,19 +51,18 @@ export default async function ConversionsPage() {
                 {KIND_LABEL[kind]}
               </p>
               <p className="mt-1 text-xl font-semibold tabular-nums">
-                {health === "unknown" ? "—" : formatNumber(total)}
+                {hasConv ? formatNumber(total) : "—"}
               </p>
             </div>
           );
         })}
       </div>
 
-      {health === "unknown" ? (
+      {!hasConv ? (
         <div className="rounded-lg border border-zinc-200 bg-zinc-100 px-4 py-3 text-sm text-zinc-700">
-          Dönüşüm listesi alınamadı (eşleşmemiş hesap / sync hatası).
+          Bu dönem için dönüşüm kaydı yok. Google Ads sync sonrası aksiyonlar
+          burada listelenir.
         </div>
-      ) : conversions.length === 0 ? (
-        <p className="text-sm text-zinc-500">Bu dönem için dönüşüm aksiyonu yok.</p>
       ) : (
         <PanelTable
           headers={[
@@ -89,7 +89,7 @@ export default async function ConversionsPage() {
               <td className="px-3 py-2.5 tabular-nums">{formatNumber(c.count)}</td>
               <td className="px-3 py-2.5">
                 {c.dupeFlag ? (
-                  <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[11px] font-semibold text-amber-200 ring-1 ring-amber-500/30">
+                  <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[11px] font-semibold text-amber-800 ring-1 ring-amber-500/30">
                     Risk
                   </span>
                 ) : (

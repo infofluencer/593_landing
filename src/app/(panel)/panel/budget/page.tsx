@@ -26,7 +26,9 @@ export default async function BudgetPage() {
   ).getDate();
 
   const target = tenant.monthlyBudget;
-  const spent = health === "unknown" ? null : periodSpend;
+  // Harcama varsa göster — Meta/GTM hatası bütçeyi kilitlemez.
+  const spent =
+    periodSpend > 0 || googleSpend > 0 || metaSpend > 0 ? periodSpend : null;
   const remaining =
     spent === null ? null : Math.max(0, target - spent);
   const projected =
@@ -46,10 +48,10 @@ export default async function BudgetPage() {
             Aylık hedef · gerçekleşen · kalan · tahmini ay sonu
           </p>
         </div>
-        <StatusBadge status={health} />
+        <StatusBadge status={spent === null ? "unknown" : health} />
       </div>
 
-      {health === "unknown" || spent === null ? (
+      {spent === null ? (
         <div className="rounded-lg border border-zinc-200 bg-zinc-100 px-4 py-3 text-sm text-zinc-700">
           Harcama verisi alınamadı. Kalan / tahmin hesaplanmadı — durum:{" "}
           <strong>Kontrol edilemedi</strong> (sıfır yazılmadı).

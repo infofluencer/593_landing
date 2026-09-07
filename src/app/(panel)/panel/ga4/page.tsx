@@ -2,6 +2,7 @@ import { headers } from "next/headers";
 import { StatusBadge } from "@/components/panel/StatusBadge";
 import { PanelStat, PanelTable } from "@/components/panel/ui";
 import { requireBundle } from "@/lib/panel/data";
+import { resolveGa4PropertyId } from "@/lib/panel/ga4-property-map";
 import { formatNumber, formatTry } from "@/lib/panel/format";
 
 function formatDuration(sec: number) {
@@ -17,7 +18,15 @@ export default async function Ga4Page() {
   const { ga4, ga4Channels, ga4Landings, tenant, health, syncJobs } = bundle;
   const ecommerce = tenant.type === "ecommerce";
   const ga4Job = syncJobs.find((j) => j.service === "ga4");
-  const unknown = ga4Job?.status === "error" || health === "unknown";
+  const ga4Property =
+    resolveGa4PropertyId(tenant) || tenant.mapping.ga4PropertyId;
+  const hasGa4Data =
+    ga4.totalUsers > 0 ||
+    ga4.sessions > 0 ||
+    ga4Channels.length > 0 ||
+    ga4Landings.length > 0 ||
+    ga4Job?.status === "success";
+  const unknown = !hasGa4Data;
 
   return (
     <div className="space-y-6">
@@ -31,18 +40,31 @@ export default async function Ga4Page() {
           </h2>
           <p className="mt-1 text-sm text-zinc-500">
             Kullanıcı · oturum · kanal · açılış sayfası
-            {tenant.mapping.ga4PropertyId
-              ? ` · ${tenant.mapping.ga4PropertyId}`
-              : " · property eşleşmemiş"}
+            {ga4Property ? ` · ${ga4Property}` : " · property eşleşmemiş"}
           </p>
         </div>
-        <StatusBadge status={unknown ? "unknown" : health} />
+        <StatusBadge
+          status={
+            unknown
+              ? "unknown"
+              : ga4Job?.status === "error"
+                ? "warn"
+                : health === "unknown"
+                  ? "ok"
+                  : health
+          }
+        />
       </div>
 
       {unknown ? (
         <div className="rounded-lg border border-zinc-200 bg-zinc-100 px-4 py-3 text-sm text-zinc-700">
           GA4 verisi alınamadı. Metrikler 0 olarak yazılmadı — durum: Kontrol
           edilemedi.
+          {ga4Job?.error ? (
+            <span className="mt-1 block text-xs text-zinc-500">
+              {ga4Job.error}
+            </span>
+          ) : null}
         </div>
       ) : (
         <>
