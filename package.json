@@ -8,13 +8,16 @@
   "scripts": {
     "dev": "next dev -p 3006",
     "build": "prisma generate && next build",
-    "start": "next start -H 0.0.0.0 -p ${PORT:-3006}",
+    "start": "prisma migrate deploy && next start -H 0.0.0.0 -p ${PORT:-3006}",
+    "start:app": "next start -H 0.0.0.0 -p ${PORT:-3006}",
     "lint": "eslint",
     "postinstall": "prisma generate",
     "db:migrate": "prisma migrate dev",
+    "db:migrate:deploy": "prisma migrate deploy",
     "db:push": "prisma db push",
     "db:studio": "prisma studio",
     "db:seed": "npx tsx prisma/seed.ts",
+    "db:apply-ads-map": "npx tsx scripts/apply-google-ads-map.ts",
     "playwright:install": "npx playwright install chromium",
     "site-verify": "echo 'Use panel GTM → Sitede test et, or POST /api/panel/site-verify'"
   },

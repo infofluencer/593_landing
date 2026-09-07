@@ -11,4 +11,5 @@ nixPkgs = ["nodejs_20", "npm-9_x"]
 cmds = ["npm run build"]
 
 [start]
+# migrate on boot so Dokploy redeploy applies schema without docker exec
 cmd = "npm run start"

@@ -1,5 +1,6 @@
 import { PrismaClient, type TenantType } from "@prisma/client";
 import bcrypt from "bcryptjs";
+import { GOOGLE_ADS_CUSTOMER_BY_SLUG } from "../src/lib/panel/google-ads-customer-map";
 
 const prisma = new PrismaClient();
 
@@ -29,11 +30,11 @@ const SEED_TENANTS: SeedTenant[] = [
     type: "ecommerce",
     monthlyBudget: 120000,
     mapping: {
-      adsCustomerId: "444-555-6666",
-      ga4PropertyId: "properties/987654321",
-      gtmContainerId: "123/456",
+      adsCustomerId: GOOGLE_ADS_CUSTOMER_BY_SLUG.mareen ?? null,
+      ga4PropertyId: null,
+      gtmContainerId: null,
       gscSiteUrl: "https://mareen.com.tr/",
-      merchantId: "merchant_mareen",
+      merchantId: null,
     },
   },
   {
@@ -44,10 +45,10 @@ const SEED_TENANTS: SeedTenant[] = [
     type: "lead",
     monthlyBudget: 50000,
     mapping: {
-      adsCustomerId: "111-222-3333",
-      ga4PropertyId: "properties/123456789",
-      gtmContainerId: "111/222",
-      gscSiteUrl: "https://example.com/",
+      adsCustomerId: null,
+      ga4PropertyId: null,
+      gtmContainerId: null,
+      gscSiteUrl: null,
       merchantId: null,
     },
   },

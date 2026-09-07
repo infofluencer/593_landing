@@ -17,6 +17,7 @@ import {
   getMetaSystemUserToken,
 } from "@/lib/integrations/tokens";
 import { evaluateTenantAlerts } from "@/lib/panel/alerts-engine";
+import { resolveAdsCustomerId } from "@/lib/panel/google-ads-customer-map";
 import { runSynced } from "@/lib/panel/sync-job";
 import { verifyTenantSite } from "@/lib/panel/verify-tenant-site";
 
@@ -127,6 +128,7 @@ export async function runAgencySync(opts?: {
   for (const tenant of tenants) {
     const services: SyncSummary["tenants"][number]["services"] = {};
     const mapping = tenant.mapping;
+    const adsCustomerId = resolveAdsCustomerId(tenant);
 
     // --- Meta insights (paid only) ---
     const meta = await runSynced(
@@ -277,7 +279,7 @@ export async function runAgencySync(opts?: {
     services.meta = meta.ok ? { ok: true } : { ok: false, error: meta.error };
 
     // --- Google Ads ---
-    if (!mapping?.adsCustomerId) {
+    if (!adsCustomerId) {
       await runSynced(
         {
           tenantId: tenant.id,
@@ -287,7 +289,7 @@ export async function runAgencySync(opts?: {
         },
         async () => {
           throw new Error(
-            "adsCustomerId yok — TenantMapping eksik (kontrol edilemedi, 0 yazılmadı).",
+            "adsCustomerId yok — google-ads-customer-map / TenantMapping eksik (0 yazılmadı).",
           );
         },
       );
@@ -302,7 +304,7 @@ export async function runAgencySync(opts?: {
         },
         async () => {
           const rows = await fetchGoogleAdsCampaignMetrics({
-            customerId: mapping.adsCustomerId!,
+            customerId: adsCustomerId,
             from,
             to,
           });
@@ -350,7 +352,7 @@ export async function runAgencySync(opts?: {
           }
 
           const actions = await fetchGoogleAdsConversionActions({
-            customerId: mapping.adsCustomerId!,
+            customerId: adsCustomerId,
             from,
             to,
           });

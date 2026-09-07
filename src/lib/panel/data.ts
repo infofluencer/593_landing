@@ -70,7 +70,7 @@ function sumCampaigns(
 
 export async function resolvePanelTenant(slug: string) {
   const dbTenant = await getTenantBySlug(slug);
-  const mock = getMockBundleBySlug(slug);
+  const mock = useMockPanelData() ? getMockBundleBySlug(slug) : undefined;
 
   if (!dbTenant && !mock) return null;
 
@@ -404,12 +404,8 @@ export async function getTenantBundle(
     return getMockBundleBySlug(slug) ?? null;
   }
 
-  const live = await bundleFromDb(slug);
-  if (live && (live.syncJobs.length > 0 || live.current.campaigns.length > 0)) {
-    return live;
-  }
-
-  return getMockBundleBySlug(slug) ?? live;
+  // live / auto+credentials: never invent mock numbers — empty DB = empty UI
+  return bundleFromDb(slug);
 }
 
 export async function getAgencyOverview(opts: {

@@ -5,6 +5,7 @@ import type {
   MockTenantBundle,
 } from "@/lib/panel/mock-data";
 import { derivedMetrics, deltaPct } from "@/lib/panel/mock-data";
+import { resolveAdsCustomerId } from "@/lib/panel/google-ads-customer-map";
 
 export type ChannelId = "google" | "meta";
 
@@ -80,10 +81,17 @@ function channelStatus(
       note: `${provider === "meta" ? "Meta" : "Google"} sync hatası — sıfır yazılmadı.`,
     };
   }
-  if (provider === "google" && !bundle.tenant.mapping.adsCustomerId) {
+  if (
+    provider === "google" &&
+    !resolveAdsCustomerId({
+      slug: bundle.tenant.slug,
+      name: bundle.tenant.name,
+      mapping: bundle.tenant.mapping,
+    })
+  ) {
     return {
       status: "unknown",
-      note: "Google Ads eşleştirilmemiş.",
+      note: "Google Ads customer ID map’te yok.",
     };
   }
   if (provider === "meta" && !bundle.tenant.metaAccountId) {

@@ -5,6 +5,7 @@ import LoginForm from "@/components/panel/LoginForm";
 import AuthSessionProvider from "@/components/panel/AuthSessionProvider";
 import { auth } from "@/auth";
 import { sanitizeCallbackPath } from "@/lib/panel/auth-nav";
+import { useMockPanelData } from "@/lib/integrations/tokens";
 
 export const metadata = {
   title: "Giriş | 593 Panel",
@@ -20,6 +21,7 @@ export default async function LoginPage({
   const h = await headers();
   const tenantSlug = h.get("x-tenant-slug");
   const callbackUrl = sanitizeCallbackPath(params.callbackUrl, "/");
+  const showDevCreds = useMockPanelData();
 
   // Already signed in on a tenant host → go to panel (or requested path).
   if (session?.user && tenantSlug) {
@@ -94,15 +96,17 @@ export default async function LoginPage({
             </div>
           )}
 
-          <p className="mt-6 text-center text-xs text-zinc-600">
-            Admin:{" "}
-            <code className="text-zinc-400">admin@593emarketing.com</code> /{" "}
-            <code className="text-zinc-400">demo1234</code>
-            <br />
-            Müşteri (mareen):{" "}
-            <code className="text-zinc-400">musteri@mareen.com</code> /{" "}
-            <code className="text-zinc-400">client1234</code>
-          </p>
+          {showDevCreds ? (
+            <p className="mt-6 text-center text-xs text-zinc-600">
+              Admin:{" "}
+              <code className="text-zinc-400">admin@593emarketing.com</code> /{" "}
+              <code className="text-zinc-400">demo1234</code>
+              <br />
+              Müşteri (mareen):{" "}
+              <code className="text-zinc-400">musteri@mareen.com</code> /{" "}
+              <code className="text-zinc-400">client1234</code>
+            </p>
+          ) : null}
         </div>
       </main>
     </AuthSessionProvider>
