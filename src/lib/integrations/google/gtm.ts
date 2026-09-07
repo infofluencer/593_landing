@@ -16,7 +16,30 @@ export type GtmAccountContainer = {
   name: string;
 };
 
-type GraphErr = { error?: { message?: string } };
+type GraphErr = { error?: { message?: string; status?: string } };
+
+async function readGtmJson<T extends GraphErr>(
+  res: Response,
+  label: string,
+): Promise<T> {
+  const text = await res.text();
+  const trimmed = text.trim();
+  if (!trimmed) {
+    throw new Error(`GTM ${label}: boş yanıt (HTTP ${res.status})`);
+  }
+  if (trimmed.startsWith("<!") || trimmed.startsWith("<html")) {
+    throw new Error(
+      `GTM ${label}: HTML döndü (HTTP ${res.status}) — Tag Manager API kapalı olabilir veya endpoint hatalı. Cloud → Library → Tag Manager API Enable.`,
+    );
+  }
+  try {
+    return JSON.parse(trimmed) as T;
+  } catch {
+    throw new Error(
+      `GTM ${label}: JSON değil (HTTP ${res.status}): ${trimmed.slice(0, 120)}`,
+    );
+  }
+}
 
 /**
  * Resolve Tag Manager numeric path from either:
@@ -49,9 +72,9 @@ export async function resolveGtmAccountContainer(
     "https://tagmanager.googleapis.com/tagmanager/v2/accounts",
     { headers: { Authorization: `Bearer ${accessToken}` } },
   );
-  const accountsJson = (await accountsRes.json()) as {
+  const accountsJson = await readGtmJson<{
     account?: Array<{ accountId?: string; name?: string }>;
-  } & GraphErr;
+  } & GraphErr>(accountsRes, "accounts");
   if (!accountsRes.ok) {
     throw new Error(
       accountsJson.error?.message || `GTM accounts ${accountsRes.status}`,
@@ -65,14 +88,19 @@ export async function resolveGtmAccountContainer(
       `https://tagmanager.googleapis.com/tagmanager/v2/accounts/${accountId}/containers`,
       { headers: { Authorization: `Bearer ${accessToken}` } },
     );
-    const containersJson = (await containersRes.json()) as {
+    if (!containersRes.ok) continue;
+    let containersJson: {
       container?: Array<{
         containerId?: string;
         publicId?: string;
         name?: string;
       }>;
     } & GraphErr;
-    if (!containersRes.ok) continue;
+    try {
+      containersJson = await readGtmJson(containersRes, `containers/${accountId}`);
+    } catch {
+      continue;
+    }
 
     for (const c of containersJson.container ?? []) {
       if ((c.publicId || "").toUpperCase() === want && c.containerId) {
@@ -87,12 +115,13 @@ export async function resolveGtmAccountContainer(
   }
 
   throw new Error(
-    `GTM ${want} OAuth hesabının görebileceği container listesinde yok (yetki / yanlış ID).`,
+    `GTM ${want} OAuth hesabının görebileceği container listesinde yok (yetki / yanlış ID). Refresh token hesabına Tag Manager erişimi ver.`,
   );
 }
 
 /**
- * GTM Admin API — list container tags + live version summary.
+ * GTM Admin API — container + live version + workspace tags.
+ * Not: list endpoint `/versions` yok; live için `versions:live` kullanılır.
  */
 export async function fetchGtmSnapshot(opts: {
   accountId: string;
@@ -100,57 +129,62 @@ export async function fetchGtmSnapshot(opts: {
 }): Promise<GtmSnapshot> {
   const accessToken = await getGoogleAccessToken();
   const base = `https://tagmanager.googleapis.com/tagmanager/v2/accounts/${opts.accountId}/containers/${opts.containerId}`;
+  const headers = { Authorization: `Bearer ${accessToken}` };
 
-  const [containerRes, versionsRes, workspacesRes] = await Promise.all([
-    fetch(base, {
-      headers: { Authorization: `Bearer ${accessToken}` },
-    }),
-    fetch(`${base}/versions`, {
-      headers: { Authorization: `Bearer ${accessToken}` },
-    }),
-    fetch(`${base}/workspaces`, {
-      headers: { Authorization: `Bearer ${accessToken}` },
-    }),
+  const [containerRes, liveRes, workspacesRes] = await Promise.all([
+    fetch(base, { headers }),
+    fetch(`${base}/versions:live`, { headers }),
+    fetch(`${base}/workspaces`, { headers }),
   ]);
 
-  const container = (await containerRes.json()) as {
+  const container = await readGtmJson<{
     name?: string;
     publicId?: string;
     containerId?: string;
-    error?: { message?: string };
-  };
+  } & GraphErr>(containerRes, "container");
   if (!containerRes.ok) {
     throw new Error(
       container.error?.message || `GTM container ${containerRes.status}`,
     );
   }
 
-  const versions = (await versionsRes.json()) as {
-    containerVersion?: Array<{ name?: string; containerVersionId?: string }>;
-    error?: { message?: string };
-  };
-
-  const workspaces = (await workspacesRes.json()) as {
-    workspace?: Array<{ workspaceId?: string; name?: string }>;
-  };
-
-  const live = versions.containerVersion?.[0];
-  const workspaceId = workspaces.workspace?.[0]?.workspaceId;
-
-  let tags: GtmSnapshot["tags"] = [];
-  if (workspaceId) {
-    const tagsRes = await fetch(`${base}/workspaces/${workspaceId}/tags`, {
-      headers: { Authorization: `Bearer ${accessToken}` },
-    });
-    const tagsJson = (await tagsRes.json()) as {
-      tag?: Array<{ name?: string; type?: string; paused?: boolean }>;
+  let liveVersion: GtmSnapshot["liveVersion"];
+  if (liveRes.ok) {
+    const live = await readGtmJson<{
+      name?: string;
+      containerVersionId?: string;
+    } & GraphErr>(liveRes, "versions:live");
+    liveVersion = {
+      name: live.name,
+      versionId: live.containerVersionId,
     };
-    if (tagsRes.ok) {
-      tags = (tagsJson.tag ?? []).map((t) => ({
-        name: t.name || "(tag)",
-        type: t.type || "unknown",
-        paused: Boolean(t.paused),
-      }));
+  } else {
+    // Live yoksa (hiç publish edilmemiş) — fatal değil
+    liveVersion = undefined;
+  }
+
+  let workspaceHasChanges = false;
+  let tags: GtmSnapshot["tags"] = [];
+  if (workspacesRes.ok) {
+    const workspaces = await readGtmJson<{
+      workspace?: Array<{ workspaceId?: string; name?: string }>;
+    } & GraphErr>(workspacesRes, "workspaces");
+    workspaceHasChanges = (workspaces.workspace?.length ?? 0) > 0;
+    const workspaceId = workspaces.workspace?.[0]?.workspaceId;
+    if (workspaceId) {
+      const tagsRes = await fetch(`${base}/workspaces/${workspaceId}/tags`, {
+        headers,
+      });
+      if (tagsRes.ok) {
+        const tagsJson = await readGtmJson<{
+          tag?: Array<{ name?: string; type?: string; paused?: boolean }>;
+        } & GraphErr>(tagsRes, "tags");
+        tags = (tagsJson.tag ?? []).map((t) => ({
+          name: t.name || "(tag)",
+          type: t.type || "unknown",
+          paused: Boolean(t.paused),
+        }));
+      }
     }
   }
 
@@ -158,11 +192,9 @@ export async function fetchGtmSnapshot(opts: {
     containerId: String(container.containerId || opts.containerId),
     publicId: container.publicId || "",
     name: container.name || "",
-    liveVersion: live
-      ? { name: live.name, versionId: live.containerVersionId }
-      : undefined,
+    liveVersion,
     tags,
-    workspaceHasChanges: (workspaces.workspace?.length ?? 0) > 0,
+    workspaceHasChanges,
   };
 }
 
