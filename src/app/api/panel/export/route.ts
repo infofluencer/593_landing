@@ -24,18 +24,16 @@ export async function GET() {
     return NextResponse.json({ error: "Tenant not found" }, { status: 404 });
   }
 
-  if (session.user.role === "client") {
-    const ok =
-      session.user.tenantIds.includes(tenant.id) ||
-      (
-        await prisma.tenant.findMany({
-          where: { id: { in: session.user.tenantIds } },
-          select: { slug: true },
-        })
-      ).some((t) => t.slug === slug);
-    if (!ok) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
+  const ok =
+    session.user.tenantIds.includes(tenant.id) ||
+    (
+      await prisma.tenant.findMany({
+        where: { id: { in: session.user.tenantIds } },
+        select: { slug: true },
+      })
+    ).some((t) => t.slug === slug);
+  if (!ok) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
   // Prefer DB id; mock-only tenants won't have rows — return 409

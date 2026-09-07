@@ -1,58 +1,14 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { resolvePanelHost } from "@/lib/panel/host";
 
 /**
  * Next.js 16: middleware → proxy.
- * Subdomain → tenant slug + rewrite to /panel/*
+ * Subdomain → tenant or staff panel + rewrite to /panel/*
  * Also forwards Host so Auth.js trustHost uses the real tenant origin
  * (avoids redirecting demo.localhost → localhost and dropping the session cookie).
  */
 
-export const RESERVED_SLUGS = new Set([
-  "www",
-  "app",
-  "api",
-  "admin",
-  "panel",
-  "mail",
-]);
-
 const PANEL_PREFIX = "/panel";
-
-function rootDomain(): string {
-  return (process.env.ROOT_DOMAIN || "593emarketing.com").toLowerCase();
-}
-
-function isValidSlug(slug: string): boolean {
-  return Boolean(slug) && !slug.includes(".") && !RESERVED_SLUGS.has(slug);
-}
-
-export function resolveTenantSlug(hostHeader: string | null): string | null {
-  if (!hostHeader) return null;
-
-  const hostname = hostHeader.split(":")[0]?.toLowerCase() ?? "";
-  if (!hostname) return null;
-
-  if (hostname === "localhost" || hostname === "127.0.0.1") {
-    return null;
-  }
-  if (hostname.endsWith(".localhost")) {
-    const slug = hostname.slice(0, -".localhost".length);
-    return isValidSlug(slug) ? slug : null;
-  }
-
-  const root = rootDomain();
-  if (hostname === root || hostname === `www.${root}`) {
-    return null;
-  }
-
-  const suffix = `.${root}`;
-  if (!hostname.endsWith(suffix)) {
-    return null;
-  }
-
-  const slug = hostname.slice(0, -suffix.length);
-  return isValidSlug(slug) ? slug : null;
-}
 
 function shouldBypass(pathname: string): boolean {
   return (
@@ -67,33 +23,24 @@ function shouldBypass(pathname: string): boolean {
 function applyForwardHeaders(
   request: NextRequest,
   headers: Headers,
-  tenantSlug?: string | null,
+  host: ReturnType<typeof resolvePanelHost>,
 ) {
-  const host = request.headers.get("host");
-  if (host) {
-    headers.set("x-forwarded-host", host);
-    headers.set("host", host);
+  const reqHost = request.headers.get("host");
+  if (reqHost) {
+    headers.set("x-forwarded-host", reqHost);
+    headers.set("host", reqHost);
   }
   const proto = request.nextUrl.protocol.replace(":", "") || "http";
   headers.set("x-forwarded-proto", proto);
-  if (tenantSlug) {
-    headers.set("x-tenant-slug", tenantSlug);
+  headers.set("x-panel-mode", host.kind);
+  if (host.tenantSlug) {
+    headers.set("x-tenant-slug", host.tenantSlug);
   }
   // Browser path before rewrite (for login callbackUrl)
   headers.set("x-panel-pathname", request.nextUrl.pathname);
 }
 
-export function proxy(request: NextRequest) {
-  const slug = resolveTenantSlug(request.headers.get("host"));
-  const requestHeaders = new Headers(request.headers);
-  applyForwardHeaders(request, requestHeaders, slug);
-
-  if (!slug) {
-    return NextResponse.next({
-      request: { headers: requestHeaders },
-    });
-  }
-
+function rewriteToPanel(request: NextRequest, requestHeaders: Headers) {
   const { pathname, search } = request.nextUrl;
 
   if (shouldBypass(pathname)) {
@@ -119,8 +66,25 @@ export function proxy(request: NextRequest) {
   });
 }
 
+export function proxy(request: NextRequest) {
+  const host = resolvePanelHost(request.headers.get("host"));
+  const requestHeaders = new Headers(request.headers);
+  applyForwardHeaders(request, requestHeaders, host);
+
+  if (host.kind === "tenant" || host.kind === "staff") {
+    return rewriteToPanel(request, requestHeaders);
+  }
+
+  return NextResponse.next({
+    request: { headers: requestHeaders },
+  });
+}
+
 export const config = {
   matcher: [
     "/((?!_next/static|_next/image|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
   ],
 };
+
+/** Re-export for any external imports of the old API. */
+export { RESERVED_SLUGS, resolveTenantSlug } from "@/lib/panel/host";

@@ -1,9 +1,12 @@
 import { headers } from "next/headers";
+import { Suspense } from "react";
 import { ChannelCard } from "@/components/panel/ChannelCard";
 import { CampaignBarChart } from "@/components/panel/charts";
+import PeriodFilterBar from "@/components/panel/PeriodFilterBar";
 import { StatusBadge } from "@/components/panel/StatusBadge";
 import { Delta, PanelStat, PanelTable } from "@/components/panel/ui";
 import { requireBundle } from "@/lib/panel/data";
+import { resolvePanelDateRange } from "@/lib/panel/period";
 import { buildPresentation } from "@/lib/panel/presentation";
 import {
   deltaPct,
@@ -59,11 +62,20 @@ function MetricRow({
   );
 }
 
-export default async function GooglePage() {
+export default async function GooglePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ period?: string; start?: string; end?: string }>;
+}) {
   const h = await headers();
   const slug = h.get("x-tenant-slug")!;
-  const bundle = await requireBundle(slug);
-  const model = buildPresentation(bundle);
+  const sp = await searchParams;
+  const range = await resolvePanelDateRange(sp);
+  const bundle = await requireBundle(slug, {
+    from: range.startDate,
+    to: range.endDate,
+  });
+  const model = buildPresentation(bundle, range.label);
   const ch = model.google;
   const ecommerce = model.tenantType === "ecommerce";
   const { current, previous } = bundle;
@@ -96,6 +108,10 @@ export default async function GooglePage() {
         </div>
         <StatusBadge status={ch.status} />
       </div>
+
+      <Suspense fallback={null}>
+        <PeriodFilterBar label={range.label} />
+      </Suspense>
 
       <ChannelCard channel={ch} currency={model.currency} />
 

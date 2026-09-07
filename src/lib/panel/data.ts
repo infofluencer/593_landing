@@ -1,6 +1,7 @@
 import type { AlertSeverity, ConversionKind, Role, TenantType } from "@prisma/client";
 import { getTenantBySlug, prisma, TenantAccessError } from "@/lib/db";
 import { useMockPanelData } from "@/lib/integrations/tokens";
+import { istanbulYmd, startOfIstanbulMonthYmd, ymdToUtcDate } from "@/lib/date/tr";
 import {
   getMockBundleBySlug,
   listVisibleMockBundles,
@@ -13,6 +14,11 @@ import {
 } from "@/lib/panel/mock-data";
 
 export { TenantAccessError };
+
+export type BundleRangeOpts = {
+  from: string;
+  to: string;
+};
 
 const EMPTY_ACCOUNT: MockCampaignMetric = {
   campaign: "Hesap toplamı",
@@ -129,7 +135,14 @@ function healthFromJobs(
   return "ok";
 }
 
-async function bundleFromDb(slug: string): Promise<MockTenantBundle | null> {
+async function bundleFromDb(
+  slug: string,
+  range: BundleRangeOpts,
+): Promise<MockTenantBundle | null> {
+  const fromDate = ymdToUtcDate(range.from);
+  const toDate = ymdToUtcDate(range.to);
+  const dateFilter = { gte: fromDate, lte: toDate };
+
   const tenant = await prisma.tenant.findUnique({
     where: { slug },
     include: {
@@ -143,25 +156,13 @@ async function bundleFromDb(slug: string): Promise<MockTenantBundle | null> {
       },
       siteVerification: true,
       googleAdsMetrics: {
-        where: {
-          date: {
-            gte: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
-          },
-        },
+        where: { date: dateFilter },
       },
       metaInsights: {
-        where: {
-          date: {
-            gte: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
-          },
-        },
+        where: { date: dateFilter },
       },
       ga4Metrics: {
-        where: {
-          date: {
-            gte: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
-          },
-        },
+        where: { date: dateFilter },
         take: 60,
       },
       conversions: {
@@ -191,10 +192,8 @@ async function bundleFromDb(slug: string): Promise<MockTenantBundle | null> {
     (metaJob?.status !== "success" && tenant.metaInsights.length === 0);
   const health = healthFromJobs(tenant.syncJobs, tenant.alerts);
 
-  const from = new Date(new Date().getFullYear(), new Date().getMonth(), 1)
-    .toISOString()
-    .slice(0, 10);
-  const to = new Date().toISOString().slice(0, 10);
+  const from = range.from;
+  const to = range.to;
 
   const googleByCamp = new Map<string, MockCampaignMetric>();
   for (const m of tenant.googleAdsMetrics) {
@@ -399,19 +398,28 @@ async function bundleFromDb(slug: string): Promise<MockTenantBundle | null> {
 
 export async function getTenantBundle(
   slug: string,
+  range?: BundleRangeOpts,
 ): Promise<MockTenantBundle | null> {
   if (useMockPanelData()) {
     return getMockBundleBySlug(slug) ?? null;
   }
 
   // live / auto+credentials: never invent mock numbers — empty DB = empty UI
-  return bundleFromDb(slug);
+  if (!range) {
+    const today = istanbulYmd();
+    return bundleFromDb(slug, {
+      from: startOfIstanbulMonthYmd(today),
+      to: today,
+    });
+  }
+  return bundleFromDb(slug, range);
 }
 
 export async function getAgencyOverview(opts: {
   role: Role;
   tenantIds: string[];
   hostSlug: string;
+  range?: BundleRangeOpts;
 }): Promise<MockTenantBundle[]> {
   if (useMockPanelData()) {
     let rows = listVisibleMockBundles();
@@ -448,14 +456,17 @@ export async function getAgencyOverview(opts: {
 
   const bundles: MockTenantBundle[] = [];
   for (const slug of slugs) {
-    const b = await getTenantBundle(slug);
+    const b = await getTenantBundle(slug, opts.range);
     if (b) bundles.push(b);
   }
   return bundles;
 }
 
-export function requireBundle(slug: string): Promise<MockTenantBundle> {
-  return getTenantBundle(slug).then((b) => {
+export function requireBundle(
+  slug: string,
+  range?: BundleRangeOpts,
+): Promise<MockTenantBundle> {
+  return getTenantBundle(slug, range).then((b) => {
     if (!b) throw new Error(`Bundle missing for ${slug}`);
     return b;
   });

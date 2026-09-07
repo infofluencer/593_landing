@@ -4,7 +4,6 @@ import { PanelTable } from "@/components/panel/ui";
 import { requireBundle } from "@/lib/panel/data";
 import { formatDateTime } from "@/lib/panel/format";
 import AlertActions from "@/components/panel/AlertActions";
-import SyncButton from "@/components/panel/SyncButton";
 import { auth } from "@/auth";
 
 const SYNC_LABEL = {
@@ -37,7 +36,6 @@ export default async function AlertsPage() {
           </div>
           <div className="flex items-center gap-3">
             <StatusBadge status={health} />
-            {canManage ? <SyncButton tenantSlug={slug} /> : null}
           </div>
         </div>
 

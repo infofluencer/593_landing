@@ -200,7 +200,10 @@ const CONV_COLORS = {
   other: "#94a3b8",
 };
 
-export function buildPresentation(bundle: MockTenantBundle): PresentationModel {
+export function buildPresentation(
+  bundle: MockTenantBundle,
+  periodLabelOverride?: string,
+): PresentationModel {
   const type = bundle.tenant.type;
   const google = buildChannel(
     "google",
@@ -254,7 +257,9 @@ export function buildPresentation(bundle: MockTenantBundle): PresentationModel {
     tenantType: type,
     typeLabel: type === "ecommerce" ? "E-ticaret" : "Lead / form",
     currency: bundle.tenant.currency,
-    periodLabel: `${bundle.current.from} → ${bundle.current.to}`,
+    periodLabel:
+      periodLabelOverride ??
+      `${bundle.current.from} → ${bundle.current.to}`,
     health: bundle.health,
     totalSpend: gSpend + mSpend,
     totalConv: gConv + mConv,

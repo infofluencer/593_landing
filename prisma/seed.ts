@@ -239,9 +239,9 @@ async function main() {
     "Seed OK:",
     `mareen(${mareen.type})`,
     `demo(${demo.type})`,
-    "admin@593emarketing.com / demo1234",
-    "musteri@mareen.com / client1234",
-    "musteri@demo.com / lead1234",
+    "admin@593emarketing.com / demo1234 → admin.localhost:3006",
+    "musteri@mareen.com / client1234 → mareen.localhost:3006",
+    "musteri@demo.com / lead1234 → demo.localhost:3006",
   );
 }
 

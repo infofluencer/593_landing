@@ -1,18 +1,30 @@
 import { headers } from "next/headers";
+import { Suspense } from "react";
 import { ChannelCard } from "@/components/panel/ChannelCard";
 import { CampaignBarChart } from "@/components/panel/charts";
+import PeriodFilterBar from "@/components/panel/PeriodFilterBar";
 import { StatusBadge } from "@/components/panel/StatusBadge";
 import { PanelStat, PanelTable } from "@/components/panel/ui";
 import { requireBundle } from "@/lib/panel/data";
+import { resolvePanelDateRange } from "@/lib/panel/period";
 import { buildPresentation } from "@/lib/panel/presentation";
 import { derivedMetrics } from "@/lib/panel/mock-data";
 import { formatNumber, formatTry } from "@/lib/panel/format";
 
-export default async function MetaPage() {
+export default async function MetaPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ period?: string; start?: string; end?: string }>;
+}) {
   const h = await headers();
   const slug = h.get("x-tenant-slug")!;
-  const bundle = await requireBundle(slug);
-  const model = buildPresentation(bundle);
+  const sp = await searchParams;
+  const range = await resolvePanelDateRange(sp);
+  const bundle = await requireBundle(slug, {
+    from: range.startDate,
+    to: range.endDate,
+  });
+  const model = buildPresentation(bundle, range.label);
   const ch = model.meta;
   const ecommerce = model.tenantType === "ecommerce";
 
@@ -45,11 +57,16 @@ export default async function MetaPage() {
             {ch.sectionTitle}
           </h2>
           <p className="mt-1 text-sm text-zinc-500">
-            Yalnızca ücretli reklam insight’ları — organik Instagram yok
+            Yalnızca ücretli reklam insight’ları — organik Instagram yok ·{" "}
+            {range.label}
           </p>
         </div>
         <StatusBadge status={ch.status} />
       </div>
+
+      <Suspense fallback={null}>
+        <PeriodFilterBar label={range.label} />
+      </Suspense>
 
       <ChannelCard channel={ch} currency={model.currency} />
 

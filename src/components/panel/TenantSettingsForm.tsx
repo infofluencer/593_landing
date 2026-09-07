@@ -26,8 +26,11 @@ export type TenantSettingsInitial = {
 
 export default function TenantSettingsForm({
   initial,
+  tenantSlug,
 }: {
   initial: TenantSettingsInitial;
+  /** Required on staff host (admin.*) where there is no x-tenant-slug. */
+  tenantSlug: string;
 }) {
   const router = useRouter();
   const [form, setForm] = useState(initial);
@@ -50,6 +53,7 @@ export default function TenantSettingsForm({
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          tenantSlug,
           type: form.type,
           website: form.website || null,
           monthlyBudget: form.monthlyBudget

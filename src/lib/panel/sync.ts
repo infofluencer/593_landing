@@ -18,18 +18,9 @@ import {
 } from "@/lib/integrations/tokens";
 import { evaluateTenantAlerts } from "@/lib/panel/alerts-engine";
 import { resolveAdsCustomerId } from "@/lib/panel/google-ads-customer-map";
+import { syncLookbackRange } from "@/lib/panel/period";
 import { runSynced } from "@/lib/panel/sync-job";
 import { verifyTenantSite } from "@/lib/panel/verify-tenant-site";
-
-function isoDate(d: Date): string {
-  return d.toISOString().slice(0, 10);
-}
-
-function monthRange(ref = new Date()) {
-  const from = new Date(Date.UTC(ref.getUTCFullYear(), ref.getUTCMonth(), 1));
-  const to = new Date(Date.UTC(ref.getUTCFullYear(), ref.getUTCMonth() + 1, 0));
-  return { from: isoDate(from), to: isoDate(to) };
-}
 
 function classifyConversion(
   name: string,
@@ -122,7 +113,7 @@ export async function runAgencySync(opts?: {
   const envVerify = process.env.SITE_VERIFY_ON_SYNC === "true";
   const doSiteVerify = opts?.siteVerify === true || envVerify;
 
-  const { from, to } = monthRange();
+  const { from, to } = await syncLookbackRange();
   const summary: SyncSummary["tenants"] = [];
 
   for (const tenant of tenants) {

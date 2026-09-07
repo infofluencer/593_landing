@@ -43,14 +43,13 @@ export class TenantAccessError extends Error {
 }
 
 /**
- * Admin/team: any tenant. Client: membership only.
+ * Brand subdomain access: membership for that tenant only.
+ * Admin/team use the staff host (admin.*), not marka subdomains.
  */
 export function assertTenantAccess(
-  role: Role,
   tenantIds: readonly string[],
   tenantId: string,
 ): void {
-  if (role === "admin" || role === "team") return;
   if (tenantIds.includes(tenantId)) return;
   throw new TenantAccessError();
 }

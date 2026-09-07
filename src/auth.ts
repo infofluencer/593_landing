@@ -1,7 +1,9 @@
 import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
+import { headers } from "next/headers";
 import { prisma } from "@/lib/db";
+import { isStaffRole, resolvePanelHost } from "@/lib/panel/host";
 
 /**
  * Relative-only redirect helper: never bounce a tenant host (demo.localhost)
@@ -49,6 +51,29 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
         const valid = await bcrypt.compare(password, user.passwordHash);
         if (!valid) return null;
+
+        const h = await headers();
+        const host = resolvePanelHost(
+          h.get("x-forwarded-host") ?? h.get("host"),
+        );
+
+        // Marka subdomain: yalnızca o markanın üyesi (admin/team burada giremez).
+        if (host.kind === "tenant") {
+          if (!host.tenantSlug) return null;
+          const tenant = await prisma.tenant.findUnique({
+            where: { slug: host.tenantSlug },
+            select: { id: true },
+          });
+          if (!tenant) return null;
+          const member = user.memberships.some((m) => m.tenantId === tenant.id);
+          if (!member) return null;
+        } else if (host.kind === "staff") {
+          // Ajans portalı: yalnızca admin/team.
+          if (!isStaffRole(user.role)) return null;
+        } else {
+          // Apex / bilinmeyen host — panel oturumu açma.
+          return null;
+        }
 
         return {
           id: user.id,

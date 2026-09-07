@@ -7,6 +7,8 @@ import { prisma } from "@/lib/db";
 export const runtime = "nodejs";
 
 type PatchBody = {
+  /** Staff host (admin.*) — no x-tenant-slug header. */
+  tenantSlug?: string;
   type?: TenantType;
   website?: string | null;
   monthlyBudget?: number | null;
@@ -32,7 +34,7 @@ function emptyToNull(v: string | null | undefined): string | null {
   return t === "" ? null : t;
 }
 
-/** Admin/team — update current host tenant type / mapping / thresholds / website. */
+/** Admin/team — update tenant type / mapping / thresholds / website. */
 export async function PATCH(request: Request) {
   const session = await auth();
   if (!session?.user) {
@@ -42,10 +44,21 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
+  let body: PatchBody;
+  try {
+    body = (await request.json()) as PatchBody;
+  } catch {
+    return NextResponse.json({ error: "JSON gerekli" }, { status: 400 });
+  }
+
   const h = await headers();
-  const slug = h.get("x-tenant-slug");
+  const slug =
+    (body.tenantSlug?.trim().toLowerCase() || h.get("x-tenant-slug") || "").trim();
   if (!slug) {
-    return NextResponse.json({ error: "Tenant host gerekli" }, { status: 400 });
+    return NextResponse.json(
+      { error: "tenantSlug veya marka host gerekli" },
+      { status: 400 },
+    );
   }
 
   const tenant = await prisma.tenant.findUnique({
@@ -57,13 +70,6 @@ export async function PATCH(request: Request) {
       { error: "Tenant DB’de yok — önce seed / Meta provision." },
       { status: 404 },
     );
-  }
-
-  let body: PatchBody;
-  try {
-    body = (await request.json()) as PatchBody;
-  } catch {
-    return NextResponse.json({ error: "JSON gerekli" }, { status: 400 });
   }
 
   if (body.type && body.type !== "ecommerce" && body.type !== "lead") {

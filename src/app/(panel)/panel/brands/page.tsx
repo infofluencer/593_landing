@@ -7,25 +7,33 @@ import SyncButton from "@/components/panel/SyncButton";
 import { PanelTable } from "@/components/panel/ui";
 import { getAgencyOverview } from "@/lib/panel/data";
 import { formatDateTime, formatNumber, formatTry } from "@/lib/panel/format";
+import { isStaffRole, rootDomain } from "@/lib/panel/host";
 
 /**
- * Sadece admin/team — tüm markalara geçiş listesi.
- * Müşteri (client) bu sayfaya giremez; her marka kendi subdomain'inde kalır.
+ * Sadece admin/team — ajans portalında (admin.*) tüm markalar.
+ * Marka subdomain’lerinde müşteri kendi paneline girer; admin orada oturum açamaz.
  */
 export default async function BrandsPage() {
   const session = await auth();
   if (!session?.user) redirect("/login");
-  if (session.user.role !== "admin" && session.user.role !== "team") {
+  if (!isStaffRole(session.user.role)) {
     redirect("/");
   }
 
   const h = await headers();
-  const hostSlug = h.get("x-tenant-slug") ?? "demo";
+  const panelMode = h.get("x-panel-mode");
+  if (panelMode !== "staff") {
+    redirect("/login?error=AccessDenied");
+  }
+
+  const host = h.get("x-forwarded-host") ?? h.get("host") ?? "";
+  const isLocal = host.includes("localhost") || host.startsWith("127.");
+  const root = rootDomain();
 
   const brands = await getAgencyOverview({
     role: session.user.role,
     tenantIds: session.user.tenantIds,
-    hostSlug,
+    hostSlug: "admin",
   });
 
   return (
@@ -36,9 +44,10 @@ export default async function BrandsPage() {
             Ajans — marka listesi
           </h2>
           <p className="mt-1 text-sm text-zinc-500">
-            Her markanın paneli kendi adresinde açılır (
-            <code className="text-zinc-400">marka.593emarketing.com</code>
-            ). Müşteri yalnızca kendi markasını görür.
+            Veri sync buradan çalışır. Marka panelleri yalnızca o markanın
+            hesabıyla açılır (
+            <code className="text-zinc-400">marka.{root}</code>
+            ).
           </p>
         </div>
         <SyncButton />
@@ -53,26 +62,34 @@ export default async function BrandsPage() {
           "Harcama",
           "Dönüşüm",
           "Son kontrol",
+          "",
         ]}
       >
         {brands.map((row) => {
           const isUnknown = row.health === "unknown";
-          const panelHost = `${row.tenant.slug}.localhost:3006`;
+          const panelHost = isLocal
+            ? `${row.tenant.slug}.localhost:3006`
+            : `${row.tenant.slug}.${root}`;
+          const panelProto = isLocal ? "http" : "https";
           return (
             <tr key={row.tenant.slug} className="text-zinc-700">
               <td className="px-3 py-3">
-                <Link
-                  href={`http://${panelHost}/`}
-                  className="font-medium text-zinc-900 hover:text-zinc-900"
-                >
+                <span className="font-medium text-zinc-900">
                   {row.tenant.name}
-                </Link>
+                </span>
               </td>
               <td className="px-3 py-3 text-xs text-zinc-400">
                 {row.tenant.type === "ecommerce" ? "E-ticaret" : "Lead"}
               </td>
               <td className="px-3 py-3 font-mono text-xs text-zinc-500">
-                {row.tenant.slug}.…
+                <a
+                  href={`${panelProto}://${panelHost}/`}
+                  className="hover:text-zinc-800 hover:underline"
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  {panelHost}
+                </a>
               </td>
               <td className="px-3 py-3">
                 <StatusBadge status={row.health} />
@@ -87,6 +104,14 @@ export default async function BrandsPage() {
               </td>
               <td className="px-3 py-3 text-xs text-zinc-500">
                 {formatDateTime(row.lastCheckAt)}
+              </td>
+              <td className="px-3 py-3 text-right">
+                <Link
+                  href={`/settings?tenant=${encodeURIComponent(row.tenant.slug)}`}
+                  className="text-xs font-medium text-[#e91825] hover:underline"
+                >
+                  Ayarlar
+                </Link>
               </td>
             </tr>
           );
