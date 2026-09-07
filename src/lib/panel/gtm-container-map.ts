@@ -5,6 +5,8 @@
  *
  * Bulk seed: npm run db:apply-gtm-map
  */
+import { isPlaceholderGtmId } from "@/lib/panel/mapping-placeholders";
+
 export const GTM_PUBLIC_ID_BY_SLUG: Record<string, string> = {
   // Ajans sitesi (tenant olmayabilir)
   "593": "GTM-PGSGQN6M",
@@ -83,18 +85,11 @@ function normalizePublicId(id: string): string {
   return t.startsWith("GTM-") ? t : `GTM-${t}`;
 }
 
-/**
- * Resolve web GTM public ID for site verify / display.
- * DB’de GTM-* varsa o; değilse kod map. Numeric path public ID vermez.
- */
-export function resolveGtmPublicId(tenant: {
+/** Code map only — apply-gtm-map. */
+export function gtmPublicIdFromCodeMap(tenant: {
   slug: string;
   name: string;
-  mapping?: { gtmContainerId?: string | null } | null;
 }): string | null {
-  const fromDb = tenant.mapping?.gtmContainerId?.trim();
-  if (fromDb && /^GTM-/i.test(fromDb)) return normalizePublicId(fromDb);
-
   const bySlug = GTM_PUBLIC_ID_BY_SLUG[tenant.slug];
   if (bySlug) return normalizePublicId(bySlug);
 
@@ -109,14 +104,35 @@ export function resolveGtmPublicId(tenant: {
   return null;
 }
 
+/**
+ * Resolve web GTM public ID for site verify / display.
+ * DB’de GTM-* varsa o; değilse kod map. Numeric path public ID vermez.
+ */
+export function resolveGtmPublicId(tenant: {
+  slug: string;
+  name: string;
+  mapping?: { gtmContainerId?: string | null } | null;
+}): string | null {
+  const fromDb = tenant.mapping?.gtmContainerId?.trim();
+  if (fromDb && /^GTM-/i.test(fromDb) && !isPlaceholderGtmId(fromDb)) {
+    return normalizePublicId(fromDb);
+  }
+
+  return gtmPublicIdFromCodeMap(tenant);
+}
+
 /** True when mapping is already Tag Manager numeric path. */
 export function isGtmNumericPath(value: string | null | undefined): boolean {
-  return Boolean(value && /^\d+\/\d+$/.test(value.trim()));
+  return Boolean(
+    value &&
+      /^\d+\/\d+$/.test(value.trim()) &&
+      !isPlaceholderGtmId(value),
+  );
 }
 
 /**
  * API çağrıları için ref:
- * 1) DB numeric accountId/containerId (kota)
+ * 1) DB numeric accountId/containerId (kota) — placeholder path yok sayılır
  * 2) DB GTM-XXXX
  * 3) kod map public ID
  */
@@ -126,7 +142,10 @@ export function resolveGtmApiRef(tenant: {
   mapping?: { gtmContainerId?: string | null } | null;
 }): string | null {
   const db = tenant.mapping?.gtmContainerId?.trim() || null;
+  if (db && isPlaceholderGtmId(db)) {
+    return gtmPublicIdFromCodeMap(tenant);
+  }
   if (isGtmNumericPath(db)) return db;
   if (db && /^GTM-/i.test(db)) return normalizePublicId(db);
-  return resolveGtmPublicId(tenant);
+  return gtmPublicIdFromCodeMap(tenant);
 }

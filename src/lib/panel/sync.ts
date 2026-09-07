@@ -18,9 +18,10 @@ import {
   getMetaSystemUserToken,
 } from "@/lib/integrations/tokens";
 import { evaluateTenantAlerts } from "@/lib/panel/alerts-engine";
-import { resolveAdsCustomerId } from "@/lib/panel/google-ads-customer-map";
+import { resolveAdsCustomerId, adsCustomerIdFromCodeMap } from "@/lib/panel/google-ads-customer-map";
 import { resolveGa4PropertyId } from "@/lib/panel/ga4-property-map";
 import { resolveGtmApiRef } from "@/lib/panel/gtm-container-map";
+import { isPlaceholderAdsCustomerId } from "@/lib/panel/mapping-placeholders";
 import { syncLookbackRange } from "@/lib/panel/period";
 import { runSynced } from "@/lib/panel/sync-job";
 import { verifyTenantSite } from "@/lib/panel/verify-tenant-site";
@@ -143,7 +144,21 @@ export async function runAgencySync(opts?: {
   for (const tenant of tenants) {
     const services: SyncSummary["tenants"][number]["services"] = {};
     const mapping = tenant.mapping;
-    const adsCustomerId = resolveAdsCustomerId(tenant);
+    let adsCustomerId = resolveAdsCustomerId(tenant);
+    const mapAdsId = adsCustomerIdFromCodeMap(tenant);
+
+    // Heal mock placeholder Ads IDs in DB so Settings/UI match sync.
+    if (
+      mapAdsId &&
+      mapping?.adsCustomerId &&
+      isPlaceholderAdsCustomerId(mapping.adsCustomerId)
+    ) {
+      await prisma.tenantMapping.update({
+        where: { tenantId: tenant.id },
+        data: { adsCustomerId: mapAdsId },
+      });
+      adsCustomerId = mapAdsId;
+    }
 
     // --- Meta insights (paid only) ---
     if (doMeta) {
@@ -324,96 +339,119 @@ export async function runAgencySync(opts?: {
             objective: "campaign_daily",
           },
           async () => {
-            const rows = await fetchGoogleAdsCampaignMetrics({
-              customerId: adsCustomerId,
-              from,
-              to,
-            });
+            async function persistAds(customerId: string) {
+              const rows = await fetchGoogleAdsCampaignMetrics({
+                customerId,
+                from,
+                to,
+              });
 
-            for (const row of rows) {
-              const cost = row.spend;
-              const cpa = row.conv > 0 ? cost / row.conv : null;
-              const roas = cost > 0 ? row.convValue / cost : null;
-              await prisma.googleAdsMetric.upsert({
-                where: {
-                  tenantId_date_campaignId: {
+              for (const row of rows) {
+                const cost = row.spend;
+                const cpa = row.conv > 0 ? cost / row.conv : null;
+                const roas = cost > 0 ? row.convValue / cost : null;
+                await prisma.googleAdsMetric.upsert({
+                  where: {
+                    tenantId_date_campaignId: {
+                      tenantId: tenant.id,
+                      date: new Date(row.date),
+                      campaignId: row.campaignId,
+                    },
+                  },
+                  update: {
+                    campaignName: row.campaign,
+                    cost,
+                    impressions: row.impr,
+                    clicks: row.clicks,
+                    conversions: row.conv,
+                    convValue: row.convValue,
+                    cpa,
+                    roas,
+                    cpaOrigin: "derived",
+                    roasOrigin: "derived",
+                  },
+                  create: {
                     tenantId: tenant.id,
                     date: new Date(row.date),
                     campaignId: row.campaignId,
+                    campaignName: row.campaign,
+                    cost,
+                    impressions: row.impr,
+                    clicks: row.clicks,
+                    conversions: row.conv,
+                    convValue: row.convValue,
+                    cpa,
+                    roas,
+                    cpaOrigin: "derived",
+                    roasOrigin: "derived",
                   },
+                });
+              }
+
+              const actions = await fetchGoogleAdsConversionActions({
+                customerId,
+                from,
+                to,
+              });
+
+              await prisma.conversion.deleteMany({
+                where: {
+                  tenantId: tenant.id,
+                  date: { gte: new Date(from), lte: new Date(to) },
+                  source: "Google Ads",
                 },
-                update: {
-                  campaignName: row.campaign,
-                  cost,
-                  impressions: row.impr,
-                  clicks: row.clicks,
-                  conversions: row.conv,
-                  convValue: row.convValue,
-                  cpa,
-                  roas,
-                  cpaOrigin: "derived",
-                  roasOrigin: "derived",
-                },
+              });
+
+              const nameCounts = new Map<string, number>();
+              for (const a of actions) {
+                nameCounts.set(
+                  a.name.toLowerCase(),
+                  (nameCounts.get(a.name.toLowerCase()) ?? 0) + 1,
+                );
+              }
+
+              for (const a of actions) {
+                const kind = classifyConversion(a.name);
+                const dupeFlag =
+                  (nameCounts.get(a.name.toLowerCase()) ?? 0) > 1 ||
+                  /ga4|import/i.test(a.name);
+                await prisma.conversion.create({
+                  data: {
+                    tenantId: tenant.id,
+                    date: new Date(to),
+                    name: a.name,
+                    source: a.source,
+                    primary: a.primary,
+                    count: Math.round(a.count),
+                    kind,
+                    dupeFlag,
+                  },
+                });
+              }
+
+              return rows.length;
+            }
+
+            try {
+              return await persistAds(adsCustomerId);
+            } catch (err) {
+              const msg = err instanceof Error ? err.message : String(err);
+              const mapId = adsCustomerIdFromCodeMap(tenant);
+              const notFound = /CUSTOMER_NOT_FOUND|No customer found/i.test(
+                msg,
+              );
+              if (!notFound || !mapId || mapId === adsCustomerId) throw err;
+
+              await prisma.tenantMapping.upsert({
+                where: { tenantId: tenant.id },
+                update: { adsCustomerId: mapId },
                 create: {
                   tenantId: tenant.id,
-                  date: new Date(row.date),
-                  campaignId: row.campaignId,
-                  campaignName: row.campaign,
-                  cost,
-                  impressions: row.impr,
-                  clicks: row.clicks,
-                  conversions: row.conv,
-                  convValue: row.convValue,
-                  cpa,
-                  roas,
-                  cpaOrigin: "derived",
-                  roasOrigin: "derived",
+                  adsCustomerId: mapId,
                 },
               });
+              return await persistAds(mapId);
             }
-
-            const actions = await fetchGoogleAdsConversionActions({
-              customerId: adsCustomerId,
-              from,
-              to,
-            });
-
-            await prisma.conversion.deleteMany({
-              where: {
-                tenantId: tenant.id,
-                date: { gte: new Date(from), lte: new Date(to) },
-                source: "Google Ads",
-              },
-            });
-
-            const nameCounts = new Map<string, number>();
-            for (const a of actions) {
-              nameCounts.set(
-                a.name.toLowerCase(),
-                (nameCounts.get(a.name.toLowerCase()) ?? 0) + 1,
-              );
-            }
-
-            for (const a of actions) {
-              const kind = classifyConversion(a.name);
-              const dupeFlag =
-                (nameCounts.get(a.name.toLowerCase()) ?? 0) > 1 ||
-                /ga4|import/i.test(a.name);
-              await prisma.conversion.create({
-                data: {
-                  tenantId: tenant.id,
-                  date: new Date(to),
-                  name: a.name,
-                  source: a.source,
-                  primary: a.primary,
-                  count: Math.round(a.count),
-                  kind,
-                  dupeFlag,
-                },
-              });
-            }
-
-            return rows.length;
           },
         );
         services.ads = ads.ok ? { ok: true } : { ok: false, error: ads.error };

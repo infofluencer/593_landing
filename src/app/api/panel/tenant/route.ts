@@ -3,6 +3,7 @@ import { headers } from "next/headers";
 import type { TenantType } from "@prisma/client";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/db";
+import { sanitizeMappingForDb } from "@/lib/panel/mapping-placeholders";
 
 export const runtime = "nodejs";
 
@@ -97,33 +98,54 @@ export async function PATCH(request: Request) {
       });
 
       if (body.mapping) {
-        const m = body.mapping;
+        const m = sanitizeMappingForDb({
+          adsCustomerId:
+            body.mapping.adsCustomerId === undefined
+              ? undefined
+              : emptyToNull(body.mapping.adsCustomerId),
+          ga4PropertyId:
+            body.mapping.ga4PropertyId === undefined
+              ? undefined
+              : emptyToNull(body.mapping.ga4PropertyId),
+          gtmContainerId:
+            body.mapping.gtmContainerId === undefined
+              ? undefined
+              : emptyToNull(body.mapping.gtmContainerId),
+          gscSiteUrl:
+            body.mapping.gscSiteUrl === undefined
+              ? undefined
+              : emptyToNull(body.mapping.gscSiteUrl),
+          merchantId:
+            body.mapping.merchantId === undefined
+              ? undefined
+              : emptyToNull(body.mapping.merchantId),
+        });
         await tx.tenantMapping.upsert({
           where: { tenantId: tenant.id },
           update: {
             ...(m.adsCustomerId !== undefined
-              ? { adsCustomerId: emptyToNull(m.adsCustomerId) }
+              ? { adsCustomerId: m.adsCustomerId }
               : {}),
             ...(m.ga4PropertyId !== undefined
-              ? { ga4PropertyId: emptyToNull(m.ga4PropertyId) }
+              ? { ga4PropertyId: m.ga4PropertyId }
               : {}),
             ...(m.gtmContainerId !== undefined
-              ? { gtmContainerId: emptyToNull(m.gtmContainerId) }
+              ? { gtmContainerId: m.gtmContainerId }
               : {}),
             ...(m.gscSiteUrl !== undefined
-              ? { gscSiteUrl: emptyToNull(m.gscSiteUrl) }
+              ? { gscSiteUrl: m.gscSiteUrl }
               : {}),
             ...(m.merchantId !== undefined
-              ? { merchantId: emptyToNull(m.merchantId) }
+              ? { merchantId: m.merchantId }
               : {}),
           },
           create: {
             tenantId: tenant.id,
-            adsCustomerId: emptyToNull(m.adsCustomerId ?? null),
-            ga4PropertyId: emptyToNull(m.ga4PropertyId ?? null),
-            gtmContainerId: emptyToNull(m.gtmContainerId ?? null),
-            gscSiteUrl: emptyToNull(m.gscSiteUrl ?? null),
-            merchantId: emptyToNull(m.merchantId ?? null),
+            adsCustomerId: m.adsCustomerId ?? null,
+            ga4PropertyId: m.ga4PropertyId ?? null,
+            gtmContainerId: m.gtmContainerId ?? null,
+            gscSiteUrl: m.gscSiteUrl ?? null,
+            merchantId: m.merchantId ?? null,
           },
         });
       }

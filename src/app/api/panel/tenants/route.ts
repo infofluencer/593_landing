@@ -4,6 +4,7 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/db";
 import { slugifyTr } from "@/lib/integrations/slugify";
 import { RESERVED_SLUGS } from "@/lib/panel/host";
+import { sanitizeMappingForDb } from "@/lib/panel/mapping-placeholders";
 
 export const runtime = "nodejs";
 
@@ -93,7 +94,7 @@ export async function POST(request: Request) {
     );
   }
 
-  const m = body.mapping ?? {};
+  const m = sanitizeMappingForDb(body.mapping ?? {});
 
   try {
     const tenant = await prisma.tenant.create({
@@ -110,9 +111,9 @@ export async function POST(request: Request) {
         visible: true,
         mapping: {
           create: {
-            adsCustomerId: emptyToNull(m.adsCustomerId ?? null),
-            ga4PropertyId: emptyToNull(m.ga4PropertyId ?? null),
-            gtmContainerId: emptyToNull(m.gtmContainerId ?? null),
+            adsCustomerId: m.adsCustomerId ?? null,
+            ga4PropertyId: m.ga4PropertyId ?? null,
+            gtmContainerId: m.gtmContainerId ?? null,
             gscSiteUrl: emptyToNull(m.gscSiteUrl ?? null),
             merchantId: emptyToNull(m.merchantId ?? null),
           },

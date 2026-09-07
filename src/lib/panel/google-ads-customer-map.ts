@@ -1,11 +1,12 @@
 /**
  * Agency Google Ads customer IDs under MCC (GOOGLE_ADS_LOGIN_CUSTOMER_ID).
- * Fallback map when TenantMapping.adsCustomerId boş.
+ * Fallback map when TenantMapping.adsCustomerId boş / placeholder.
  * Panel Ayarlar / Yeni marka sihirbazı DB’ye yazar (öncelikli).
  *
- * Bulk seed:
- *   npx tsx scripts/apply-google-ads-map.ts
+ * Bulk seed: npx tsx scripts/apply-google-ads-map.ts
  */
+import { isPlaceholderAdsCustomerId } from "@/lib/panel/mapping-placeholders";
+
 export const GOOGLE_ADS_CUSTOMER_BY_SLUG: Record<string, string> = {
   mareen: "9557333129",
   armonia: "9579618441",
@@ -64,14 +65,11 @@ function norm(s: string): string {
     .replace(/\p{M}/gu, "");
 }
 
-export function resolveAdsCustomerId(tenant: {
+/** Code map only (ignore DB) — used by apply / sync heal. */
+export function adsCustomerIdFromCodeMap(tenant: {
   slug: string;
   name: string;
-  mapping?: { adsCustomerId?: string | null } | null;
 }): string | null {
-  const fromDb = tenant.mapping?.adsCustomerId?.trim();
-  if (fromDb) return fromDb.replace(/-/g, "");
-
   const bySlug = GOOGLE_ADS_CUSTOMER_BY_SLUG[tenant.slug];
   if (bySlug) return bySlug.replace(/-/g, "");
 
@@ -84,4 +82,17 @@ export function resolveAdsCustomerId(tenant: {
   }
 
   return null;
+}
+
+export function resolveAdsCustomerId(tenant: {
+  slug: string;
+  name: string;
+  mapping?: { adsCustomerId?: string | null } | null;
+}): string | null {
+  const fromDb = tenant.mapping?.adsCustomerId?.trim();
+  if (fromDb && !isPlaceholderAdsCustomerId(fromDb)) {
+    return fromDb.replace(/-/g, "");
+  }
+
+  return adsCustomerIdFromCodeMap(tenant);
 }

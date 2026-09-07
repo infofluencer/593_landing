@@ -1,9 +1,15 @@
 /**
  * Upsert TenantMapping.gtmContainerId from GTM public-id map.
  *   npm run db:apply-gtm-map
+ *
+ * Real numeric account/container paths are kept (quota). Placeholders are overwritten.
  */
 import { PrismaClient } from "@prisma/client";
-import { isGtmNumericPath, resolveGtmPublicId } from "../src/lib/panel/gtm-container-map";
+import {
+  gtmPublicIdFromCodeMap,
+  isGtmNumericPath,
+} from "../src/lib/panel/gtm-container-map";
+import { isPlaceholderGtmId } from "../src/lib/panel/mapping-placeholders";
 
 const prisma = new PrismaClient();
 
@@ -14,14 +20,13 @@ async function main() {
 
   for (const t of tenants) {
     const existing = t.mapping?.gtmContainerId?.trim() || null;
-    // Numeric path kotayı düşürmek için saklanır — public ID ile ezme.
-    if (isGtmNumericPath(existing)) {
+    if (isGtmNumericPath(existing) && !isPlaceholderGtmId(existing)) {
       console.log(`keep  ${t.slug} → ${existing} (numeric)`);
       skipped++;
       continue;
     }
 
-    const gtmContainerId = resolveGtmPublicId(t);
+    const gtmContainerId = gtmPublicIdFromCodeMap(t);
     if (!gtmContainerId) {
       console.log(`skip  ${t.slug} (${t.name}) — map'te yok`);
       skipped++;
@@ -40,7 +45,11 @@ async function main() {
         merchantId: null,
       },
     });
-    console.log(`ok    ${t.slug} → ${gtmContainerId}`);
+    console.log(
+      existing && existing !== gtmContainerId
+        ? `ok    ${t.slug} ${existing} → ${gtmContainerId}`
+        : `ok    ${t.slug} → ${gtmContainerId}`,
+    );
     updated++;
   }
 

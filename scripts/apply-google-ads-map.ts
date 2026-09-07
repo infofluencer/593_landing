@@ -4,7 +4,7 @@
  *   npx tsx scripts/apply-google-ads-map.ts
  */
 import { PrismaClient } from "@prisma/client";
-import { resolveAdsCustomerId } from "../src/lib/panel/google-ads-customer-map";
+import { adsCustomerIdFromCodeMap } from "../src/lib/panel/google-ads-customer-map";
 
 const prisma = new PrismaClient();
 
@@ -14,13 +14,15 @@ async function main() {
   let skipped = 0;
 
   for (const t of tenants) {
-    const adsCustomerId = resolveAdsCustomerId(t);
+    // Always write from code map (not DB-first resolve — that would keep bad DB values).
+    const adsCustomerId = adsCustomerIdFromCodeMap(t);
     if (!adsCustomerId) {
       console.log(`skip  ${t.slug} (${t.name}) — map'te yok`);
       skipped++;
       continue;
     }
 
+    const prev = t.mapping?.adsCustomerId?.replace(/-/g, "") ?? null;
     await prisma.tenantMapping.upsert({
       where: { tenantId: t.id },
       update: { adsCustomerId },
@@ -33,7 +35,11 @@ async function main() {
         merchantId: null,
       },
     });
-    console.log(`ok    ${t.slug} → ${adsCustomerId}`);
+    console.log(
+      prev && prev !== adsCustomerId
+        ? `ok    ${t.slug} ${prev} → ${adsCustomerId}`
+        : `ok    ${t.slug} → ${adsCustomerId}`,
+    );
     updated++;
   }
 

@@ -20,6 +20,7 @@
     "db:apply-ads-map": "npx tsx scripts/apply-google-ads-map.ts",
     "db:apply-gtm-map": "npx tsx scripts/apply-gtm-map.ts",
     "db:apply-ga4-map": "npx tsx scripts/apply-ga4-map.ts",
+    "db:repair-google-maps": "npx tsx scripts/repair-google-mappings.ts",
     "playwright:install": "npx playwright install chromium",
     "site-verify": "echo 'Use panel GTM → Sitede test et, or POST /api/panel/site-verify'"
   },

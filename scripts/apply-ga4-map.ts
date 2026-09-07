@@ -1,9 +1,9 @@
 /**
- * Upsert TenantMapping.ga4PropertyId from code map.
+ * Upsert TenantMapping.ga4PropertyId from code map (not DB-first resolve).
  *   npm run db:apply-ga4-map
  */
 import { PrismaClient } from "@prisma/client";
-import { resolveGa4PropertyId } from "../src/lib/panel/ga4-property-map";
+import { ga4PropertyIdFromCodeMap } from "../src/lib/panel/ga4-property-map";
 
 const prisma = new PrismaClient();
 
@@ -13,13 +13,14 @@ async function main() {
   let skipped = 0;
 
   for (const t of tenants) {
-    const ga4PropertyId = resolveGa4PropertyId(t);
+    const ga4PropertyId = ga4PropertyIdFromCodeMap(t);
     if (!ga4PropertyId) {
       console.log(`skip  ${t.slug} (${t.name}) — map'te yok`);
       skipped++;
       continue;
     }
 
+    const prev = t.mapping?.ga4PropertyId ?? null;
     await prisma.tenantMapping.upsert({
       where: { tenantId: t.id },
       update: { ga4PropertyId },
@@ -32,7 +33,11 @@ async function main() {
         merchantId: null,
       },
     });
-    console.log(`ok    ${t.slug} → ${ga4PropertyId}`);
+    console.log(
+      prev && prev !== ga4PropertyId
+        ? `ok    ${t.slug} ${prev} → ${ga4PropertyId}`
+        : `ok    ${t.slug} → ${ga4PropertyId}`,
+    );
     updated++;
   }
 
