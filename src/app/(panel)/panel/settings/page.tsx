@@ -126,7 +126,9 @@ export default async function SettingsPage({
         </h2>
         <p className="mt-1 text-sm text-zinc-500">
           Tip · website · Google eşleştirme · uyarı eşikleri. Meta account ID
-          BM’den gelir, burada değiştirilmez.
+          BM’den gelir, burada değiştirilmez. GTM için kod map (
+          <code className="text-zinc-400">gtm-container-map</code>
+          ) önceliklidir; Ayarlar yedek.
         </p>
         <p className="mt-2 text-xs text-zinc-500">
           <Link href="/settings" className="text-[#e91825] hover:underline">

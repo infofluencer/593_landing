@@ -4,7 +4,8 @@ import { StatusBadge } from "@/components/panel/StatusBadge";
 import SiteVerifyButton from "@/components/panel/SiteVerifyButton";
 import { PanelStat, PanelTable } from "@/components/panel/ui";
 import { requireBundle } from "@/lib/panel/data";
-import { fetchGtmSnapshot } from "@/lib/integrations/google/gtm";
+import { fetchGtmSnapshotByRef } from "@/lib/integrations/google/gtm";
+import { resolveGtmPublicId } from "@/lib/panel/gtm-container-map";
 import { useMockPanelData } from "@/lib/integrations/tokens";
 import { formatDateTime } from "@/lib/panel/format";
 
@@ -29,7 +30,8 @@ export default async function GtmPage() {
   const gtmJob = syncJobs.find(
     (j) => j.service === "gtm" && (j.objective === "config" || !j.objective),
   );
-  const mappingId = tenant.mapping.gtmContainerId;
+  const gtmRef =
+    resolveGtmPublicId(tenant) || tenant.mapping.gtmContainerId?.trim() || null;
 
   let publicId = mockGtm.publicId;
   let liveVersion = mockGtm.liveVersion;
@@ -40,11 +42,10 @@ export default async function GtmPage() {
   let liveError: string | null = null;
   let mode: "mock" | "live" | "empty" = useMockPanelData() ? "mock" : "empty";
 
-  if (!useMockPanelData() && mappingId?.includes("/")) {
-    const [accountId, containerId] = mappingId.split("/");
+  if (!useMockPanelData() && gtmRef) {
     try {
-      const snap = await fetchGtmSnapshot({ accountId, containerId });
-      publicId = snap.publicId || mappingId;
+      const snap = await fetchGtmSnapshotByRef(gtmRef);
+      publicId = snap.publicId || gtmRef;
       liveVersion = snap.liveVersion?.name
         ? `${snap.liveVersion.name}${snap.liveVersion.versionId ? ` — ${snap.liveVersion.versionId}` : ""}`
         : "—";
@@ -64,11 +65,8 @@ export default async function GtmPage() {
       tags = [];
       mode = "empty";
     }
-  } else if (!useMockPanelData() && !mappingId) {
-    liveError = "gtmContainerId yok";
-    tags = [];
-  } else if (!useMockPanelData() && mappingId && !mappingId.includes("/")) {
-    liveError = "gtmContainerId formatı accountId/containerId olmalı";
+  } else if (!useMockPanelData() && !gtmRef) {
+    liveError = "GTM container yok (map / Ayarlar)";
     tags = [];
   }
 

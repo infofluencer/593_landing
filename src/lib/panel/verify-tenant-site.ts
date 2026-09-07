@@ -5,6 +5,7 @@ import {
   runSiteVerification,
   type SiteVerifyResult,
 } from "@/lib/panel/site-verify";
+import { resolveGtmPublicId } from "@/lib/panel/gtm-container-map";
 import { runSynced } from "@/lib/panel/sync-job";
 import { upsertOpenAlert } from "@/lib/panel/alerts-engine";
 
@@ -28,6 +29,9 @@ export async function verifyTenantSite(opts: {
     return result;
   }
 
+  const gtmRef =
+    resolveGtmPublicId(tenant) || tenant.mapping?.gtmContainerId || null;
+
   const synced = await runSynced(
     {
       tenantId: tenant.id,
@@ -38,7 +42,7 @@ export async function verifyTenantSite(opts: {
     async () => {
       const result = await runSiteVerification({
         website: tenant.website!,
-        gtmContainerId: tenant.mapping?.gtmContainerId,
+        gtmContainerId: gtmRef,
         mock: useMockPanelData(),
       });
       if (result.status === "unknown" && result.error) {

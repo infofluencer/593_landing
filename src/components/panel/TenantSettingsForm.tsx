@@ -176,7 +176,7 @@ export default function TenantSettingsForm({
               placeholder="properties/123456"
             />
           </Field>
-          <Field label="GTM accountId/containerId">
+          <Field label="GTM (GTM-XXXX veya accountId/containerId)">
             <input
               className={inputClass}
               value={form.mapping.gtmContainerId}
@@ -186,7 +186,7 @@ export default function TenantSettingsForm({
                   gtmContainerId: e.target.value,
                 })
               }
-              placeholder="123/456"
+              placeholder="GTM-NDHZKCHJ"
             />
           </Field>
           <Field label="Search Console site URL">

@@ -12,6 +12,7 @@ import {
   type MockPeriodMetrics,
   type MockTenantBundle,
 } from "@/lib/panel/mock-data";
+import { resolveGtmPublicId } from "@/lib/panel/gtm-container-map";
 
 export { TenantAccessError };
 
@@ -384,7 +385,14 @@ async function bundleFromDb(
     ga4Landings,
     gtm: {
       ...EMPTY_GTM,
-      publicId: tenant.mapping?.gtmContainerId ?? "",
+      publicId:
+        resolveGtmPublicId({
+          slug: tenant.slug,
+          name: tenant.name,
+          mapping: tenant.mapping,
+        }) ||
+        tenant.mapping?.gtmContainerId ||
+        "",
       siteVerified: tenant.siteVerification?.status ?? "not_tested",
       siteVerifySummary: tenant.siteVerification?.summary ?? null,
       siteVerifyCheckedAt:

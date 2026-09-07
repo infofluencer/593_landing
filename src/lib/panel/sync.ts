@@ -5,7 +5,7 @@ import {
   fetchGoogleAdsConversionActions,
 } from "@/lib/integrations/google/ads";
 import { fetchGa4Snapshot } from "@/lib/integrations/google/ga4";
-import { fetchGtmSnapshot } from "@/lib/integrations/google/gtm";
+import { fetchGtmSnapshotByRef } from "@/lib/integrations/google/gtm";
 import { fetchSearchConsoleQuery } from "@/lib/integrations/google/gsc";
 import { fetchMerchantProductIssues } from "@/lib/integrations/google/merchant";
 import { fetchMetaCampaignInsights } from "@/lib/integrations/meta/insights";
@@ -19,6 +19,7 @@ import {
 } from "@/lib/integrations/tokens";
 import { evaluateTenantAlerts } from "@/lib/panel/alerts-engine";
 import { resolveAdsCustomerId } from "@/lib/panel/google-ads-customer-map";
+import { resolveGtmPublicId } from "@/lib/panel/gtm-container-map";
 import { syncLookbackRange } from "@/lib/panel/period";
 import { runSynced } from "@/lib/panel/sync-job";
 import { verifyTenantSite } from "@/lib/panel/verify-tenant-site";
@@ -511,7 +512,11 @@ export async function runAgencySync(opts?: {
       }
 
       // --- GTM ---
-      if (!mapping?.gtmContainerId) {
+      const gtmRef =
+        resolveGtmPublicId(tenant) ||
+        mapping?.gtmContainerId?.trim() ||
+        null;
+      if (!gtmRef) {
         await runSynced(
           {
             tenantId: tenant.id,
@@ -520,12 +525,11 @@ export async function runAgencySync(opts?: {
             objective: "config",
           },
           async () => {
-            throw new Error("gtmContainerId yok — kontrol edilemedi.");
+            throw new Error("GTM container yok — map / Ayarlar eksik.");
           },
         );
-        services.gtm = { ok: false, error: "gtmContainerId eksik" };
-      } else if (mapping.gtmContainerId.includes("/")) {
-        const [accountId, containerId] = mapping.gtmContainerId.split("/");
+        services.gtm = { ok: false, error: "GTM container eksik" };
+      } else {
         const gtm = await runSynced(
           {
             tenantId: tenant.id,
@@ -533,24 +537,9 @@ export async function runAgencySync(opts?: {
             service: "gtm",
             objective: "config",
           },
-          () => fetchGtmSnapshot({ accountId, containerId }),
+          () => fetchGtmSnapshotByRef(gtmRef),
         );
         services.gtm = gtm.ok ? { ok: true } : { ok: false, error: gtm.error };
-      } else {
-        await runSynced(
-          {
-            tenantId: tenant.id,
-            provider: "google",
-            service: "gtm",
-            objective: "config",
-          },
-          async () => {
-            throw new Error(
-              "gtmContainerId formatı accountsId/containerId olmalı (örn. 123/456).",
-            );
-          },
-        );
-        services.gtm = { ok: false, error: "gtmContainerId formatı hatalı" };
       }
 
       // --- Search Console ---
