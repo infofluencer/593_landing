@@ -21,28 +21,11 @@ import { evaluateTenantAlerts } from "@/lib/panel/alerts-engine";
 import { resolveAdsCustomerId, adsCustomerIdFromCodeMap } from "@/lib/panel/google-ads-customer-map";
 import { resolveGa4PropertyId } from "@/lib/panel/ga4-property-map";
 import { resolveGtmApiRef } from "@/lib/panel/gtm-container-map";
-import { isPlaceholderAdsCustomerId } from "@/lib/panel/mapping-placeholders";
+import { isPlaceholderAdsCustomerId, isPlaceholderMerchantId } from "@/lib/panel/mapping-placeholders";
 import { syncLookbackRange } from "@/lib/panel/period";
 import { runSynced } from "@/lib/panel/sync-job";
 import { verifyTenantSite } from "@/lib/panel/verify-tenant-site";
-
-function classifyConversion(
-  name: string,
-): "whatsapp" | "form" | "sale" | "other" {
-  const n = name.toLowerCase();
-  if (n.includes("whatsapp") || n.includes("wa ") || n.includes("messaging"))
-    return "whatsapp";
-  if (n.includes("form") || n.includes("lead") || n.includes("randevu"))
-    return "form";
-  if (
-    n.includes("purchase") ||
-    n.includes("sale") ||
-    n.includes("satış") ||
-    n.includes("sipariş")
-  )
-    return "sale";
-  return "other";
-}
+import { classifyConversion } from "@/lib/panel/classify-conversion";
 
 export type SyncSummary = {
   provision: Awaited<ReturnType<typeof provisionTenantsFromMeta>>;
@@ -615,18 +598,27 @@ export async function runAgencySync(opts?: {
 
       // --- Merchant (ecommerce only) ---
       if (tenant.type === "ecommerce" && mapping?.merchantId) {
-        const merch = await runSynced(
-          {
-            tenantId: tenant.id,
-            provider: "google",
-            service: "merchant",
-            objective: "product_status",
-          },
-          () => fetchMerchantProductIssues({ merchantId: mapping.merchantId! }),
-        );
-        services.merchant = merch.ok
-          ? { ok: true }
-          : { ok: false, error: merch.error };
+        if (isPlaceholderMerchantId(mapping.merchantId)) {
+          await prisma.tenantMapping.update({
+            where: { tenantId: tenant.id },
+            data: { merchantId: null },
+          });
+          // Skip API — mock/non-numeric ID; gerçek Merchant Center ID Ayarlar’dan.
+        } else {
+          const merch = await runSynced(
+            {
+              tenantId: tenant.id,
+              provider: "google",
+              service: "merchant",
+              objective: "product_status",
+            },
+            () =>
+              fetchMerchantProductIssues({ merchantId: mapping.merchantId! }),
+          );
+          services.merchant = merch.ok
+            ? { ok: true }
+            : { ok: false, error: merch.error };
+        }
       }
     }
 

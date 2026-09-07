@@ -14,6 +14,7 @@ import {
   isPlaceholderAdsCustomerId,
   isPlaceholderGa4PropertyId,
   isPlaceholderGtmId,
+  isPlaceholderMerchantId,
 } from "../src/lib/panel/mapping-placeholders";
 
 const prisma = new PrismaClient();
@@ -46,11 +47,15 @@ async function main() {
     const nextGtm = isPlaceholderGtmId(cur.gtmContainerId)
       ? null
       : cur.gtmContainerId;
+    const nextMerchant = isPlaceholderMerchantId(cur.merchantId)
+      ? null
+      : cur.merchantId;
 
     if (
       nextAds !== cur.adsCustomerId ||
       nextGa4 !== cur.ga4PropertyId ||
-      nextGtm !== cur.gtmContainerId
+      nextGtm !== cur.gtmContainerId ||
+      nextMerchant !== cur.merchantId
     ) {
       await prisma.tenantMapping.update({
         where: { tenantId: t.id },
@@ -58,6 +63,7 @@ async function main() {
           adsCustomerId: nextAds,
           ga4PropertyId: nextGa4,
           gtmContainerId: nextGtm,
+          merchantId: nextMerchant,
         },
       });
       cleared++;

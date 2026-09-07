@@ -2,6 +2,7 @@ import { headers } from "next/headers";
 import { StatusBadge } from "@/components/panel/StatusBadge";
 import { PanelTable } from "@/components/panel/ui";
 import { requireBundle } from "@/lib/panel/data";
+import { classifyConversion } from "@/lib/panel/classify-conversion";
 import { formatNumber } from "@/lib/panel/format";
 
 const KIND_LABEL = {
@@ -15,7 +16,12 @@ export default async function ConversionsPage() {
   const h = await headers();
   const slug = h.get("x-tenant-slug")!;
   const bundle = await requireBundle(slug);
-  const { conversions, health } = bundle;
+  const { health } = bundle;
+  // Re-classify by name so older sync rows (wrong kind) display correctly.
+  const conversions = bundle.conversions.map((c) => ({
+    ...c,
+    kind: classifyConversion(c.name),
+  }));
   const hasConv = conversions.length > 0;
 
   const byKind = {

@@ -29,6 +29,18 @@ export function isPlaceholderGtmId(raw: string | null | undefined): boolean {
   return t === "123/456" || t === "111/222";
 }
 
+export function isPlaceholderMerchantId(
+  raw: string | null | undefined,
+): boolean {
+  if (!raw?.trim()) return true;
+  const t = raw.trim().toLowerCase();
+  // mock-data + non-numeric junk
+  if (t === "merchant_mareen" || t.startsWith("merchant_")) return true;
+  // Content API expects numeric Merchant Center ID
+  if (!/^\d+$/.test(t)) return true;
+  return false;
+}
+
 /** Normalize mapping fields before DB write — placeholders → null. */
 export function sanitizeMappingForDb(m: {
   adsCustomerId?: string | null;
@@ -61,11 +73,17 @@ export function sanitizeMappingForDb(m: {
       : m.gtmContainerId == null || isPlaceholderGtmId(m.gtmContainerId)
         ? null
         : m.gtmContainerId.trim();
+  const merchant =
+    m.merchantId === undefined
+      ? undefined
+      : m.merchantId == null || isPlaceholderMerchantId(m.merchantId)
+        ? null
+        : m.merchantId.trim();
   return {
     adsCustomerId: ads,
     ga4PropertyId: ga4,
     gtmContainerId: gtm,
     gscSiteUrl: m.gscSiteUrl,
-    merchantId: m.merchantId,
+    merchantId: merchant,
   };
 }
