@@ -4,10 +4,11 @@ import { StatusBadge } from "@/components/panel/StatusBadge";
 import SiteVerifyButton from "@/components/panel/SiteVerifyButton";
 import { PanelStat, PanelTable } from "@/components/panel/ui";
 import { requireBundle } from "@/lib/panel/data";
-import { fetchGtmSnapshotByRef } from "@/lib/integrations/google/gtm";
-import { resolveGtmPublicId } from "@/lib/panel/gtm-container-map";
+import { fetchGtmSnapshotResolved } from "@/lib/integrations/google/gtm";
+import { resolveGtmApiRef, resolveGtmPublicId } from "@/lib/panel/gtm-container-map";
 import { useMockPanelData } from "@/lib/integrations/tokens";
 import { formatDateTime } from "@/lib/panel/format";
+import { prisma } from "@/lib/db";
 
 const VERIFY_LABEL: Record<string, string> = {
   not_tested: "Test edilmedi",
@@ -30,10 +31,10 @@ export default async function GtmPage() {
   const gtmJob = syncJobs.find(
     (j) => j.service === "gtm" && (j.objective === "config" || !j.objective),
   );
-  const gtmRef =
-    resolveGtmPublicId(tenant) || tenant.mapping.gtmContainerId?.trim() || null;
+  const gtmRef = resolveGtmApiRef(tenant);
+  const expectedPublicId = resolveGtmPublicId(tenant);
 
-  let publicId = mockGtm.publicId;
+  let publicId = mockGtm.publicId || expectedPublicId || "";
   let liveVersion = mockGtm.liveVersion;
   let unpublishedChanges = mockGtm.unpublishedChanges;
   let tags = mockGtm.tags;
@@ -44,13 +45,13 @@ export default async function GtmPage() {
 
   if (!useMockPanelData() && gtmRef) {
     try {
-      const snap = await fetchGtmSnapshotByRef(gtmRef);
-      publicId = snap.publicId || gtmRef;
-      liveVersion = snap.liveVersion?.name
-        ? `${snap.liveVersion.name}${snap.liveVersion.versionId ? ` — ${snap.liveVersion.versionId}` : ""}`
+      const { snapshot, path } = await fetchGtmSnapshotResolved(gtmRef);
+      publicId = snapshot.publicId || expectedPublicId || gtmRef;
+      liveVersion = snapshot.liveVersion?.name
+        ? `${snapshot.liveVersion.name}${snapshot.liveVersion.versionId ? ` — ${snapshot.liveVersion.versionId}` : ""}`
         : "—";
-      unpublishedChanges = snap.workspaceHasChanges;
-      tags = snap.tags.map((t) => ({
+      unpublishedChanges = snapshot.workspaceHasChanges;
+      tags = snapshot.tags.map((t) => ({
         name: t.name,
         type: t.type,
         paused: Boolean(t.paused),
@@ -60,10 +61,26 @@ export default async function GtmPage() {
       triggers = 0;
       variables = 0;
       mode = "live";
+
+      const numeric = `${path.accountId}/${path.containerId}`;
+      if (tenant.mapping.gtmContainerId !== numeric) {
+        const dbTenant = await prisma.tenant.findUnique({
+          where: { slug },
+          select: { id: true },
+        });
+        if (dbTenant) {
+          await prisma.tenantMapping.upsert({
+            where: { tenantId: dbTenant.id },
+            update: { gtmContainerId: numeric },
+            create: { tenantId: dbTenant.id, gtmContainerId: numeric },
+          });
+        }
+      }
     } catch (err) {
       liveError = err instanceof Error ? err.message : String(err);
       tags = [];
       mode = "empty";
+      if (expectedPublicId) publicId = expectedPublicId;
     }
   } else if (!useMockPanelData() && !gtmRef) {
     liveError = "GTM container yok (map / Ayarlar)";

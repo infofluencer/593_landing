@@ -3,7 +3,7 @@
  *   npm run db:apply-gtm-map
  */
 import { PrismaClient } from "@prisma/client";
-import { resolveGtmPublicId } from "../src/lib/panel/gtm-container-map";
+import { isGtmNumericPath, resolveGtmPublicId } from "../src/lib/panel/gtm-container-map";
 
 const prisma = new PrismaClient();
 
@@ -13,6 +13,14 @@ async function main() {
   let skipped = 0;
 
   for (const t of tenants) {
+    const existing = t.mapping?.gtmContainerId?.trim() || null;
+    // Numeric path kotayı düşürmek için saklanır — public ID ile ezme.
+    if (isGtmNumericPath(existing)) {
+      console.log(`keep  ${t.slug} → ${existing} (numeric)`);
+      skipped++;
+      continue;
+    }
+
     const gtmContainerId = resolveGtmPublicId(t);
     if (!gtmContainerId) {
       console.log(`skip  ${t.slug} (${t.name}) — map'te yok`);

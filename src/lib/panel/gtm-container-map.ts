@@ -110,3 +110,22 @@ export function resolveGtmPublicId(tenant: {
   if (fromDb && /^GTM-/i.test(fromDb)) return normalizePublicId(fromDb);
   return null;
 }
+
+/** True when mapping is already Tag Manager numeric path. */
+export function isGtmNumericPath(value: string | null | undefined): boolean {
+  return Boolean(value && /^\d+\/\d+$/.test(value.trim()));
+}
+
+/**
+ * API çağrıları için ref: önce DB’deki accountId/containerId (kota tasarrufu),
+ * yoksa public GTM-XXXX (bir kez resolve edilip DB’ye yazılmalı).
+ */
+export function resolveGtmApiRef(tenant: {
+  slug: string;
+  name: string;
+  mapping?: { gtmContainerId?: string | null } | null;
+}): string | null {
+  const db = tenant.mapping?.gtmContainerId?.trim() || null;
+  if (isGtmNumericPath(db)) return db;
+  return resolveGtmPublicId(tenant) || db;
+}

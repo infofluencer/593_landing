@@ -222,3 +222,131 @@ export function CampaignBarChart({
     </div>
   );
 }
+
+export function GscTrendChart({
+  data,
+}: {
+  data: { label: string; clicks: number; impressions: number }[];
+}) {
+  if (!data.length) {
+    return (
+      <p className="flex h-56 items-center justify-center text-sm text-zinc-500">
+        Günlük trend yok
+      </p>
+    );
+  }
+  return (
+    <div className="h-56 w-full">
+      <ResponsiveContainer width="100%" height="100%">
+        <AreaChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+          <defs>
+            <linearGradient id="gscClicks" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="#34a853" stopOpacity={0.35} />
+              <stop offset="100%" stopColor="#34a853" stopOpacity={0} />
+            </linearGradient>
+            <linearGradient id="gscImpr" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="#fbbc04" stopOpacity={0.3} />
+              <stop offset="100%" stopColor="#fbbc04" stopOpacity={0} />
+            </linearGradient>
+          </defs>
+          <CartesianGrid stroke="rgba(24,24,27,0.08)" vertical={false} />
+          <XAxis
+            dataKey="label"
+            tick={{ fill: "#71717a", fontSize: 10 }}
+            axisLine={false}
+            tickLine={false}
+            interval="preserveStartEnd"
+          />
+          <YAxis
+            yAxisId="left"
+            tick={{ fill: "#71717a", fontSize: 11 }}
+            axisLine={false}
+            tickLine={false}
+            width={40}
+          />
+          <YAxis
+            yAxisId="right"
+            orientation="right"
+            tick={{ fill: "#71717a", fontSize: 11 }}
+            axisLine={false}
+            tickLine={false}
+            width={44}
+          />
+          <Tooltip contentStyle={tooltipStyle} />
+          <Legend wrapperStyle={{ fontSize: 12, color: "#71717a" }} />
+          <Area
+            yAxisId="right"
+            type="monotone"
+            dataKey="impressions"
+            name="Gösterim"
+            stroke="#fbbc04"
+            fill="url(#gscImpr)"
+            strokeWidth={2}
+          />
+          <Area
+            yAxisId="left"
+            type="monotone"
+            dataKey="clicks"
+            name="Tıklama"
+            stroke="#34a853"
+            fill="url(#gscClicks)"
+            strokeWidth={2}
+          />
+        </AreaChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
+export function GscQueryBarChart({
+  data,
+}: {
+  data: { name: string; clicks: number; impressions: number }[];
+}) {
+  if (!data.length) {
+    return (
+      <p className="flex h-64 items-center justify-center text-sm text-zinc-500">
+        Sorgu kırılımı yok
+      </p>
+    );
+  }
+  return (
+    <div className="h-64 w-full">
+      <ResponsiveContainer width="100%" height="100%">
+        <BarChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 48 }}>
+          <CartesianGrid stroke="rgba(24,24,27,0.08)" vertical={false} />
+          <XAxis
+            dataKey="name"
+            tick={{ fill: "#71717a", fontSize: 10 }}
+            axisLine={false}
+            tickLine={false}
+            interval={0}
+            angle={-28}
+            textAnchor="end"
+            height={56}
+          />
+          <YAxis
+            tick={{ fill: "#71717a", fontSize: 11 }}
+            axisLine={false}
+            tickLine={false}
+            width={40}
+          />
+          <Tooltip contentStyle={tooltipStyle} />
+          <Legend wrapperStyle={{ fontSize: 12 }} />
+          <Bar
+            dataKey="clicks"
+            name="Tıklama"
+            fill="#34a853"
+            radius={[4, 4, 0, 0]}
+          />
+          <Bar
+            dataKey="impressions"
+            name="Gösterim"
+            fill="#fbbc04"
+            radius={[4, 4, 0, 0]}
+          />
+        </BarChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}

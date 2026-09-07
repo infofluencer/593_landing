@@ -18,6 +18,27 @@ export type GtmAccountContainer = {
 
 type GraphErr = { error?: { message?: string; status?: string } };
 
+const globalGtm = globalThis as unknown as {
+  __gtmPathCache?: Map<string, { value: GtmAccountContainer; expires: number }>;
+};
+
+function pathCache(): Map<
+  string,
+  { value: GtmAccountContainer; expires: number }
+> {
+  if (!globalGtm.__gtmPathCache) globalGtm.__gtmPathCache = new Map();
+  return globalGtm.__gtmPathCache;
+}
+
+const CACHE_TTL_MS = 6 * 60 * 60 * 1000; // 6 saat
+
+function quotaHint(message: string): string {
+  if (/quota exceeded|Queries per minute/i.test(message)) {
+    return `${message} — 1–2 dk bekleyip yenileyin; bir sonraki sync numeric path’i DB’ye yazar ve kota düşer.`;
+  }
+  return message;
+}
+
 async function readGtmJson<T extends GraphErr>(
   res: Response,
   label: string,
@@ -29,7 +50,9 @@ async function readGtmJson<T extends GraphErr>(
   }
   if (trimmed.startsWith("<!") || trimmed.startsWith("<html")) {
     throw new Error(
-      `GTM ${label}: HTML döndü (HTTP ${res.status}) — Tag Manager API kapalı olabilir veya endpoint hatalı. Cloud → Library → Tag Manager API Enable.`,
+      quotaHint(
+        `GTM ${label}: HTML döndü (HTTP ${res.status}) — Tag Manager API kapalı olabilir veya endpoint hatalı.`,
+      ),
     );
   }
   try {
@@ -44,7 +67,7 @@ async function readGtmJson<T extends GraphErr>(
 /**
  * Resolve Tag Manager numeric path from either:
  * - "accountId/containerId"
- * - "GTM-XXXX" (lists accounts the OAuth user can see)
+ * - "GTM-XXXX" (lists accounts the OAuth user can see) — cached
  */
 export async function resolveGtmAccountContainer(
   ref: string,
@@ -67,6 +90,11 @@ export async function resolveGtmAccountContainer(
   }
 
   const want = trimmed.toUpperCase();
+  const cached = pathCache().get(want);
+  if (cached && cached.expires > Date.now()) {
+    return cached.value;
+  }
+
   const accessToken = await getGoogleAccessToken();
   const accountsRes = await fetch(
     "https://tagmanager.googleapis.com/tagmanager/v2/accounts",
@@ -77,7 +105,9 @@ export async function resolveGtmAccountContainer(
   } & GraphErr>(accountsRes, "accounts");
   if (!accountsRes.ok) {
     throw new Error(
-      accountsJson.error?.message || `GTM accounts ${accountsRes.status}`,
+      quotaHint(
+        accountsJson.error?.message || `GTM accounts ${accountsRes.status}`,
+      ),
     );
   }
 
@@ -88,7 +118,17 @@ export async function resolveGtmAccountContainer(
       `https://tagmanager.googleapis.com/tagmanager/v2/accounts/${accountId}/containers`,
       { headers: { Authorization: `Bearer ${accessToken}` } },
     );
-    if (!containersRes.ok) continue;
+    if (!containersRes.ok) {
+      const errBody = await containersRes.text();
+      if (/quota exceeded/i.test(errBody)) {
+        throw new Error(
+          quotaHint(
+            `Quota exceeded for tagmanager.googleapis.com (HTTP ${containersRes.status})`,
+          ),
+        );
+      }
+      continue;
+    }
     let containersJson: {
       container?: Array<{
         containerId?: string;
@@ -97,19 +137,29 @@ export async function resolveGtmAccountContainer(
       }>;
     } & GraphErr;
     try {
-      containersJson = await readGtmJson(containersRes, `containers/${accountId}`);
-    } catch {
+      containersJson = await readGtmJson(
+        containersRes,
+        `containers/${accountId}`,
+      );
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (/quota exceeded/i.test(msg)) throw err;
       continue;
     }
 
     for (const c of containersJson.container ?? []) {
       if ((c.publicId || "").toUpperCase() === want && c.containerId) {
-        return {
+        const value: GtmAccountContainer = {
           accountId,
           containerId: c.containerId,
           publicId: c.publicId || want,
           name: c.name || "",
         };
+        pathCache().set(want, {
+          value,
+          expires: Date.now() + CACHE_TTL_MS,
+        });
+        return value;
       }
     }
   }
@@ -131,12 +181,8 @@ export async function fetchGtmSnapshot(opts: {
   const base = `https://tagmanager.googleapis.com/tagmanager/v2/accounts/${opts.accountId}/containers/${opts.containerId}`;
   const headers = { Authorization: `Bearer ${accessToken}` };
 
-  const [containerRes, liveRes, workspacesRes] = await Promise.all([
-    fetch(base, { headers }),
-    fetch(`${base}/versions:live`, { headers }),
-    fetch(`${base}/workspaces`, { headers }),
-  ]);
-
+  // Sıralı çağrı — paralel burst kotayı kolay aşıyor.
+  const containerRes = await fetch(base, { headers });
   const container = await readGtmJson<{
     name?: string;
     publicId?: string;
@@ -144,11 +190,14 @@ export async function fetchGtmSnapshot(opts: {
   } & GraphErr>(containerRes, "container");
   if (!containerRes.ok) {
     throw new Error(
-      container.error?.message || `GTM container ${containerRes.status}`,
+      quotaHint(
+        container.error?.message || `GTM container ${containerRes.status}`,
+      ),
     );
   }
 
   let liveVersion: GtmSnapshot["liveVersion"];
+  const liveRes = await fetch(`${base}/versions:live`, { headers });
   if (liveRes.ok) {
     const live = await readGtmJson<{
       name?: string;
@@ -159,12 +208,12 @@ export async function fetchGtmSnapshot(opts: {
       versionId: live.containerVersionId,
     };
   } else {
-    // Live yoksa (hiç publish edilmemiş) — fatal değil
     liveVersion = undefined;
   }
 
   let workspaceHasChanges = false;
   let tags: GtmSnapshot["tags"] = [];
+  const workspacesRes = await fetch(`${base}/workspaces`, { headers });
   if (workspacesRes.ok) {
     const workspaces = await readGtmJson<{
       workspace?: Array<{ workspaceId?: string; name?: string }>;
@@ -205,4 +254,17 @@ export async function fetchGtmSnapshotByRef(ref: string): Promise<GtmSnapshot> {
     accountId: path.accountId,
     containerId: path.containerId,
   });
+}
+
+/** Resolve + snapshot; numeric path’i caller DB’ye yazabilsin diye path döner. */
+export async function fetchGtmSnapshotResolved(ref: string): Promise<{
+  snapshot: GtmSnapshot;
+  path: GtmAccountContainer;
+}> {
+  const path = await resolveGtmAccountContainer(ref);
+  const snapshot = await fetchGtmSnapshot({
+    accountId: path.accountId,
+    containerId: path.containerId,
+  });
+  return { snapshot, path };
 }

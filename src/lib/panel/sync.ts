@@ -5,7 +5,7 @@ import {
   fetchGoogleAdsConversionActions,
 } from "@/lib/integrations/google/ads";
 import { fetchGa4Snapshot } from "@/lib/integrations/google/ga4";
-import { fetchGtmSnapshotByRef } from "@/lib/integrations/google/gtm";
+import { fetchGtmSnapshotResolved } from "@/lib/integrations/google/gtm";
 import { fetchSearchConsoleQuery } from "@/lib/integrations/google/gsc";
 import { fetchMerchantProductIssues } from "@/lib/integrations/google/merchant";
 import { fetchMetaCampaignInsights } from "@/lib/integrations/meta/insights";
@@ -20,7 +20,7 @@ import {
 import { evaluateTenantAlerts } from "@/lib/panel/alerts-engine";
 import { resolveAdsCustomerId } from "@/lib/panel/google-ads-customer-map";
 import { resolveGa4PropertyId } from "@/lib/panel/ga4-property-map";
-import { resolveGtmPublicId } from "@/lib/panel/gtm-container-map";
+import { resolveGtmApiRef } from "@/lib/panel/gtm-container-map";
 import { syncLookbackRange } from "@/lib/panel/period";
 import { runSynced } from "@/lib/panel/sync-job";
 import { verifyTenantSite } from "@/lib/panel/verify-tenant-site";
@@ -514,10 +514,7 @@ export async function runAgencySync(opts?: {
       }
 
       // --- GTM ---
-      const gtmRef =
-        resolveGtmPublicId(tenant) ||
-        mapping?.gtmContainerId?.trim() ||
-        null;
+      const gtmRef = resolveGtmApiRef(tenant);
       if (!gtmRef) {
         await runSynced(
           {
@@ -539,7 +536,22 @@ export async function runAgencySync(opts?: {
             service: "gtm",
             objective: "config",
           },
-          () => fetchGtmSnapshotByRef(gtmRef),
+          async () => {
+            const { snapshot, path } = await fetchGtmSnapshotResolved(gtmRef);
+            // Public ID tarama kotasını kesmek için numeric path’i DB’ye yaz.
+            const numeric = `${path.accountId}/${path.containerId}`;
+            if (tenant.mapping?.gtmContainerId !== numeric) {
+              await prisma.tenantMapping.upsert({
+                where: { tenantId: tenant.id },
+                update: { gtmContainerId: numeric },
+                create: {
+                  tenantId: tenant.id,
+                  gtmContainerId: numeric,
+                },
+              });
+            }
+            return snapshot.tags.length;
+          },
         );
         services.gtm = gtm.ok ? { ok: true } : { ok: false, error: gtm.error };
       }
