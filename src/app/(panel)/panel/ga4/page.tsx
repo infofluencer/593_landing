@@ -1,9 +1,15 @@
+import { Suspense } from "react";
 import { headers } from "next/headers";
+import PeriodFilterBar from "@/components/panel/PeriodFilterBar";
 import { StatusBadge } from "@/components/panel/StatusBadge";
 import { PanelStat, PanelTable } from "@/components/panel/ui";
 import { requireBundle } from "@/lib/panel/data";
 import { resolveGa4PropertyId } from "@/lib/panel/ga4-property-map";
+import { resolvePanelDateRange } from "@/lib/panel/period";
+import { fetchGa4Snapshot } from "@/lib/integrations/google/ga4";
+import { useMockPanelData } from "@/lib/integrations/tokens";
 import { formatNumber, formatTry } from "@/lib/panel/format";
+import type { MockGa4Overview, MockGa4Row } from "@/lib/panel/mock-data";
 
 function formatDuration(sec: number) {
   const m = Math.floor(sec / 60);
@@ -11,22 +17,99 @@ function formatDuration(sec: number) {
   return `${m}:${String(s).padStart(2, "0")}`;
 }
 
-export default async function Ga4Page() {
+export default async function Ga4Page({
+  searchParams,
+}: {
+  searchParams: Promise<{ period?: string; start?: string; end?: string }>;
+}) {
   const h = await headers();
   const slug = h.get("x-tenant-slug")!;
-  const bundle = await requireBundle(slug);
-  const { ga4, ga4Channels, ga4Landings, tenant, health, syncJobs } = bundle;
+  const sp = await searchParams;
+  const range = await resolvePanelDateRange(sp);
+  const bundle = await requireBundle(slug, {
+    from: range.startDate,
+    to: range.endDate,
+  });
+  const { tenant, health, syncJobs } = bundle;
   const ecommerce = tenant.type === "ecommerce";
   const ga4Job = syncJobs.find((j) => j.service === "ga4");
   const ga4Property =
     resolveGa4PropertyId(tenant) || tenant.mapping.ga4PropertyId;
-  const hasGa4Data =
-    ga4.totalUsers > 0 ||
-    ga4.sessions > 0 ||
-    ga4Channels.length > 0 ||
-    ga4Landings.length > 0 ||
-    ga4Job?.status === "success";
-  const unknown = !hasGa4Data;
+
+  let ga4: MockGa4Overview = bundle.ga4;
+  let ga4Channels: MockGa4Row[] = bundle.ga4Channels;
+  let ga4Landings: MockGa4Row[] = bundle.ga4Landings;
+  let liveError: string | null = null;
+  let mode: "mock" | "live" | "db" | "empty" = useMockPanelData()
+    ? "mock"
+    : "empty";
+
+  if (!useMockPanelData() && ga4Property) {
+    try {
+      const snap = await fetchGa4Snapshot({
+        propertyId: ga4Property,
+        from: range.startDate,
+        to: range.endDate,
+        ecommerce,
+      });
+      ga4 = {
+        totalUsers: snap.overview.totalUsers,
+        sessions: snap.overview.sessions,
+        averageSessionDuration: snap.overview.averageSessionDuration,
+        bounceRate: snap.overview.bounceRate,
+        screenPageViewsPerSession: snap.overview.screenPageViewsPerSession,
+        sessionConversionRate: snap.overview.sessionConversionRate,
+        purchaseRevenue: snap.overview.purchaseRevenue,
+        transactions: snap.overview.transactions,
+      };
+      ga4Channels = snap.channels.map((r) => ({
+        dimension: r.dimension,
+        sessions: r.sessions,
+        users: r.users,
+        conversions: r.conversions,
+      }));
+      ga4Landings = snap.landings.map((r) => ({
+        dimension: r.dimension,
+        sessions: r.sessions,
+        users: r.users,
+        conversions: r.conversions,
+      }));
+      mode = "live";
+    } catch (err) {
+      liveError = err instanceof Error ? err.message : String(err);
+      const hasDb =
+        bundle.ga4.sessions > 0 ||
+        bundle.ga4Channels.length > 0 ||
+        bundle.ga4Landings.length > 0;
+      if (hasDb) {
+        ga4 = bundle.ga4;
+        ga4Channels = bundle.ga4Channels;
+        ga4Landings = bundle.ga4Landings;
+        mode = "db";
+      } else {
+        ga4 = {
+          totalUsers: 0,
+          sessions: 0,
+          averageSessionDuration: 0,
+          bounceRate: 0,
+          screenPageViewsPerSession: 0,
+          sessionConversionRate: 0,
+          purchaseRevenue: null,
+          transactions: null,
+        };
+        ga4Channels = [];
+        ga4Landings = [];
+        mode = "empty";
+      }
+    }
+  } else if (!useMockPanelData() && !ga4Property) {
+    liveError = "GA4 property eşleşmemiş (map / Ayarlar)";
+    mode = "empty";
+  } else if (useMockPanelData()) {
+    mode = "mock";
+  }
+
+  const unknown = mode === "empty";
 
   return (
     <div className="space-y-6">
@@ -41,13 +124,15 @@ export default async function Ga4Page() {
           <p className="mt-1 text-sm text-zinc-500">
             Kullanıcı · oturum · kanal · açılış sayfası
             {ga4Property ? ` · ${ga4Property}` : " · property eşleşmemiş"}
+            {" · "}
+            {range.label}
           </p>
         </div>
         <StatusBadge
           status={
             unknown
               ? "unknown"
-              : ga4Job?.status === "error"
+              : liveError || ga4Job?.status === "error"
                 ? "warn"
                 : health === "unknown"
                   ? "ok"
@@ -56,7 +141,32 @@ export default async function Ga4Page() {
         />
       </div>
 
-      {unknown ? (
+      <Suspense fallback={null}>
+        <PeriodFilterBar label={range.label} />
+      </Suspense>
+
+      {liveError ? (
+        <div className="rounded-lg border border-zinc-200 bg-zinc-100 px-4 py-3 text-sm text-zinc-700">
+          {mode === "db" ? (
+            <>
+              Canlı GA4 çekilemedi — son sync verisi gösteriliyor (seçilen
+              dönemle birebir olmayabilir).
+              <span className="mt-1 block text-xs text-zinc-500">
+                {liveError}
+              </span>
+            </>
+          ) : (
+            <>
+              GA4 verisi alınamadı.
+              <span className="mt-1 block text-xs text-zinc-500">
+                {liveError}
+              </span>
+            </>
+          )}
+        </div>
+      ) : null}
+
+      {unknown && !liveError ? (
         <div className="rounded-lg border border-zinc-200 bg-zinc-100 px-4 py-3 text-sm text-zinc-700">
           GA4 verisi alınamadı. Metrikler 0 olarak yazılmadı — durum: Kontrol
           edilemedi.
@@ -66,7 +176,9 @@ export default async function Ga4Page() {
             </span>
           ) : null}
         </div>
-      ) : (
+      ) : null}
+
+      {!unknown ? (
         <>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             <PanelStat
@@ -158,7 +270,7 @@ export default async function Ga4Page() {
             </div>
           </div>
         </>
-      )}
+      ) : null}
     </div>
   );
 }
