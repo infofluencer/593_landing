@@ -58,11 +58,12 @@ export async function getGoogleAccessToken(): Promise<string> {
     return cached.accessToken;
   }
 
-  const clientId = process.env.GOOGLE_CLIENT_ID?.trim();
-  const clientSecret = process.env.GOOGLE_CLIENT_SECRET?.trim();
+  const clientId = cleanEnvSecret(process.env.GOOGLE_CLIENT_ID);
+  const clientSecret = cleanEnvSecret(process.env.GOOGLE_CLIENT_SECRET);
   const refreshToken =
-    resolveSecretRef(SECRET_REFS.googleRefreshToken) ||
-    process.env.GOOGLE_REFRESH_TOKEN?.trim();
+    cleanEnvSecret(
+      resolveSecretRef(SECRET_REFS.googleRefreshToken) ?? undefined,
+    ) || cleanEnvSecret(process.env.GOOGLE_REFRESH_TOKEN);
 
   if (!clientId || !clientSecret || !refreshToken) {
     throw new IntegrationNotConfiguredError(
@@ -102,8 +103,20 @@ export async function getGoogleAccessToken(): Promise<string> {
   return json.access_token;
 }
 
+/** Strip accidental quotes / whitespace from Dokploy-pasted secrets. */
+function cleanEnvSecret(raw: string | undefined): string {
+  let v = (raw ?? "").trim();
+  if (
+    (v.startsWith('"') && v.endsWith('"')) ||
+    (v.startsWith("'") && v.endsWith("'"))
+  ) {
+    v = v.slice(1, -1).trim();
+  }
+  return v;
+}
+
 export function getGoogleAdsDeveloperToken(): string {
-  const token = process.env.GOOGLE_ADS_DEVELOPER_TOKEN?.trim();
+  const token = cleanEnvSecret(process.env.GOOGLE_ADS_DEVELOPER_TOKEN);
   if (!token) {
     throw new IntegrationNotConfiguredError(
       "GOOGLE_ADS_DEVELOPER_TOKEN tanımlı değil.",
@@ -113,7 +126,10 @@ export function getGoogleAdsDeveloperToken(): string {
 }
 
 export function getGoogleAdsLoginCustomerId(): string {
-  const id = process.env.GOOGLE_ADS_LOGIN_CUSTOMER_ID?.trim()?.replace(/-/g, "");
+  const id = cleanEnvSecret(process.env.GOOGLE_ADS_LOGIN_CUSTOMER_ID).replace(
+    /-/g,
+    "",
+  );
   if (!id) {
     throw new IntegrationNotConfiguredError(
       "GOOGLE_ADS_LOGIN_CUSTOMER_ID (MCC) tanımlı değil.",
