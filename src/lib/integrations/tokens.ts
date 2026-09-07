@@ -11,7 +11,7 @@ export function getMetaSystemUserToken(): string {
   const token =
     resolveSecretRef(SECRET_REFS.metaSystemUser) ||
     process.env.META_SYSTEM_USER_TOKEN?.trim();
-  if (!token) {
+  if (!token || isPlaceholderSecret(token)) {
     throw new IntegrationNotConfiguredError(
       "Meta system user token yok (META_SYSTEM_USER_TOKEN).",
     );
@@ -19,10 +19,23 @@ export function getMetaSystemUserToken(): string {
   return token;
 }
 
+/** BM ID’leri rakamlardan oluşur; env placeholder’ları (META_BM_ID_BURAYA vb.) sayılmaz. */
+function isPlaceholderSecret(value: string): boolean {
+  const v = value.trim();
+  if (!v) return true;
+  return /buraya|change.?me|placeholder|your[_-]?|xxxx+|todo|fixi|example/i.test(
+    v,
+  );
+}
+
 export function getMetaBusinessId(): string {
   const id = process.env.META_BUSINESS_ID?.trim();
-  if (!id) {
-    throw new IntegrationNotConfiguredError("META_BUSINESS_ID tanımlı değil.");
+  if (!id || isPlaceholderSecret(id) || !/^\d+$/.test(id)) {
+    throw new IntegrationNotConfiguredError(
+      !id
+        ? "META_BUSINESS_ID tanımlı değil."
+        : "META_BUSINESS_ID henüz gerçek BM ID değil (Meta kurulumu eksik).",
+    );
   }
   return id;
 }

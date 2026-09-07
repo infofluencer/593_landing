@@ -3,7 +3,10 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { StatusBadge } from "@/components/panel/StatusBadge";
-import SyncButton from "@/components/panel/SyncButton";
+import {
+  BulkSyncToolbar,
+  TenantSyncActions,
+} from "@/components/panel/SyncButton";
 import { PanelTable } from "@/components/panel/ui";
 import { getAgencyOverview } from "@/lib/panel/data";
 import { formatDateTime, formatNumber, formatTry } from "@/lib/panel/format";
@@ -44,13 +47,13 @@ export default async function BrandsPage() {
             Ajans — marka listesi
           </h2>
           <p className="mt-1 text-sm text-zinc-500">
-            Veri sync buradan çalışır. Marka panelleri yalnızca o markanın
-            hesabıyla açılır (
+            Meta ve Google ayrı çekilir — üstten toplu, satırdan firma özel.
+            Marka panelleri yalnızca o markanın hesabıyla açılır (
             <code className="text-zinc-400">marka.{root}</code>
             ).
           </p>
         </div>
-        <SyncButton />
+        <BulkSyncToolbar />
       </div>
 
       <PanelTable
@@ -62,6 +65,7 @@ export default async function BrandsPage() {
           "Harcama",
           "Dönüşüm",
           "Son kontrol",
+          "Veri çek",
           "",
         ]}
       >
@@ -104,6 +108,9 @@ export default async function BrandsPage() {
               </td>
               <td className="px-3 py-3 text-xs text-zinc-500">
                 {formatDateTime(row.lastCheckAt)}
+              </td>
+              <td className="px-3 py-3">
+                <TenantSyncActions tenantSlug={row.tenant.slug} />
               </td>
               <td className="px-3 py-3 text-right">
                 <Link

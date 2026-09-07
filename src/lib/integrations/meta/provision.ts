@@ -95,14 +95,18 @@ export async function provisionTenantsFromMeta(): Promise<ProvisionResult> {
 
     return { upserted: results.length, accounts: results, skipped: false };
   } catch (err) {
-    if (err instanceof IntegrationNotConfiguredError) {
-      return {
-        upserted: 0,
-        accounts: [],
-        skipped: true,
-        reason: err.message,
-      };
-    }
-    throw err;
+    // Meta kurulumu yok / yarım / Graph hatası — ajans sync'ini (Google vb.) engelleme.
+    const reason =
+      err instanceof IntegrationNotConfiguredError
+        ? err.message
+        : err instanceof Error
+          ? err.message
+          : String(err);
+    return {
+      upserted: 0,
+      accounts: [],
+      skipped: true,
+      reason,
+    };
   }
 }
