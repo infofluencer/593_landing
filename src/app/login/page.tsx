@@ -82,6 +82,13 @@ export default async function LoginPage({
                   </>
                 )}
               </p>
+              {isStaffHost ? (
+                <ol className="mb-4 space-y-0.5 rounded-md border border-zinc-100 bg-zinc-50 px-3 py-2 text-[11px] leading-snug text-zinc-500">
+                  <li>Meta BM hesabı → Markalar → Yeni marka</li>
+                  <li>Google ID’ler + müşteri hesabı</li>
+                  <li>Meta / Google çek → slug.{root} kontrol</li>
+                </ol>
+              ) : null}
               <LoginForm callbackUrl={callbackUrl} />
             </div>
           ) : (

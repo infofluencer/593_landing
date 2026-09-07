@@ -1,10 +1,10 @@
 /**
  * Agency Google Ads customer IDs under MCC (GOOGLE_ADS_LOGIN_CUSTOMER_ID).
- * Source of truth for Ads sync — not the panel Ayarlar form.
+ * Fallback map when TenantMapping.adsCustomerId boş.
+ * Panel Ayarlar / Yeni marka sihirbazı DB’ye yazar (öncelikli).
  *
- * Add/edit here when a brand is linked under the MCC, then run:
+ * Bulk seed:
  *   npx tsx scripts/apply-google-ads-map.ts
- * (or prisma db seed)
  */
 export const GOOGLE_ADS_CUSTOMER_BY_SLUG: Record<string, string> = {
   mareen: "9557333129",
@@ -69,18 +69,19 @@ export function resolveAdsCustomerId(tenant: {
   name: string;
   mapping?: { adsCustomerId?: string | null } | null;
 }): string | null {
+  const fromDb = tenant.mapping?.adsCustomerId?.trim();
+  if (fromDb) return fromDb.replace(/-/g, "");
+
   const bySlug = GOOGLE_ADS_CUSTOMER_BY_SLUG[tenant.slug];
   if (bySlug) return bySlug.replace(/-/g, "");
 
   const byName = GOOGLE_ADS_CUSTOMER_BY_NAME[norm(tenant.name)];
   if (byName) return byName.replace(/-/g, "");
 
-  // partial name contains map key
   const n = norm(tenant.name);
   for (const [key, id] of Object.entries(GOOGLE_ADS_CUSTOMER_BY_NAME)) {
     if (n.includes(key) || key.includes(n)) return id.replace(/-/g, "");
   }
 
-  const fromDb = tenant.mapping?.adsCustomerId?.trim();
-  return fromDb ? fromDb.replace(/-/g, "") : null;
+  return null;
 }

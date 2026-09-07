@@ -1,12 +1,9 @@
 /**
  * Agency GTM web container public IDs (GTM-XXXX).
- * Source of truth for panel — Ayarlar formundan önce burası.
+ * Fallback when TenantMapping.gtmContainerId boş / numeric değil.
+ * Panel Ayarlar DB’ye yazar; sync numeric path’i DB’de saklar.
  *
- * Sync: public ID → Tag Manager API ile accountId/containerId çözülür.
- * Site verify: public ID doğrudan kullanılır.
- *
- * Add/edit here, then optionally:
- *   npm run db:apply-gtm-map
+ * Bulk seed: npm run db:apply-gtm-map
  */
 export const GTM_PUBLIC_ID_BY_SLUG: Record<string, string> = {
   // Ajans sitesi (tenant olmayabilir)
@@ -87,14 +84,17 @@ function normalizePublicId(id: string): string {
 }
 
 /**
- * Resolve web GTM public ID: code map → DB mapping (if GTM-*) → null.
- * Numeric account/container paths in DB are ignored here (handled by sync resolver).
+ * Resolve web GTM public ID for site verify / display.
+ * DB’de GTM-* varsa o; değilse kod map. Numeric path public ID vermez.
  */
 export function resolveGtmPublicId(tenant: {
   slug: string;
   name: string;
   mapping?: { gtmContainerId?: string | null } | null;
 }): string | null {
+  const fromDb = tenant.mapping?.gtmContainerId?.trim();
+  if (fromDb && /^GTM-/i.test(fromDb)) return normalizePublicId(fromDb);
+
   const bySlug = GTM_PUBLIC_ID_BY_SLUG[tenant.slug];
   if (bySlug) return normalizePublicId(bySlug);
 
@@ -106,8 +106,6 @@ export function resolveGtmPublicId(tenant: {
     if (n.includes(key) || key.includes(n)) return normalizePublicId(id);
   }
 
-  const fromDb = tenant.mapping?.gtmContainerId?.trim();
-  if (fromDb && /^GTM-/i.test(fromDb)) return normalizePublicId(fromDb);
   return null;
 }
 
@@ -117,8 +115,10 @@ export function isGtmNumericPath(value: string | null | undefined): boolean {
 }
 
 /**
- * API çağrıları için ref: önce DB’deki accountId/containerId (kota tasarrufu),
- * yoksa public GTM-XXXX (bir kez resolve edilip DB’ye yazılmalı).
+ * API çağrıları için ref:
+ * 1) DB numeric accountId/containerId (kota)
+ * 2) DB GTM-XXXX
+ * 3) kod map public ID
  */
 export function resolveGtmApiRef(tenant: {
   slug: string;
@@ -127,5 +127,6 @@ export function resolveGtmApiRef(tenant: {
 }): string | null {
   const db = tenant.mapping?.gtmContainerId?.trim() || null;
   if (isGtmNumericPath(db)) return db;
-  return resolveGtmPublicId(tenant) || db;
+  if (db && /^GTM-/i.test(db)) return normalizePublicId(db);
+  return resolveGtmPublicId(tenant);
 }

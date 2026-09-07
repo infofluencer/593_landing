@@ -33,7 +33,11 @@ function pathCache(): Map<
 const CACHE_TTL_MS = 6 * 60 * 60 * 1000; // 6 saat
 
 function quotaHint(message: string): string {
-  if (/quota exceeded|Queries per minute/i.test(message)) {
+  if (
+    /quota exceeded|Queries per minute|rateLimitExceeded|Too Many Requests|\b429\b/i.test(
+      message,
+    )
+  ) {
     return `${message} — 1–2 dk bekleyip yenileyin; bir sonraki sync numeric path’i DB’ye yazar ve kota düşer.`;
   }
   return message;
