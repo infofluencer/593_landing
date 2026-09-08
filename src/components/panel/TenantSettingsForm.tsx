@@ -5,6 +5,9 @@ import { useRouter } from "next/navigation";
 import type { TenantType } from "@prisma/client";
 
 export type TenantSettingsInitial = {
+  name: string;
+  slug: string;
+  metaAccountId: string;
   type: TenantType;
   website: string;
   monthlyBudget: string;
@@ -22,20 +25,29 @@ export type TenantSettingsInitial = {
     convDropoutDays: string;
     minSpendForAlert: string;
   };
+  clientUsers: Array<{ email: string; name: string | null }>;
 };
 
 export default function TenantSettingsForm({
   initial,
   tenantSlug,
+  rootDomain,
 }: {
   initial: TenantSettingsInitial;
   /** Required on staff host (admin.*) where there is no x-tenant-slug. */
   tenantSlug: string;
+  rootDomain: string;
 }) {
   const router = useRouter();
   const [form, setForm] = useState(initial);
   const [pending, setPending] = useState(false);
+  const [clientPending, setClientPending] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [clientForm, setClientForm] = useState({
+    email: initial.clientUsers[0]?.email ?? "",
+    name: initial.clientUsers[0]?.name ?? "",
+    password: "",
+  });
 
   function setField<K extends keyof TenantSettingsInitial>(
     key: K,
@@ -54,6 +66,9 @@ export default function TenantSettingsForm({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           tenantSlug,
+          name: form.name.trim(),
+          slug: form.slug.trim().toLowerCase(),
+          metaAccountId: form.metaAccountId.trim() || null,
           type: form.type,
           website: form.website || null,
           monthlyBudget: form.monthlyBudget
@@ -75,11 +90,23 @@ export default function TenantSettingsForm({
           },
         }),
       });
-      const json = (await res.json()) as { ok?: boolean; error?: string };
+      const json = (await res.json()) as {
+        ok?: boolean;
+        error?: string;
+        slugChanged?: boolean;
+        slug?: string;
+      };
       if (!res.ok) {
         setMessage(json.error || "Kayıt başarısız");
       } else {
-        setMessage("Kaydedildi");
+        setMessage(
+          json.slugChanged
+            ? `Kaydedildi — slug değişti. Panel: ${json.slug}.${rootDomain}`
+            : "Kaydedildi",
+        );
+        if (json.slugChanged && json.slug) {
+          router.replace(`/settings?tenant=${encodeURIComponent(json.slug)}`);
+        }
         router.refresh();
       }
     } catch (err) {
@@ -89,197 +116,336 @@ export default function TenantSettingsForm({
     }
   }
 
+  async function onSaveClient(e: React.FormEvent) {
+    e.preventDefault();
+    setClientPending(true);
+    setMessage(null);
+    try {
+      const res = await fetch(
+        `/api/panel/tenants/${encodeURIComponent(tenantSlug)}/client-user`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            email: clientForm.email.trim(),
+            password: clientForm.password,
+            name: clientForm.name.trim() || null,
+          }),
+        },
+      );
+      const json = (await res.json()) as { ok?: boolean; error?: string };
+      if (!res.ok) {
+        setMessage(json.error || "Müşteri kaydı başarısız");
+      } else {
+        setMessage("Müşteri hesabı kaydedildi");
+        setClientForm((f) => ({ ...f, password: "" }));
+        router.refresh();
+      }
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "Network error");
+    } finally {
+      setClientPending(false);
+    }
+  }
+
+  const panelHint = `${form.slug.trim() || tenantSlug}.${rootDomain}`;
+
   return (
-    <form onSubmit={onSubmit} className="space-y-8">
-      <section className="space-y-4">
-        <h3 className="text-sm font-semibold text-zinc-800">Marka</h3>
-        <div className="grid gap-3 sm:grid-cols-2">
-          <Field label="Tip (KPI modeli)">
-            <select
-              className={inputClass}
-              value={form.type}
-              onChange={(e) =>
-                setField("type", e.target.value as TenantType)
-              }
-            >
-              <option value="ecommerce">E-ticaret (ROAS / satış)</option>
-              <option value="lead">Lead / form (CPL)</option>
-            </select>
-          </Field>
-          <Field label="Website (Playwright test URL)">
-            <input
-              className={inputClass}
-              value={form.website}
-              onChange={(e) => setField("website", e.target.value)}
-              placeholder="https://ornek.com"
-            />
-          </Field>
-          <Field label="Aylık bütçe (TRY)">
-            <input
-              className={inputClass}
-              type="number"
-              min={0}
-              step={1}
-              value={form.monthlyBudget}
-              onChange={(e) => setField("monthlyBudget", e.target.value)}
-            />
-          </Field>
-          <Field label="Para birimi">
-            <input
-              className={inputClass}
-              value={form.currency}
-              onChange={(e) => setField("currency", e.target.value)}
-            />
-          </Field>
-          <Field label="Timezone">
-            <input
-              className={inputClass}
-              value={form.timezone}
-              onChange={(e) => setField("timezone", e.target.value)}
-            />
-          </Field>
-        </div>
-      </section>
+    <div className="space-y-8">
+      <form onSubmit={onSubmit} className="space-y-8">
+        <section className="space-y-4">
+          <h3 className="text-sm font-semibold text-zinc-800">Kimlik</h3>
+          <p className="text-xs text-zinc-500">
+            Panel adresi:{" "}
+            <code className="text-zinc-600">{panelHint}</code>
+            {" — "}
+            slug değişince Dokploy / DNS’i de güncelle.
+          </p>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label="Marka adı">
+              <input
+                className={inputClass}
+                value={form.name}
+                onChange={(e) => setField("name", e.target.value)}
+                required
+              />
+            </Field>
+            <Field label="Slug (subdomain)">
+              <input
+                className={inputClass}
+                value={form.slug}
+                onChange={(e) =>
+                  setField(
+                    "slug",
+                    e.target.value
+                      .toLowerCase()
+                      .replace(/[^a-z0-9-]/g, ""),
+                  )
+                }
+                required
+              />
+            </Field>
+            <Field label="Meta account ID">
+              <input
+                className={inputClass}
+                value={form.metaAccountId}
+                onChange={(e) => setField("metaAccountId", e.target.value)}
+                placeholder="act_… — boşsa act_manual_{slug}"
+              />
+            </Field>
+            <Field label="Tip (KPI modeli)">
+              <select
+                className={inputClass}
+                value={form.type}
+                onChange={(e) =>
+                  setField("type", e.target.value as TenantType)
+                }
+              >
+                <option value="ecommerce">E-ticaret (ROAS / satış)</option>
+                <option value="lead">Lead / form (CPL)</option>
+              </select>
+            </Field>
+            <Field label="Website (Playwright test URL)">
+              <input
+                className={inputClass}
+                value={form.website}
+                onChange={(e) => setField("website", e.target.value)}
+                placeholder="https://ornek.com"
+              />
+            </Field>
+            <Field label="Aylık bütçe (TRY)">
+              <input
+                className={inputClass}
+                type="number"
+                min={0}
+                step={1}
+                value={form.monthlyBudget}
+                onChange={(e) => setField("monthlyBudget", e.target.value)}
+              />
+            </Field>
+            <Field label="Para birimi">
+              <input
+                className={inputClass}
+                value={form.currency}
+                onChange={(e) => setField("currency", e.target.value)}
+              />
+            </Field>
+            <Field label="Timezone">
+              <input
+                className={inputClass}
+                value={form.timezone}
+                onChange={(e) => setField("timezone", e.target.value)}
+              />
+            </Field>
+          </div>
+        </section>
 
-      <section className="space-y-4">
-        <h3 className="text-sm font-semibold text-zinc-800">
-          Google eşleştirmeleri
-        </h3>
+        <section className="space-y-4">
+          <h3 className="text-sm font-semibold text-zinc-800">
+            Google eşleştirmeleri
+          </h3>
+          <p className="text-xs text-zinc-500">
+            DB öncelikli; boşsa kod map yedek. Sihirbazdaki alanlarla aynı.
+          </p>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label="Google Ads customer ID">
+              <input
+                className={inputClass}
+                value={form.mapping.adsCustomerId}
+                onChange={(e) =>
+                  setField("mapping", {
+                    ...form.mapping,
+                    adsCustomerId: e.target.value,
+                  })
+                }
+                placeholder="123-456-7890"
+              />
+            </Field>
+            <Field label="GA4 property">
+              <input
+                className={inputClass}
+                value={form.mapping.ga4PropertyId}
+                onChange={(e) =>
+                  setField("mapping", {
+                    ...form.mapping,
+                    ga4PropertyId: e.target.value,
+                  })
+                }
+                placeholder="properties/123456"
+              />
+            </Field>
+            <Field label="GTM (GTM-XXXX veya accountId/containerId)">
+              <input
+                className={inputClass}
+                value={form.mapping.gtmContainerId}
+                onChange={(e) =>
+                  setField("mapping", {
+                    ...form.mapping,
+                    gtmContainerId: e.target.value,
+                  })
+                }
+                placeholder="GTM-NDHZKCHJ"
+              />
+            </Field>
+            <Field label="Search Console site URL">
+              <input
+                className={inputClass}
+                value={form.mapping.gscSiteUrl}
+                onChange={(e) =>
+                  setField("mapping", {
+                    ...form.mapping,
+                    gscSiteUrl: e.target.value,
+                  })
+                }
+                placeholder="https://ornek.com/"
+              />
+            </Field>
+            <Field label="Merchant ID (e-ticaret, sayısal)">
+              <input
+                className={inputClass}
+                value={form.mapping.merchantId}
+                onChange={(e) =>
+                  setField("mapping", {
+                    ...form.mapping,
+                    merchantId: e.target.value,
+                  })
+                }
+              />
+            </Field>
+          </div>
+        </section>
+
+        <section className="space-y-4">
+          <h3 className="text-sm font-semibold text-zinc-800">Uyarı eşikleri</h3>
+          <div className="grid gap-3 sm:grid-cols-3">
+            <Field label="Bütçe tempo uyarı %">
+              <input
+                className={inputClass}
+                type="number"
+                min={1}
+                max={200}
+                value={form.thresholds.budgetPaceWarnPct}
+                onChange={(e) =>
+                  setField("thresholds", {
+                    ...form.thresholds,
+                    budgetPaceWarnPct: e.target.value,
+                  })
+                }
+              />
+            </Field>
+            <Field label="Dönüşüm kesintisi (gün)">
+              <input
+                className={inputClass}
+                type="number"
+                min={1}
+                max={31}
+                value={form.thresholds.convDropoutDays}
+                onChange={(e) =>
+                  setField("thresholds", {
+                    ...form.thresholds,
+                    convDropoutDays: e.target.value,
+                  })
+                }
+              />
+            </Field>
+            <Field label="Min harcama (uyarı için)">
+              <input
+                className={inputClass}
+                type="number"
+                min={0}
+                value={form.thresholds.minSpendForAlert}
+                onChange={(e) =>
+                  setField("thresholds", {
+                    ...form.thresholds,
+                    minSpendForAlert: e.target.value,
+                  })
+                }
+              />
+            </Field>
+          </div>
+        </section>
+
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            type="submit"
+            disabled={pending}
+            className="rounded-md bg-[#e91825] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#c91420] disabled:opacity-50"
+          >
+            {pending ? "Kaydediliyor…" : "Kaydet"}
+          </button>
+          {message ? (
+            <p className="text-xs text-zinc-500">{message}</p>
+          ) : null}
+        </div>
+      </form>
+
+      <form
+        onSubmit={onSaveClient}
+        className="space-y-4 border-t border-zinc-100 pt-8"
+      >
+        <h3 className="text-sm font-semibold text-zinc-800">Müşteri hesabı</h3>
         <p className="text-xs text-zinc-500">
-          Meta hesap kaynağıdır; Google alanları eşleştirmedir. Boş = eksik
-          bağlantı uyarısı.
+          Marka subdomain girişi. Şifre en az 8 karakter; mevcut e-posta
+          güncellenir / membership bağlanır.
         </p>
+        {initial.clientUsers.length > 0 ? (
+          <ul className="text-xs text-zinc-500">
+            {initial.clientUsers.map((u) => (
+              <li key={u.email}>
+                Kayıtlı:{" "}
+                <span className="font-medium text-zinc-700">{u.email}</span>
+                {u.name ? ` (${u.name})` : ""}
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="text-xs text-amber-700">Henüz müşteri membership yok.</p>
+        )}
         <div className="grid gap-3 sm:grid-cols-2">
-          <Field label="Google Ads customer ID">
+          <Field label="Müşteri adı">
             <input
               className={inputClass}
-              value={form.mapping.adsCustomerId}
+              value={clientForm.name}
               onChange={(e) =>
-                setField("mapping", {
-                  ...form.mapping,
-                  adsCustomerId: e.target.value,
-                })
+                setClientForm((f) => ({ ...f, name: e.target.value }))
               }
-              placeholder="123-456-7890"
             />
           </Field>
-          <Field label="GA4 property">
+          <Field label="E-posta">
             <input
               className={inputClass}
-              value={form.mapping.ga4PropertyId}
+              type="email"
+              value={clientForm.email}
               onChange={(e) =>
-                setField("mapping", {
-                  ...form.mapping,
-                  ga4PropertyId: e.target.value,
-                })
+                setClientForm((f) => ({ ...f, email: e.target.value }))
               }
-              placeholder="properties/123456"
+              required
+              autoComplete="off"
             />
           </Field>
-          <Field label="GTM (GTM-XXXX veya accountId/containerId)">
+          <Field label="Şifre (min. 8)">
             <input
               className={inputClass}
-              value={form.mapping.gtmContainerId}
+              type="password"
+              value={clientForm.password}
               onChange={(e) =>
-                setField("mapping", {
-                  ...form.mapping,
-                  gtmContainerId: e.target.value,
-                })
+                setClientForm((f) => ({ ...f, password: e.target.value }))
               }
-              placeholder="GTM-NDHZKCHJ"
-            />
-          </Field>
-          <Field label="Search Console site URL">
-            <input
-              className={inputClass}
-              value={form.mapping.gscSiteUrl}
-              onChange={(e) =>
-                setField("mapping", {
-                  ...form.mapping,
-                  gscSiteUrl: e.target.value,
-                })
-              }
-              placeholder="https://ornek.com/"
-            />
-          </Field>
-          <Field label="Merchant ID (e-ticaret)">
-            <input
-              className={inputClass}
-              value={form.mapping.merchantId}
-              onChange={(e) =>
-                setField("mapping", {
-                  ...form.mapping,
-                  merchantId: e.target.value,
-                })
-              }
+              required
+              minLength={8}
+              autoComplete="new-password"
             />
           </Field>
         </div>
-      </section>
-
-      <section className="space-y-4">
-        <h3 className="text-sm font-semibold text-zinc-800">Uyarı eşikleri</h3>
-        <div className="grid gap-3 sm:grid-cols-3">
-          <Field label="Bütçe tempo uyarı %">
-            <input
-              className={inputClass}
-              type="number"
-              min={1}
-              max={200}
-              value={form.thresholds.budgetPaceWarnPct}
-              onChange={(e) =>
-                setField("thresholds", {
-                  ...form.thresholds,
-                  budgetPaceWarnPct: e.target.value,
-                })
-              }
-            />
-          </Field>
-          <Field label="Dönüşüm kesintisi (gün)">
-            <input
-              className={inputClass}
-              type="number"
-              min={1}
-              max={31}
-              value={form.thresholds.convDropoutDays}
-              onChange={(e) =>
-                setField("thresholds", {
-                  ...form.thresholds,
-                  convDropoutDays: e.target.value,
-                })
-              }
-            />
-          </Field>
-          <Field label="Min harcama (uyarı için)">
-            <input
-              className={inputClass}
-              type="number"
-              min={0}
-              value={form.thresholds.minSpendForAlert}
-              onChange={(e) =>
-                setField("thresholds", {
-                  ...form.thresholds,
-                  minSpendForAlert: e.target.value,
-                })
-              }
-            />
-          </Field>
-        </div>
-      </section>
-
-      <div className="flex flex-wrap items-center gap-3">
         <button
           type="submit"
-          disabled={pending}
-          className="rounded-md bg-[#e91825] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#c91420] disabled:opacity-50"
+          disabled={clientPending}
+          className="rounded-md border border-zinc-200 bg-white px-4 py-2 text-sm font-medium text-zinc-800 hover:bg-zinc-50 disabled:opacity-50"
         >
-          {pending ? "Kaydediliyor…" : "Kaydet"}
+          {clientPending ? "Kaydediliyor…" : "Müşteri hesabını kaydet"}
         </button>
-        {message ? (
-          <p className="text-xs text-zinc-400">{message}</p>
-        ) : null}
-      </div>
-    </form>
+      </form>
+    </div>
   );
 }
 

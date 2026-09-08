@@ -3,13 +3,18 @@ import { headers } from "next/headers";
 import type { TenantType } from "@prisma/client";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/db";
+import { RESERVED_SLUGS } from "@/lib/panel/host";
 import { sanitizeMappingForDb } from "@/lib/panel/mapping-placeholders";
 
 export const runtime = "nodejs";
 
 type PatchBody = {
-  /** Staff host (admin.*) — no x-tenant-slug header. */
+  /** Current slug (staff host). */
   tenantSlug?: string;
+  /** New slug — optional rename. */
+  slug?: string;
+  name?: string;
+  metaAccountId?: string | null;
   type?: TenantType;
   website?: string | null;
   monthlyBudget?: number | null;
@@ -35,7 +40,25 @@ function emptyToNull(v: string | null | undefined): string | null {
   return t === "" ? null : t;
 }
 
-/** Admin/team — update tenant type / mapping / thresholds / website. */
+function normalizeMetaAccountId(
+  raw: string | null,
+  slugFallback: string,
+): string {
+  if (!raw) return `act_manual_${slugFallback}`;
+  return raw.startsWith("act_") ? raw : `act_${raw.replace(/^act_/, "")}`;
+}
+
+function validateSlug(slug: string): string | null {
+  if (!slug || slug.includes(".") || RESERVED_SLUGS.has(slug)) {
+    return "Geçersiz veya reserved slug";
+  }
+  if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) {
+    return "slug yalnızca a-z, 0-9 ve tire olmalı";
+  }
+  return null;
+}
+
+/** Admin/team — update tenant identity / mapping / thresholds (wizard parity). */
 export async function PATCH(request: Request) {
   const session = await auth();
   if (!session?.user) {
@@ -53,9 +76,9 @@ export async function PATCH(request: Request) {
   }
 
   const h = await headers();
-  const slug =
+  const currentSlug =
     (body.tenantSlug?.trim().toLowerCase() || h.get("x-tenant-slug") || "").trim();
-  if (!slug) {
+  if (!currentSlug) {
     return NextResponse.json(
       { error: "tenantSlug veya marka host gerekli" },
       { status: 400 },
@@ -63,7 +86,7 @@ export async function PATCH(request: Request) {
   }
 
   const tenant = await prisma.tenant.findUnique({
-    where: { slug },
+    where: { slug: currentSlug },
     include: { mapping: true, thresholds: true },
   });
   if (!tenant) {
@@ -77,11 +100,56 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ error: "type ecommerce|lead olmalı" }, { status: 400 });
   }
 
+  const nextSlug =
+    body.slug !== undefined
+      ? body.slug.trim().toLowerCase()
+      : tenant.slug;
+  if (body.slug !== undefined) {
+    const slugErr = validateSlug(nextSlug);
+    if (slugErr) {
+      return NextResponse.json({ error: slugErr }, { status: 400 });
+    }
+    if (nextSlug !== tenant.slug) {
+      const taken = await prisma.tenant.findUnique({ where: { slug: nextSlug } });
+      if (taken) {
+        return NextResponse.json({ error: "Bu slug zaten var" }, { status: 409 });
+      }
+    }
+  }
+
+  let nextMeta = tenant.metaAccountId;
+  if (body.metaAccountId !== undefined) {
+    nextMeta = normalizeMetaAccountId(
+      emptyToNull(body.metaAccountId),
+      nextSlug,
+    );
+    if (nextMeta !== tenant.metaAccountId) {
+      const takenMeta = await prisma.tenant.findUnique({
+        where: { metaAccountId: nextMeta },
+      });
+      if (takenMeta && takenMeta.id !== tenant.id) {
+        return NextResponse.json(
+          { error: "Bu Meta account ID zaten kayıtlı" },
+          { status: 409 },
+        );
+      }
+    }
+  }
+
   try {
     await prisma.$transaction(async (tx) => {
       await tx.tenant.update({
         where: { id: tenant.id },
         data: {
+          ...(body.name !== undefined
+            ? { name: body.name.trim() || tenant.name }
+            : {}),
+          ...(body.slug !== undefined && nextSlug !== tenant.slug
+            ? { slug: nextSlug }
+            : {}),
+          ...(body.metaAccountId !== undefined
+            ? { metaAccountId: nextMeta }
+            : {}),
           ...(body.type ? { type: body.type } : {}),
           ...(body.website !== undefined
             ? { website: emptyToNull(body.website) }
@@ -180,7 +248,12 @@ export async function PATCH(request: Request) {
       include: { mapping: true, thresholds: true },
     });
 
-    return NextResponse.json({ ok: true, tenant: updated });
+    return NextResponse.json({
+      ok: true,
+      tenant: updated,
+      slugChanged: nextSlug !== currentSlug,
+      slug: updated?.slug ?? nextSlug,
+    });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     return NextResponse.json({ error: message }, { status: 500 });

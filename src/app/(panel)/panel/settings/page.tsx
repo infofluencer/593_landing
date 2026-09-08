@@ -5,7 +5,7 @@ import { auth } from "@/auth";
 import TenantSettingsForm from "@/components/panel/TenantSettingsForm";
 import { requireBundle } from "@/lib/panel/data";
 import { prisma } from "@/lib/db";
-import { isStaffRole } from "@/lib/panel/host";
+import { isStaffRole, rootDomain } from "@/lib/panel/host";
 
 export default async function SettingsPage({
   searchParams,
@@ -26,6 +26,7 @@ export default async function SettingsPage({
 
   const sp = await searchParams;
   const slug = sp.tenant?.trim().toLowerCase() || "";
+  const root = rootDomain();
 
   const allTenants = await prisma.tenant.findMany({
     orderBy: { name: "asc" },
@@ -43,8 +44,7 @@ export default async function SettingsPage({
             Marka seçin
           </h2>
           <p className="mt-1 text-sm text-zinc-500">
-            Ayarlar ajans portalından yönetilir; marka subdomain’inde admin
-            oturumu yoktur.
+            Sihirbazdaki tüm alanlar burada düzenlenir: kimlik, Google, müşteri.
           </p>
         </div>
         <ul className="divide-y divide-zinc-200 rounded-xl border border-zinc-200 bg-white">
@@ -68,11 +68,27 @@ export default async function SettingsPage({
 
   const db = await prisma.tenant.findUnique({
     where: { slug },
-    include: { mapping: true, thresholds: true },
+    include: {
+      mapping: true,
+      thresholds: true,
+      memberships: {
+        where: { user: { role: "client" } },
+        include: { user: { select: { email: true, name: true } } },
+      },
+    },
   });
+
+  const clientUsers =
+    db?.memberships.map((m) => ({
+      email: m.user.email,
+      name: m.user.name,
+    })) ?? [];
 
   const tenant = db
     ? {
+        name: db.name,
+        slug: db.slug,
+        metaAccountId: db.metaAccountId,
         type: db.type,
         website: db.website ?? "",
         monthlyBudget: db.monthlyBudget ? String(Number(db.monthlyBudget)) : "",
@@ -94,8 +110,12 @@ export default async function SettingsPage({
               : 100,
           ),
         },
+        clientUsers,
       }
     : {
+        name: bundle.tenant.name,
+        slug: bundle.tenant.slug,
+        metaAccountId: bundle.tenant.metaAccountId,
         type: bundle.tenant.type,
         website: bundle.tenant.website ?? "",
         monthlyBudget: String(bundle.tenant.monthlyBudget || ""),
@@ -113,6 +133,7 @@ export default async function SettingsPage({
           convDropoutDays: String(bundle.thresholds.convDropoutDays),
           minSpendForAlert: String(bundle.thresholds.minSpendForAlert),
         },
+        clientUsers: [],
       };
 
   return (
@@ -122,18 +143,20 @@ export default async function SettingsPage({
           Ayarlar · ajans
         </p>
         <h2 className="mt-1 text-xl font-semibold tracking-tight">
-          {bundle.tenant.name}
+          {tenant.name}
         </h2>
         <p className="mt-1 text-sm text-zinc-500">
-          Tip · website · Google eşleştirme · uyarı eşikleri. Meta account ID
-          BM’den gelir, burada değiştirilmez. GTM için kod map (
-          <code className="text-zinc-400">gtm-container-map</code>
-          ) önceliklidir; Ayarlar yedek.
+          Yeni marka sihirbazındaki alanlar: ad, slug, Meta ID, tip, site,
+          bütçe, Google ID’ler, müşteri hesabı.
         </p>
         <p className="mt-2 text-xs text-zinc-500">
           <Link href="/settings" className="text-[#e91825] hover:underline">
             ← Marka listesi
           </Link>
+          {" · "}
+          <code className="text-zinc-400">
+            {tenant.slug}.{root}
+          </code>
         </p>
       </div>
 
@@ -145,7 +168,11 @@ export default async function SettingsPage({
       ) : null}
 
       <div className="rounded-xl border border-zinc-200 bg-white p-4 sm:p-6">
-        <TenantSettingsForm initial={tenant} tenantSlug={slug} />
+        <TenantSettingsForm
+          initial={tenant}
+          tenantSlug={slug}
+          rootDomain={root}
+        />
       </div>
     </div>
   );
