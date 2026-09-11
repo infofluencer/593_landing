@@ -93,6 +93,8 @@ model Tenant {
   siteVerification SiteVerification?
   memberships     Membership[]
   metaInsights    MetaInsight[]
+  metaAds         MetaAd[]
+  metaAdInsights  MetaAdInsight[]
   googleAdsMetrics GoogleAdsMetric[]
   ga4Metrics      Ga4Metric[]
   conversions     Conversion[]
@@ -201,6 +203,69 @@ model MetaInsight {
 
   @@unique([tenantId, date, campaignId, objective])
   @@index([tenantId, date])
+}
+
+/// Meta ad + creative snapshot (refreshed on sync). Thumbnails/links for performance UI.
+model MetaAd {
+  id              String   @id @default(cuid())
+  tenantId        String
+  adId            String
+  adName          String   @default("")
+  adsetId         String   @default("")
+  adsetName       String   @default("")
+  campaignId      String   @default("")
+  campaignName    String   @default("")
+  status          String   @default("")
+  effectiveStatus String   @default("")
+  creativeId      String   @default("")
+  thumbnailUrl    String?
+  imageUrl        String?
+  /// Ad preview / post permalink when available
+  permalinkUrl    String?
+  /// Destination / CTA link from creative
+  linkUrl         String?
+  objectType      String?
+  syncedAt        DateTime @default(now())
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, adId])
+  @@index([tenantId, effectiveStatus])
+}
+
+/// Meta ad-level daily insights (paid). Joined with MetaAd for creative UI.
+model MetaAdInsight {
+  id          String   @id @default(cuid())
+  tenantId    String
+  date        DateTime @db.Date
+  adId        String
+  adName      String   @default("")
+  campaignId  String   @default("")
+  campaignName String  @default("")
+  adsetId     String   @default("")
+  adsetName   String   @default("")
+  spend       Decimal  @default(0) @db.Decimal(14, 2)
+  impressions Int      @default(0)
+  reach       Int      @default(0)
+  clicks      Int      @default(0)
+  ctr         Decimal? @db.Decimal(10, 6)
+  cpc         Decimal? @db.Decimal(14, 4)
+  actions     Json     @default("{}")
+  actionValues Json    @default("{}")
+  conversions Decimal? @db.Decimal(14, 4)
+  convValue   Decimal? @db.Decimal(14, 2)
+  cpa         Decimal? @db.Decimal(14, 4)
+  roas        Decimal? @db.Decimal(14, 4)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, date, adId])
+  @@index([tenantId, date])
+  @@index([tenantId, adId])
 }
 
 /// Google Ads GAQL metrics (account/campaign rows).

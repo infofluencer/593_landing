@@ -1,11 +1,23 @@
 import { headers } from "next/headers";
-import { Suspense } from "react";
+import { Suspense, type ReactNode } from "react";
 import { ChannelCard } from "@/components/panel/ChannelCard";
 import { CampaignBarChart } from "@/components/panel/charts";
 import PeriodFilterBar from "@/components/panel/PeriodFilterBar";
 import { StatusBadge } from "@/components/panel/StatusBadge";
 import { Delta, PanelStat, PanelTable } from "@/components/panel/ui";
+import {
+  fetchAdsAdGroups,
+  fetchAdsCampaignLostShare,
+  fetchAdsKeywords,
+  fetchAdsSearchTerms,
+  type AdsAdGroupRow,
+  type AdsCampaignShareRow,
+  type AdsKeywordRow,
+  type AdsSearchTermRow,
+} from "@/lib/integrations/google/ads";
+import { useMockPanelData } from "@/lib/integrations/tokens";
 import { requireBundle } from "@/lib/panel/data";
+import { resolveAdsCustomerId } from "@/lib/panel/google-ads-customer-map";
 import { resolvePanelDateRange } from "@/lib/panel/period";
 import { buildPresentation } from "@/lib/panel/presentation";
 import {
@@ -62,6 +74,80 @@ function MetricRow({
   );
 }
 
+function formatSharePct(v: number | null | undefined): string {
+  if (v == null || !Number.isFinite(v)) return "—";
+  return `${(v * 100).toFixed(1)}%`;
+}
+
+function matchTypeLabel(raw: string): string {
+  switch (raw.toUpperCase()) {
+    case "EXACT":
+      return "Tam";
+    case "PHRASE":
+      return "Sözcük öbeği";
+    case "BROAD":
+      return "Geniş";
+    default:
+      return raw || "—";
+  }
+}
+
+type LiveSlice<T> = {
+  rows: T[];
+  error: string | null;
+};
+
+function settledSlice<T>(
+  r: PromiseSettledResult<T[]>,
+): LiveSlice<T> {
+  if (r.status === "fulfilled") return { rows: r.value, error: null };
+  return {
+    rows: [],
+    error: r.reason instanceof Error ? r.reason.message : String(r.reason),
+  };
+}
+
+async function loadLiveAdsDetail(
+  customerId: string | null,
+  from: string,
+  to: string,
+): Promise<{
+  campaignShares: LiveSlice<AdsCampaignShareRow>;
+  adGroups: LiveSlice<AdsAdGroupRow>;
+  keywords: LiveSlice<AdsKeywordRow>;
+  searchTerms: LiveSlice<AdsSearchTermRow>;
+  skippedReason: string | null;
+}> {
+  const empty = {
+    campaignShares: { rows: [] as AdsCampaignShareRow[], error: null },
+    adGroups: { rows: [] as AdsAdGroupRow[], error: null },
+    keywords: { rows: [] as AdsKeywordRow[], error: null },
+    searchTerms: { rows: [] as AdsSearchTermRow[], error: null },
+  };
+
+  if (useMockPanelData()) {
+    return { ...empty, skippedReason: "Mock mod — canlı Ads detayı yok" };
+  }
+  if (!customerId) {
+    return { ...empty, skippedReason: "Google Ads customer ID yok" };
+  }
+
+  const [shares, ag, kw, st] = await Promise.allSettled([
+    fetchAdsCampaignLostShare({ customerId, from, to }),
+    fetchAdsAdGroups({ customerId, from, to }),
+    fetchAdsKeywords({ customerId, from, to }),
+    fetchAdsSearchTerms({ customerId, from, to }),
+  ]);
+
+  return {
+    skippedReason: null,
+    campaignShares: settledSlice(shares),
+    adGroups: settledSlice(ag),
+    keywords: settledSlice(kw),
+    searchTerms: settledSlice(st),
+  };
+}
+
 export default async function GooglePage({
   searchParams,
 }: {
@@ -80,6 +166,18 @@ export default async function GooglePage({
   const ecommerce = model.tenantType === "ecommerce";
   const { current, previous } = bundle;
 
+  const adsCustomerId = resolveAdsCustomerId({
+    slug: bundle.tenant.slug,
+    name: bundle.tenant.name,
+    mapping: bundle.tenant.mapping,
+  });
+
+  const live = await loadLiveAdsDetail(
+    adsCustomerId,
+    range.startDate,
+    range.endDate,
+  );
+
   const chartData = ch.campaigns.map((c) => ({
     name: c.campaign.length > 22 ? `${c.campaign.slice(0, 20)}…` : c.campaign,
     harcama: c.spend,
@@ -90,6 +188,7 @@ export default async function GooglePage({
   );
 
   const lastCol = ecommerce ? "ROAS" : "CPL";
+  const currency = model.currency;
 
   return (
     <div className="space-y-6">
@@ -216,7 +315,253 @@ export default async function GooglePage({
               />
             ))}
           </PanelTable>
+
+          {!live.skippedReason ? (
+            <div className="space-y-2">
+              <div>
+                <h4 className="text-xs font-semibold uppercase tracking-[0.1em] text-zinc-500">
+                  Kampanya · kaybedilen gösterim payı (canlı)
+                </h4>
+                <p className="mt-1 text-[11px] text-zinc-500">
+                  Arama ağı · sıralama / bütçe · dönem: {range.label}. Search
+                  dışı kampanyalarda — olabilir.
+                </p>
+              </div>
+              {live.campaignShares.error ? (
+                <div className="rounded-lg border border-zinc-200 bg-zinc-100 px-4 py-3 text-sm text-zinc-700">
+                  {live.campaignShares.error}
+                </div>
+              ) : live.campaignShares.rows.length === 0 ? (
+                <p className="text-sm text-zinc-500">
+                  Bu dönem için gösterim payı satırı yok.
+                </p>
+              ) : (
+                <PanelTable
+                  headers={[
+                    "Kampanya",
+                    "GP↓ sıra",
+                    "Üst GP↓ sıra",
+                    "Mutlak GP↓ sıra",
+                    "GP↓ bütçe",
+                    "Üst GP↓ bütçe",
+                    "Mutlak GP↓ bütçe",
+                  ]}
+                >
+                  {live.campaignShares.rows.map((r) => (
+                    <tr key={r.campaignId} className="text-zinc-700">
+                      <td className="px-3 py-2.5 font-medium text-zinc-900">
+                        {r.campaign}
+                      </td>
+                      <td className="px-3 py-2.5 tabular-nums">
+                        {formatSharePct(r.rankLostIs)}
+                      </td>
+                      <td className="px-3 py-2.5 tabular-nums">
+                        {formatSharePct(r.rankLostTopIs)}
+                      </td>
+                      <td className="px-3 py-2.5 tabular-nums">
+                        {formatSharePct(r.rankLostAbsTopIs)}
+                      </td>
+                      <td className="px-3 py-2.5 tabular-nums">
+                        {formatSharePct(r.budgetLostIs)}
+                      </td>
+                      <td className="px-3 py-2.5 tabular-nums">
+                        {formatSharePct(r.budgetLostTopIs)}
+                      </td>
+                      <td className="px-3 py-2.5 tabular-nums">
+                        {formatSharePct(r.budgetLostAbsTopIs)}
+                      </td>
+                    </tr>
+                  ))}
+                </PanelTable>
+              )}
+            </div>
+          ) : null}
         </>
+      )}
+
+      <section className="space-y-4 border-t border-zinc-100 pt-6">
+        <div>
+          <h3 className="text-sm font-semibold text-zinc-800">
+            Aktif kampanyalar · canlı
+          </h3>
+          <p className="mt-1 text-xs text-zinc-500">
+            {range.label} · yalnızca ENABLED kampanyalar · sync’e yazılmaz.
+            Anahtar kelime / arama terimi çoğunlukla Search kampanyalarında
+            dolu; Performance Max’te boş olabilir.
+          </p>
+        </div>
+
+        {live.skippedReason ? (
+          <div className="rounded-lg border border-zinc-200 bg-zinc-100 px-4 py-3 text-sm text-zinc-700">
+            {live.skippedReason}
+          </div>
+        ) : (
+          <>
+            <LiveBlock
+              title="Reklam grupları"
+              error={live.adGroups.error}
+              empty={!live.adGroups.rows.length}
+            >
+              <PanelTable
+                headers={[
+                  "Kampanya",
+                  "Grup",
+                  "Harcama",
+                  "Gösterim",
+                  "Tıklama",
+                  "Dönüşüm",
+                ]}
+              >
+                {live.adGroups.rows.map((r) => (
+                  <tr
+                    key={`${r.campaignId}-${r.adGroupId}`}
+                    className="text-zinc-700"
+                  >
+                    <td className="px-3 py-2.5 text-xs text-zinc-600">
+                      {r.campaign}
+                    </td>
+                    <td className="px-3 py-2.5 font-medium text-zinc-900">
+                      {r.adGroup}
+                    </td>
+                    <td className="px-3 py-2.5 tabular-nums">
+                      {formatTry(r.spend, currency)}
+                    </td>
+                    <td className="px-3 py-2.5 tabular-nums">
+                      {formatNumber(r.impr)}
+                    </td>
+                    <td className="px-3 py-2.5 tabular-nums">
+                      {formatNumber(r.clicks)}
+                    </td>
+                    <td className="px-3 py-2.5 tabular-nums">
+                      {formatNumber(r.conv, 1)}
+                    </td>
+                  </tr>
+                ))}
+              </PanelTable>
+            </LiveBlock>
+
+            <LiveBlock
+              title="Anahtar kelimeler"
+              error={live.keywords.error}
+              empty={!live.keywords.rows.length}
+            >
+              <PanelTable
+                headers={[
+                  "Kelime",
+                  "Eşleme",
+                  "Kampanya",
+                  "Grup",
+                  "Harcama",
+                  "Tıklama",
+                  "Dönüşüm",
+                ]}
+              >
+                {live.keywords.rows.map((r) => (
+                  <tr
+                    key={`${r.campaignId}-${r.adGroupId}-${r.keyword}-${r.matchType}`}
+                    className="text-zinc-700"
+                  >
+                    <td className="px-3 py-2.5 font-medium text-zinc-900">
+                      {r.keyword}
+                    </td>
+                    <td className="px-3 py-2.5 text-xs text-zinc-500">
+                      {matchTypeLabel(r.matchType)}
+                    </td>
+                    <td className="px-3 py-2.5 text-xs text-zinc-600">
+                      {r.campaign}
+                    </td>
+                    <td className="px-3 py-2.5 text-xs text-zinc-600">
+                      {r.adGroup}
+                    </td>
+                    <td className="px-3 py-2.5 tabular-nums">
+                      {formatTry(r.spend, currency)}
+                    </td>
+                    <td className="px-3 py-2.5 tabular-nums">
+                      {formatNumber(r.clicks)}
+                    </td>
+                    <td className="px-3 py-2.5 tabular-nums">
+                      {formatNumber(r.conv, 1)}
+                    </td>
+                  </tr>
+                ))}
+              </PanelTable>
+            </LiveBlock>
+
+            <LiveBlock
+              title="Arama terimleri"
+              error={live.searchTerms.error}
+              empty={!live.searchTerms.rows.length}
+            >
+              <PanelTable
+                headers={[
+                  "Terim",
+                  "Kampanya",
+                  "Grup",
+                  "Harcama",
+                  "Tıklama",
+                  "Dönüşüm",
+                ]}
+              >
+                {live.searchTerms.rows.map((r) => (
+                  <tr
+                    key={`${r.campaignId}-${r.adGroupId}-${r.searchTerm}`}
+                    className="text-zinc-700"
+                  >
+                    <td className="px-3 py-2.5 font-medium text-zinc-900">
+                      {r.searchTerm}
+                    </td>
+                    <td className="px-3 py-2.5 text-xs text-zinc-600">
+                      {r.campaign}
+                    </td>
+                    <td className="px-3 py-2.5 text-xs text-zinc-600">
+                      {r.adGroup}
+                    </td>
+                    <td className="px-3 py-2.5 tabular-nums">
+                      {formatTry(r.spend, currency)}
+                    </td>
+                    <td className="px-3 py-2.5 tabular-nums">
+                      {formatNumber(r.clicks)}
+                    </td>
+                    <td className="px-3 py-2.5 tabular-nums">
+                      {formatNumber(r.conv, 1)}
+                    </td>
+                  </tr>
+                ))}
+              </PanelTable>
+            </LiveBlock>
+          </>
+        )}
+      </section>
+    </div>
+  );
+}
+
+function LiveBlock({
+  title,
+  error,
+  empty,
+  children,
+}: {
+  title: string;
+  error: string | null;
+  empty: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <div className="space-y-2">
+      <h4 className="text-xs font-semibold uppercase tracking-[0.1em] text-zinc-500">
+        {title}
+      </h4>
+      {error ? (
+        <div className="rounded-lg border border-zinc-200 bg-zinc-100 px-4 py-3 text-sm text-zinc-700">
+          {error}
+        </div>
+      ) : empty ? (
+        <p className="text-sm text-zinc-500">
+          Bu dönem / aktif Search kampanyaları için satır yok.
+        </p>
+      ) : (
+        children
       )}
     </div>
   );

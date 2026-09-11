@@ -6,6 +6,7 @@ import type {
 } from "@/lib/panel/mock-data";
 import { derivedMetrics, deltaPct } from "@/lib/panel/mock-data";
 import { resolveAdsCustomerId } from "@/lib/panel/google-ads-customer-map";
+import { resolveMetaAccountId } from "@/lib/panel/meta-ad-account-map";
 
 export type ChannelId = "google" | "meta";
 
@@ -94,10 +95,17 @@ function channelStatus(
       note: "Google Ads customer ID map’te yok.",
     };
   }
-  if (provider === "meta" && !bundle.tenant.metaAccountId) {
+  if (
+    provider === "meta" &&
+    !resolveMetaAccountId({
+      slug: bundle.tenant.slug,
+      name: bundle.tenant.name,
+      metaAccountId: bundle.tenant.metaAccountId,
+    })
+  ) {
     return {
       status: "unknown",
-      note: "Meta hesap ID yok.",
+      note: "Meta hesap ID map’te yok.",
     };
   }
   if (

@@ -6,6 +6,11 @@ import {
   IntegrationNotConfiguredError,
   getMetaBusinessId,
 } from "@/lib/integrations/tokens";
+import {
+  normalizeMetaAccountId,
+  slugFromMetaAccountId,
+} from "@/lib/panel/meta-ad-account-map";
+import { isPlaceholderMetaAccountId } from "@/lib/panel/mapping-placeholders";
 
 export type ProvisionResult = {
   upserted: number;
@@ -39,17 +44,48 @@ export async function provisionTenantsFromMeta(): Promise<ProvisionResult> {
     const results: ProvisionResult["accounts"] = [];
 
     for (const account of accounts) {
-      const metaAccountId = account.id.startsWith("act_")
-        ? account.id
-        : `act_${account.account_id}`;
-      const desiredSlug = uniqueSlug(
-        account.name || metaAccountId,
-        account.account_id || metaAccountId,
-      );
+      const metaAccountId =
+        normalizeMetaAccountId(account.id) ||
+        normalizeMetaAccountId(account.account_id) ||
+        (account.id.startsWith("act_")
+          ? account.id
+          : `act_${account.account_id}`);
 
-      const existing = await prisma.tenant.findUnique({
+      const mappedSlug = slugFromMetaAccountId(metaAccountId);
+      const existingByMeta = await prisma.tenant.findUnique({
         where: { metaAccountId },
       });
+      // Prefer panel brand with this act_ via code map (avoid duplicate slug tenants).
+      const existingBySlug = mappedSlug
+        ? await prisma.tenant.findUnique({ where: { slug: mappedSlug } })
+        : null;
+
+      let existing = existingByMeta;
+      if (
+        !existing &&
+        existingBySlug &&
+        isPlaceholderMetaAccountId(existingBySlug.metaAccountId)
+      ) {
+        const clash = await prisma.tenant.findFirst({
+          where: {
+            metaAccountId,
+            NOT: { id: existingBySlug.id },
+          },
+        });
+        if (!clash) {
+          existing = await prisma.tenant.update({
+            where: { id: existingBySlug.id },
+            data: { metaAccountId },
+          });
+        }
+      }
+
+      const desiredSlug =
+        mappedSlug ||
+        uniqueSlug(
+          account.name || metaAccountId,
+          account.account_id || metaAccountId,
+        );
 
       let slug = existing?.slug ?? desiredSlug;
       if (!existing) {
@@ -62,7 +98,7 @@ export async function provisionTenantsFromMeta(): Promise<ProvisionResult> {
       const tenant = await prisma.tenant.upsert({
         where: { metaAccountId },
         update: {
-          name: account.name || existing?.name || metaAccountId,
+          name: existing?.name || account.name || metaAccountId,
           currency: account.currency || existing?.currency || "TRY",
           timezone:
             account.timezone_name || existing?.timezone || "Europe/Istanbul",

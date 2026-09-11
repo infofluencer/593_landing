@@ -36,6 +36,28 @@ export function addDaysYmd(ymd: string, days: number): string {
   return dt.toISOString().slice(0, 10);
 }
 
+/**
+ * Split an inclusive YMD range into contiguous chunks of at most `chunkDays` days.
+ * Used for long Meta/Google ingest windows so one API call does not pull 720 days at once.
+ */
+export function iterateYmdRanges(
+  from: string,
+  to: string,
+  chunkDays: number,
+): Array<{ from: string; to: string }> {
+  if (chunkDays < 1) throw new Error("chunkDays must be >= 1");
+  if (from > to) return [];
+  const ranges: Array<{ from: string; to: string }> = [];
+  let cursor = from;
+  while (cursor <= to) {
+    const chunkEnd = addDaysYmd(cursor, chunkDays - 1);
+    const end = chunkEnd < to ? chunkEnd : to;
+    ranges.push({ from: cursor, to: end });
+    cursor = addDaysYmd(end, 1);
+  }
+  return ranges;
+}
+
 /** First day of Istanbul month containing `ymd`. */
 export function startOfIstanbulMonthYmd(ymd: string): string {
   return `${ymd.slice(0, 7)}-01`;

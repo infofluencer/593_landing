@@ -8,6 +8,10 @@ import { fetchGa4Snapshot } from "@/lib/integrations/google/ga4";
 import { fetchGtmSnapshotResolved } from "@/lib/integrations/google/gtm";
 import { fetchSearchConsoleQuery } from "@/lib/integrations/google/gsc";
 import { fetchMerchantProductIssues } from "@/lib/integrations/google/merchant";
+import {
+  fetchMetaAdInsights,
+  fetchMetaAdsWithCreatives,
+} from "@/lib/integrations/meta/ads";
 import { fetchMetaCampaignInsights } from "@/lib/integrations/meta/insights";
 import { provisionTenantsFromMeta } from "@/lib/integrations/meta/provision";
 import type { ProvisionResult } from "@/lib/integrations/meta/provision";
@@ -19,9 +23,17 @@ import {
 } from "@/lib/integrations/tokens";
 import { evaluateTenantAlerts } from "@/lib/panel/alerts-engine";
 import { resolveAdsCustomerId, adsCustomerIdFromCodeMap } from "@/lib/panel/google-ads-customer-map";
+import {
+  metaAccountIdFromCodeMap,
+  resolveMetaAccountId,
+} from "@/lib/panel/meta-ad-account-map";
+import {
+  isPlaceholderAdsCustomerId,
+  isPlaceholderMerchantId,
+  isPlaceholderMetaAccountId,
+} from "@/lib/panel/mapping-placeholders";
 import { resolveGa4PropertyId } from "@/lib/panel/ga4-property-map";
 import { resolveGtmApiRef } from "@/lib/panel/gtm-container-map";
-import { isPlaceholderAdsCustomerId, isPlaceholderMerchantId } from "@/lib/panel/mapping-placeholders";
 import { syncLookbackRange } from "@/lib/panel/period";
 import { runSynced } from "@/lib/panel/sync-job";
 import { verifyTenantSite } from "@/lib/panel/verify-tenant-site";
@@ -143,6 +155,23 @@ export async function runAgencySync(opts?: {
       adsCustomerId = mapAdsId;
     }
 
+    let metaAccountId = resolveMetaAccountId(tenant);
+    const mapMetaId = metaAccountIdFromCodeMap(tenant);
+    // Heal placeholder Meta act_ from code map (DB Settings wins when real).
+    if (mapMetaId && isPlaceholderMetaAccountId(tenant.metaAccountId)) {
+      const clash = await prisma.tenant.findFirst({
+        where: { metaAccountId: mapMetaId, NOT: { id: tenant.id } },
+      });
+      if (!clash) {
+        await prisma.tenant.update({
+          where: { id: tenant.id },
+          data: { metaAccountId: mapMetaId },
+        });
+        tenant.metaAccountId = mapMetaId;
+        metaAccountId = mapMetaId;
+      }
+    }
+
     // --- Meta insights (paid only) ---
     if (doMeta) {
       const meta = await runSynced(
@@ -153,13 +182,13 @@ export async function runAgencySync(opts?: {
           objective: "campaign_daily",
         },
         async () => {
-          if (!tenant.metaAccountId) {
+          if (!metaAccountId) {
             throw new Error(
-              "metaAccountId yok — kontrol edilemedi, 0 yazılmadı.",
+              "metaAccountId yok — meta-ad-account-map / Tenant eksik (0 yazılmadı).",
             );
           }
           const rows = await fetchMetaCampaignInsights({
-            metaAccountId: tenant.metaAccountId,
+            metaAccountId,
             from,
             to,
             tenantType: tenant.type as TenantType,
@@ -294,6 +323,136 @@ export async function runAgencySync(opts?: {
         },
       );
       services.meta = meta.ok ? { ok: true } : { ok: false, error: meta.error };
+
+      const metaAds = await runSynced(
+        {
+          tenantId: tenant.id,
+          provider: "meta",
+          service: "ads",
+          objective: "ad_daily",
+        },
+        async () => {
+          if (!metaAccountId) {
+            throw new Error(
+              "metaAccountId yok — reklam/kreatif çekilemedi, 0 yazılmadı.",
+            );
+          }
+
+          const creatives = await fetchMetaAdsWithCreatives({
+            metaAccountId,
+          });
+          const syncedAt = new Date();
+          for (const ad of creatives) {
+            await prisma.metaAd.upsert({
+              where: {
+                tenantId_adId: {
+                  tenantId: tenant.id,
+                  adId: ad.adId,
+                },
+              },
+              update: {
+                adName: ad.adName,
+                adsetId: ad.adsetId,
+                adsetName: ad.adsetName,
+                campaignId: ad.campaignId,
+                campaignName: ad.campaignName,
+                status: ad.status,
+                effectiveStatus: ad.effectiveStatus,
+                creativeId: ad.creativeId,
+                thumbnailUrl: ad.thumbnailUrl,
+                imageUrl: ad.imageUrl,
+                permalinkUrl: ad.permalinkUrl,
+                linkUrl: ad.linkUrl,
+                objectType: ad.objectType,
+                syncedAt,
+              },
+              create: {
+                tenantId: tenant.id,
+                adId: ad.adId,
+                adName: ad.adName,
+                adsetId: ad.adsetId,
+                adsetName: ad.adsetName,
+                campaignId: ad.campaignId,
+                campaignName: ad.campaignName,
+                status: ad.status,
+                effectiveStatus: ad.effectiveStatus,
+                creativeId: ad.creativeId,
+                thumbnailUrl: ad.thumbnailUrl,
+                imageUrl: ad.imageUrl,
+                permalinkUrl: ad.permalinkUrl,
+                linkUrl: ad.linkUrl,
+                objectType: ad.objectType,
+                syncedAt,
+              },
+            });
+          }
+
+          const adRows = await fetchMetaAdInsights({
+            metaAccountId,
+            from,
+            to,
+            tenantType: tenant.type as TenantType,
+          });
+
+          for (const row of adRows) {
+            await prisma.metaAdInsight.upsert({
+              where: {
+                tenantId_date_adId: {
+                  tenantId: tenant.id,
+                  date: new Date(row.date),
+                  adId: row.adId,
+                },
+              },
+              update: {
+                adName: row.adName,
+                campaignId: row.campaignId,
+                campaignName: row.campaignName,
+                adsetId: row.adsetId,
+                adsetName: row.adsetName,
+                spend: row.spend,
+                impressions: row.impressions,
+                reach: row.reach,
+                clicks: row.clicks,
+                ctr: row.ctr,
+                cpc: row.cpc,
+                actions: row.actions as Prisma.InputJsonValue,
+                actionValues: row.actionValues as Prisma.InputJsonValue,
+                conversions: row.conversions,
+                convValue: row.convValue,
+                cpa: row.cpa,
+                roas: row.roas,
+              },
+              create: {
+                tenantId: tenant.id,
+                date: new Date(row.date),
+                adId: row.adId,
+                adName: row.adName,
+                campaignId: row.campaignId,
+                campaignName: row.campaignName,
+                adsetId: row.adsetId,
+                adsetName: row.adsetName,
+                spend: row.spend,
+                impressions: row.impressions,
+                reach: row.reach,
+                clicks: row.clicks,
+                ctr: row.ctr,
+                cpc: row.cpc,
+                actions: row.actions as Prisma.InputJsonValue,
+                actionValues: row.actionValues as Prisma.InputJsonValue,
+                conversions: row.conversions,
+                convValue: row.convValue,
+                cpa: row.cpa,
+                roas: row.roas,
+              },
+            });
+          }
+
+          return { creatives: creatives.length, insights: adRows.length };
+        },
+      );
+      services.metaAds = metaAds.ok
+        ? { ok: true }
+        : { ok: false, error: metaAds.error };
     }
 
     if (doGoogle) {

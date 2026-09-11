@@ -1,9 +1,12 @@
+import { Suspense } from "react";
 import { headers } from "next/headers";
+import PeriodFilterBar from "@/components/panel/PeriodFilterBar";
 import { StatusBadge } from "@/components/panel/StatusBadge";
 import { GscQueryBarChart, GscTrendChart } from "@/components/panel/charts";
 import { PanelStat, PanelTable } from "@/components/panel/ui";
 import { requireBundle, resolvePanelTenant } from "@/lib/panel/data";
 import { formatNumber } from "@/lib/panel/format";
+import { resolvePanelDateRange } from "@/lib/panel/period";
 import {
   fetchSearchConsoleQuery,
   type GscRow,
@@ -30,18 +33,24 @@ const MOCK_QUERIES: GscRow[] = [
   },
 ];
 
-const MOCK_DAILY: GscRow[] = Array.from({ length: 14 }, (_, i) => {
-  const d = new Date();
-  d.setDate(d.getDate() - (13 - i));
-  const ymd = d.toISOString().slice(0, 10);
-  return {
-    keys: [ymd],
-    clicks: 40 + ((i * 17) % 55),
-    impressions: 900 + ((i * 83) % 400),
-    ctr: 0.04,
-    position: 6.5,
-  };
-});
+function mockDailyForRange(fromYmd: string, toYmd: string): GscRow[] {
+  const rows: GscRow[] = [];
+  const start = new Date(`${fromYmd}T12:00:00Z`);
+  const end = new Date(`${toYmd}T12:00:00Z`);
+  let i = 0;
+  for (let d = new Date(start); d <= end; d.setUTCDate(d.getUTCDate() + 1)) {
+    const ymd = d.toISOString().slice(0, 10);
+    rows.push({
+      keys: [ymd],
+      clicks: 40 + ((i * 17) % 55),
+      impressions: 900 + ((i * 83) % 400),
+      ctr: 0.04,
+      position: 6.5,
+    });
+    i++;
+  }
+  return rows;
+}
 
 function shortQuery(q: string, max = 18): string {
   return q.length > max ? `${q.slice(0, max - 1)}…` : q;
@@ -69,9 +78,15 @@ function weightedAvg(
   return wSum > 0 ? vSum / wSum : null;
 }
 
-export default async function SearchConsolePage() {
+export default async function SearchConsolePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ period?: string; start?: string; end?: string }>;
+}) {
   const h = await headers();
   const slug = h.get("x-tenant-slug")!;
+  const sp = await searchParams;
+  const range = await resolvePanelDateRange(sp);
   await requireBundle(slug);
   const tenant = await resolvePanelTenant(slug);
   const siteUrl = tenant?.mapping.gscSiteUrl;
@@ -81,17 +96,14 @@ export default async function SearchConsolePage() {
   let liveError: string | null = null;
   let mode: "mock" | "live" | "empty" = "empty";
 
-  const to = new Date();
-  const from = new Date();
-  from.setDate(from.getDate() - 28);
-  const fromYmd = from.toISOString().slice(0, 10);
-  const toYmd = to.toISOString().slice(0, 10);
+  const fromYmd = range.startDate;
+  const toYmd = range.endDate;
 
   if (!siteUrl) {
     mode = "empty";
   } else if (useMockPanelData()) {
     queryRows = MOCK_QUERIES;
-    dailyRows = MOCK_DAILY;
+    dailyRows = mockDailyForRange(fromYmd, toYmd);
     mode = "mock";
   } else {
     try {
@@ -108,7 +120,7 @@ export default async function SearchConsolePage() {
           from: fromYmd,
           to: toYmd,
           dimensions: ["date"],
-          rowLimit: 90,
+          rowLimit: 500,
         }),
       ]);
       queryRows = queries;
@@ -126,7 +138,6 @@ export default async function SearchConsolePage() {
 
   const totalClicks = queryRows.reduce((s, r) => s + r.clicks, 0);
   const totalImpr = queryRows.reduce((s, r) => s + r.impressions, 0);
-  // Prefer date-dimension totals when available (exact period totals).
   const periodClicks = dailyRows.length
     ? dailyRows.reduce((s, r) => s + r.clicks, 0)
     : totalClicks;
@@ -166,9 +177,6 @@ export default async function SearchConsolePage() {
           </h2>
           <p className="mt-1 text-sm text-zinc-500">
             Organik tıklama · gösterim · CTR · ortalama konum · sorgular
-            {siteUrl ? (
-              <span className="text-zinc-400"> · son 28 gün</span>
-            ) : null}
           </p>
         </div>
         <StatusBadge
@@ -184,6 +192,10 @@ export default async function SearchConsolePage() {
           }
         />
       </div>
+
+      <Suspense fallback={null}>
+        <PeriodFilterBar label={range.label} />
+      </Suspense>
 
       {!siteUrl ? (
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
@@ -214,10 +226,7 @@ export default async function SearchConsolePage() {
                 </span>
               }
             />
-            <PanelStat
-              label="Gösterim"
-              value={formatNumber(periodImpr)}
-            />
+            <PanelStat label="Gösterim" value={formatNumber(periodImpr)} />
             <PanelStat
               label="Ort. CTR"
               value={`${formatNumber(avgCtr * 100, 2)}%`}

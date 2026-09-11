@@ -27,6 +27,7 @@ export default async function MetaPage({
   const model = buildPresentation(bundle, range.label);
   const ch = model.meta;
   const ecommerce = model.tenantType === "ecommerce";
+  const metaAds = bundle.metaAds;
 
   const chartData = ch.campaigns.map((c) => ({
     name: c.campaign.length > 22 ? `${c.campaign.slice(0, 20)}…` : c.campaign,
@@ -46,6 +47,12 @@ export default async function MetaPage({
     ? ["Kampanya", "Harcama", "Erişim", "Tıklama", "Satış", "ROAS", "CPA"]
     : ["Kampanya", "Harcama", "Erişim", "Tıklama", "Lead", "CPL"];
 
+  const adHeaders = ecommerce
+    ? ["Kreatif", "Reklam", "Durum", "Harcama", "Tıklama", "Satış", "ROAS", "Link"]
+    : ["Kreatif", "Reklam", "Durum", "Harcama", "Tıklama", "Lead", "CPL", "Link"];
+
+  const activeCount = metaAds.filter((a) => a.effectiveStatus === "ACTIVE").length;
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-3">
@@ -57,8 +64,7 @@ export default async function MetaPage({
             {ch.sectionTitle}
           </h2>
           <p className="mt-1 text-sm text-zinc-500">
-            Yalnızca ücretli reklam insight’ları — organik Instagram yok ·{" "}
-            {range.label}
+            Ücretli reklam + kreatifler (BM hesapları) · {range.label}
           </p>
         </div>
         <StatusBadge status={ch.status} />
@@ -145,6 +151,110 @@ export default async function MetaPage({
             })}
           </PanelTable>
         </>
+      ) : null}
+
+      {metaAds.length > 0 ? (
+        <div className="space-y-3">
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <h3 className="text-sm font-semibold text-zinc-800">
+              Reklamlar & kreatifler
+            </h3>
+            <p className="text-[11px] text-zinc-500">
+              {activeCount} aktif · {metaAds.length} kayıt · dönem performansına
+              göre sıralı
+            </p>
+          </div>
+          <PanelTable headers={adHeaders}>
+            {metaAds.map((ad) => {
+              const d = derivedMetrics({
+                campaign: ad.adName,
+                spend: ad.spend,
+                impr: ad.impr,
+                clicks: ad.clicks,
+                conv: ad.conv,
+                convValue: ad.convValue,
+              });
+              const thumb = ad.thumbnailUrl || ad.imageUrl;
+              const openUrl = ad.permalinkUrl || ad.linkUrl;
+              return (
+                <tr key={ad.adId} className="text-zinc-700">
+                  <td className="px-3 py-2.5">
+                    {thumb ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={thumb}
+                        alt=""
+                        width={48}
+                        height={48}
+                        className="h-12 w-12 rounded-md object-cover bg-zinc-100"
+                        referrerPolicy="no-referrer"
+                      />
+                    ) : (
+                      <div className="flex h-12 w-12 items-center justify-center rounded-md bg-zinc-100 text-[10px] text-zinc-400">
+                        yok
+                      </div>
+                    )}
+                  </td>
+                  <td className="px-3 py-2.5">
+                    <p className="font-medium text-zinc-900">{ad.adName}</p>
+                    <p className="mt-0.5 text-[11px] text-zinc-500">
+                      {ad.campaignName}
+                      {ad.adsetName ? ` · ${ad.adsetName}` : ""}
+                    </p>
+                  </td>
+                  <td className="px-3 py-2.5">
+                    <span
+                      className={
+                        ad.effectiveStatus === "ACTIVE"
+                          ? "text-[11px] font-medium text-emerald-700"
+                          : "text-[11px] text-zinc-500"
+                      }
+                    >
+                      {ad.effectiveStatus || "—"}
+                    </span>
+                  </td>
+                  <td className="px-3 py-2.5 tabular-nums">
+                    {formatTry(ad.spend, model.currency)}
+                  </td>
+                  <td className="px-3 py-2.5 tabular-nums">
+                    {formatNumber(ad.clicks)}
+                  </td>
+                  <td className="px-3 py-2.5 tabular-nums">
+                    {formatNumber(ad.conv, 1)}
+                  </td>
+                  {ecommerce ? (
+                    <td className="px-3 py-2.5 tabular-nums">
+                      {ad.spend > 0 ? `${formatNumber(d.roas, 2)}x` : "—"}
+                    </td>
+                  ) : (
+                    <td className="px-3 py-2.5 tabular-nums">
+                      {ad.conv > 0 ? formatTry(d.cpa, model.currency) : "—"}
+                    </td>
+                  )}
+                  <td className="px-3 py-2.5">
+                    {openUrl ? (
+                      <a
+                        href={openUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-[12px] font-medium text-[#0668E1] hover:underline"
+                      >
+                        {ad.permalinkUrl ? "Önizleme" : "Hedef"}
+                      </a>
+                    ) : (
+                      <span className="text-[12px] text-zinc-400">—</span>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+          </PanelTable>
+          <p className="text-[11px] text-zinc-500">
+            Yalnızca bu reklam hesabında / BM’de paylaşılan reklamlar görünür.
+            Başka hesapta, paylaşılmadan yayınlanan reklamlar Marketing API ile
+            gelmez.
+          </p>
+        </div>
       ) : null}
     </div>
   );

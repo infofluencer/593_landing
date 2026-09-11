@@ -207,6 +207,287 @@ export async function fetchGoogleAdsConversionActions(opts: {
   return [...byName.values()];
 }
 
+export type AdsAdGroupRow = {
+  campaignId: string;
+  campaign: string;
+  adGroupId: string;
+  adGroup: string;
+  spend: number;
+  impr: number;
+  clicks: number;
+  conv: number;
+  convValue: number;
+};
+
+export type AdsKeywordRow = {
+  campaignId: string;
+  campaign: string;
+  adGroupId: string;
+  adGroup: string;
+  keyword: string;
+  matchType: string;
+  spend: number;
+  impr: number;
+  clicks: number;
+  conv: number;
+  convValue: number;
+};
+
+export type AdsSearchTermRow = {
+  searchTerm: string;
+  campaignId: string;
+  campaign: string;
+  adGroupId: string;
+  adGroup: string;
+  spend: number;
+  impr: number;
+  clicks: number;
+  conv: number;
+  convValue: number;
+};
+
+type MetricsFields = {
+  costMicros?: string;
+  impressions?: string;
+  clicks?: string;
+  conversions?: number;
+  conversionsValue?: number;
+};
+
+function metricsFromRow(m?: MetricsFields) {
+  return {
+    spend: microsToCurrency(m?.costMicros ?? 0),
+    impr: Number(m?.impressions ?? 0),
+    clicks: Number(m?.clicks ?? 0),
+    conv: Number(m?.conversions ?? 0),
+    convValue: Number(m?.conversionsValue ?? 0),
+  };
+}
+
+const METRIC_SELECT = `
+  metrics.cost_micros,
+  metrics.impressions,
+  metrics.clicks,
+  metrics.conversions,
+  metrics.conversions_value
+`;
+
+/** Active-campaign ad groups for the date range (aggregated, top 50 by spend). */
+export async function fetchAdsAdGroups(opts: {
+  customerId: string;
+  from: string;
+  to: string;
+  limit?: number;
+}): Promise<AdsAdGroupRow[]> {
+  const customerId = opts.customerId.replace(/-/g, "");
+  const limit = opts.limit ?? 50;
+  const query = `
+    SELECT
+      campaign.id,
+      campaign.name,
+      ad_group.id,
+      ad_group.name,
+      ${METRIC_SELECT}
+    FROM ad_group
+    WHERE segments.date BETWEEN '${opts.from}' AND '${opts.to}'
+      AND campaign.status = 'ENABLED'
+      AND ad_group.status != 'REMOVED'
+    ORDER BY metrics.cost_micros DESC
+    LIMIT ${limit}
+  `;
+
+  const { json } = await adsSearch({ customerId, query });
+
+  return ((json.results ?? []) as Array<{
+    campaign?: { id?: string; name?: string };
+    adGroup?: { id?: string; name?: string };
+    metrics?: MetricsFields;
+  }>).map((row) => {
+    const campaign = row.campaign?.name || "(kampanya)";
+    const adGroup = row.adGroup?.name || "(grup)";
+    return {
+      campaignId: row.campaign?.id || campaign,
+      campaign,
+      adGroupId: row.adGroup?.id || adGroup,
+      adGroup,
+      ...metricsFromRow(row.metrics),
+    };
+  });
+}
+
+/** Active-campaign keywords (keyword_view), top 50 by spend. */
+export async function fetchAdsKeywords(opts: {
+  customerId: string;
+  from: string;
+  to: string;
+  limit?: number;
+}): Promise<AdsKeywordRow[]> {
+  const customerId = opts.customerId.replace(/-/g, "");
+  const limit = opts.limit ?? 50;
+  const query = `
+    SELECT
+      campaign.id,
+      campaign.name,
+      ad_group.id,
+      ad_group.name,
+      ad_group_criterion.keyword.text,
+      ad_group_criterion.keyword.match_type,
+      ${METRIC_SELECT}
+    FROM keyword_view
+    WHERE segments.date BETWEEN '${opts.from}' AND '${opts.to}'
+      AND campaign.status = 'ENABLED'
+      AND ad_group_criterion.status != 'REMOVED'
+    ORDER BY metrics.cost_micros DESC
+    LIMIT ${limit}
+  `;
+
+  const { json } = await adsSearch({ customerId, query });
+
+  return ((json.results ?? []) as Array<{
+    campaign?: { id?: string; name?: string };
+    adGroup?: { id?: string; name?: string };
+    adGroupCriterion?: {
+      keyword?: { text?: string; matchType?: string };
+    };
+    metrics?: MetricsFields;
+  }>).map((row) => {
+    const campaign = row.campaign?.name || "(kampanya)";
+    const adGroup = row.adGroup?.name || "(grup)";
+    const keyword = row.adGroupCriterion?.keyword?.text || "(kelime)";
+    return {
+      campaignId: row.campaign?.id || campaign,
+      campaign,
+      adGroupId: row.adGroup?.id || adGroup,
+      adGroup,
+      keyword,
+      matchType: row.adGroupCriterion?.keyword?.matchType || "—",
+      ...metricsFromRow(row.metrics),
+    };
+  });
+}
+
+/** Active-campaign search terms, top 50 by spend. Search campaigns only. */
+export async function fetchAdsSearchTerms(opts: {
+  customerId: string;
+  from: string;
+  to: string;
+  limit?: number;
+}): Promise<AdsSearchTermRow[]> {
+  const customerId = opts.customerId.replace(/-/g, "");
+  const limit = opts.limit ?? 50;
+  const query = `
+    SELECT
+      search_term_view.search_term,
+      campaign.id,
+      campaign.name,
+      ad_group.id,
+      ad_group.name,
+      ${METRIC_SELECT}
+    FROM search_term_view
+    WHERE segments.date BETWEEN '${opts.from}' AND '${opts.to}'
+      AND campaign.status = 'ENABLED'
+    ORDER BY metrics.cost_micros DESC
+    LIMIT ${limit}
+  `;
+
+  const { json } = await adsSearch({ customerId, query });
+
+  return ((json.results ?? []) as Array<{
+    searchTermView?: { searchTerm?: string };
+    campaign?: { id?: string; name?: string };
+    adGroup?: { id?: string; name?: string };
+    metrics?: MetricsFields;
+  }>).map((row) => {
+    const campaign = row.campaign?.name || "(kampanya)";
+    const adGroup = row.adGroup?.name || "(grup)";
+    return {
+      searchTerm: row.searchTermView?.searchTerm || "(terim)",
+      campaignId: row.campaign?.id || campaign,
+      campaign,
+      adGroupId: row.adGroup?.id || adGroup,
+      adGroup,
+      ...metricsFromRow(row.metrics),
+    };
+  });
+}
+
+/** Period-level search lost impression share (rank + budget). Not date-summable. */
+export type AdsCampaignShareRow = {
+  campaignId: string;
+  campaign: string;
+  /** Search lost IS (rank) 0–1 */
+  rankLostIs: number | null;
+  rankLostTopIs: number | null;
+  rankLostAbsTopIs: number | null;
+  /** Search lost IS (budget) 0–1 */
+  budgetLostIs: number | null;
+  budgetLostTopIs: number | null;
+  budgetLostAbsTopIs: number | null;
+};
+
+function parseShare(v: unknown): number | null {
+  if (v == null) return null;
+  const n = typeof v === "number" ? v : Number(v);
+  if (!Number.isFinite(n)) return null;
+  return n;
+}
+
+/**
+ * Campaign search lost impression share for the date range (aggregated).
+ * Search network only — Display / PMax often return null.
+ */
+export async function fetchAdsCampaignLostShare(opts: {
+  customerId: string;
+  from: string;
+  to: string;
+}): Promise<AdsCampaignShareRow[]> {
+  const customerId = opts.customerId.replace(/-/g, "");
+  const query = `
+    SELECT
+      campaign.id,
+      campaign.name,
+      metrics.search_rank_lost_impression_share,
+      metrics.search_rank_lost_top_impression_share,
+      metrics.search_rank_lost_absolute_top_impression_share,
+      metrics.search_budget_lost_impression_share,
+      metrics.search_budget_lost_top_impression_share,
+      metrics.search_budget_lost_absolute_top_impression_share
+    FROM campaign
+    WHERE segments.date BETWEEN '${opts.from}' AND '${opts.to}'
+      AND campaign.status != 'REMOVED'
+    ORDER BY metrics.cost_micros DESC
+  `;
+
+  const { json } = await adsSearch({ customerId, query });
+
+  return ((json.results ?? []) as Array<{
+    campaign?: { id?: string; name?: string };
+    metrics?: {
+      searchRankLostImpressionShare?: number | string;
+      searchRankLostTopImpressionShare?: number | string;
+      searchRankLostAbsoluteTopImpressionShare?: number | string;
+      searchBudgetLostImpressionShare?: number | string;
+      searchBudgetLostTopImpressionShare?: number | string;
+      searchBudgetLostAbsoluteTopImpressionShare?: number | string;
+    };
+  }>).map((row) => {
+    const campaign = row.campaign?.name || "(unnamed)";
+    const m = row.metrics;
+    return {
+      campaignId: row.campaign?.id || campaign,
+      campaign,
+      rankLostIs: parseShare(m?.searchRankLostImpressionShare),
+      rankLostTopIs: parseShare(m?.searchRankLostTopImpressionShare),
+      rankLostAbsTopIs: parseShare(m?.searchRankLostAbsoluteTopImpressionShare),
+      budgetLostIs: parseShare(m?.searchBudgetLostImpressionShare),
+      budgetLostTopIs: parseShare(m?.searchBudgetLostTopImpressionShare),
+      budgetLostAbsTopIs: parseShare(
+        m?.searchBudgetLostAbsoluteTopImpressionShare,
+      ),
+    };
+  });
+}
+
 /** Staff diagnostic — listAccessibleCustomers + token scope check (no secrets). */
 export async function diagnoseGoogleAdsAuth(): Promise<{
   ok: boolean;

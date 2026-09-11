@@ -132,6 +132,24 @@ export type MockThresholds = {
   minSpendForAlert: number;
 };
 
+export type MockMetaAdPerformance = {
+  adId: string;
+  adName: string;
+  campaignName: string;
+  adsetName: string;
+  effectiveStatus: string;
+  thumbnailUrl: string | null;
+  imageUrl: string | null;
+  permalinkUrl: string | null;
+  linkUrl: string | null;
+  spend: number;
+  impr: number;
+  clicks: number;
+  reach: number;
+  conv: number;
+  convValue: number;
+};
+
 export type MockTenantBundle = {
   tenant: MockTenant;
   thresholds: MockThresholds;
@@ -145,6 +163,8 @@ export type MockTenantBundle = {
   /** Meta paid insights */
   metaCurrent: MockPeriodMetrics;
   metaPrevious: MockPeriodMetrics;
+  /** Meta ads + creatives with period performance */
+  metaAds: MockMetaAdPerformance[];
   conversions: MockConversion[];
   alerts: MockAlert[];
   syncJobs: MockSyncJob[];
@@ -298,6 +318,42 @@ export const MOCK_TENANTS: MockTenantBundle[] = [
       }),
       [],
     ),
+    metaAds: [
+      {
+        adId: "mock_meta_ad_1",
+        adName: "Carousel — Yaz Koleksiyonu",
+        campaignName: "Advantage+ Alışveriş",
+        adsetName: "ASC",
+        effectiveStatus: "ACTIVE",
+        thumbnailUrl: null,
+        imageUrl: null,
+        permalinkUrl: "https://www.facebook.com/ads/library",
+        linkUrl: "https://mareen.com.tr/collections/sal",
+        spend: 21000,
+        impr: 680000,
+        clicks: 11800,
+        reach: 310000,
+        conv: 92,
+        convValue: 248000,
+      },
+      {
+        adId: "mock_meta_ad_2",
+        adName: "Video — Lookalike 1%",
+        campaignName: "Prospecting — Lookalike",
+        adsetName: "LAL 1%",
+        effectiveStatus: "ACTIVE",
+        thumbnailUrl: null,
+        imageUrl: null,
+        permalinkUrl: null,
+        linkUrl: "https://mareen.com.tr/",
+        spend: 14200,
+        impr: 480000,
+        clicks: 9200,
+        reach: 220000,
+        conv: 54,
+        convValue: 145000,
+      },
+    ],
     conversions: [
       {
         name: "Purchase",
@@ -355,6 +411,7 @@ export const MOCK_TENANTS: MockTenantBundle[] = [
     syncJobs: [
       syncOk("google", "ads", "2026-09-04T07:40:00+03:00", "campaign_daily"),
       syncOk("meta", "insights", "2026-09-04T07:38:00+03:00", "campaign_daily"),
+      syncOk("meta", "ads", "2026-09-04T07:39:00+03:00", "ad_daily"),
       syncOk("google", "ga4", "2026-09-04T07:35:00+03:00", "overview"),
       syncOk("google", "gtm", "2026-09-03T18:00:00+03:00", "config"),
       syncOk("google", "merchant", "2026-09-04T06:00:00+03:00", "product_status"),
@@ -474,6 +531,25 @@ export const MOCK_TENANTS: MockTenantBundle[] = [
       }),
       [],
     ),
+    metaAds: [
+      {
+        adId: "mock_meta_ad_lead_1",
+        adName: "Form — Teklif Al",
+        campaignName: "Lead gen — Form",
+        adsetName: "Interest",
+        effectiveStatus: "ACTIVE",
+        thumbnailUrl: null,
+        imageUrl: null,
+        permalinkUrl: null,
+        linkUrl: "https://example.com/teklif",
+        spend: 8200,
+        impr: 290000,
+        clicks: 4100,
+        reach: 140000,
+        conv: 42,
+        convValue: 0,
+      },
+    ],
     conversions: [
       {
         name: "Form gönderimi",
@@ -530,6 +606,7 @@ export const MOCK_TENANTS: MockTenantBundle[] = [
     syncJobs: [
       syncOk("google", "ads", "2026-09-04T08:15:00+03:00", "campaign_daily"),
       syncOk("meta", "insights", "2026-09-04T08:10:00+03:00", "campaign_daily"),
+      syncOk("meta", "ads", "2026-09-04T08:11:00+03:00", "ad_daily"),
       syncOk("google", "ga4", "2026-09-04T08:12:00+03:00", "overview"),
       syncOk("google", "gtm", "2026-09-03T18:00:00+03:00", "config"),
     ],

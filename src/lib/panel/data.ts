@@ -9,6 +9,7 @@ import {
   type MockCampaignMetric,
   type MockGa4Overview,
   type MockGtmSnapshot,
+  type MockMetaAdPerformance,
   type MockPeriodMetrics,
   type MockTenantBundle,
 } from "@/lib/panel/mock-data";
@@ -170,6 +171,10 @@ async function bundleFromDb(
       metaInsights: {
         where: { date: dateFilter },
       },
+      metaAds: true,
+      metaAdInsights: {
+        where: { date: dateFilter },
+      },
       ga4Metrics: {
         where: { date: dateFilter },
         take: 60,
@@ -251,6 +256,71 @@ async function bundleFromDb(
   const metaAccount = metaUnknown
     ? { ...EMPTY_ACCOUNT, campaign: "Meta toplam" }
     : sumCampaigns(metaCampaigns, "Meta toplam");
+
+  const creativeByAdId = new Map(
+    tenant.metaAds.map((a) => [a.adId, a] as const),
+  );
+  const metaAdsById = new Map<string, MockMetaAdPerformance>();
+  for (const row of tenant.metaAdInsights) {
+    const creative = creativeByAdId.get(row.adId);
+    const prev = metaAdsById.get(row.adId) || {
+      adId: row.adId,
+      adName: row.adName || creative?.adName || "(unnamed)",
+      campaignName: row.campaignName || creative?.campaignName || "",
+      adsetName: row.adsetName || creative?.adsetName || "",
+      effectiveStatus: creative?.effectiveStatus || "",
+      thumbnailUrl: creative?.thumbnailUrl ?? null,
+      imageUrl: creative?.imageUrl ?? null,
+      permalinkUrl: creative?.permalinkUrl ?? null,
+      linkUrl: creative?.linkUrl ?? null,
+      spend: 0,
+      impr: 0,
+      clicks: 0,
+      reach: 0,
+      conv: 0,
+      convValue: 0,
+    };
+    prev.spend += Number(row.spend);
+    prev.impr += row.impressions;
+    prev.clicks += row.clicks;
+    prev.reach += row.reach;
+    prev.conv += Number(row.conversions ?? 0);
+    prev.convValue += Number(row.convValue ?? 0);
+    if (creative) {
+      prev.adName = creative.adName || prev.adName;
+      prev.campaignName = creative.campaignName || prev.campaignName;
+      prev.adsetName = creative.adsetName || prev.adsetName;
+      prev.effectiveStatus = creative.effectiveStatus;
+      prev.thumbnailUrl = creative.thumbnailUrl;
+      prev.imageUrl = creative.imageUrl;
+      prev.permalinkUrl = creative.permalinkUrl;
+      prev.linkUrl = creative.linkUrl;
+    }
+    metaAdsById.set(row.adId, prev);
+  }
+  // Active creatives with no spend in range still show (status strip)
+  for (const creative of tenant.metaAds) {
+    if (metaAdsById.has(creative.adId)) continue;
+    if (creative.effectiveStatus !== "ACTIVE") continue;
+    metaAdsById.set(creative.adId, {
+      adId: creative.adId,
+      adName: creative.adName,
+      campaignName: creative.campaignName,
+      adsetName: creative.adsetName,
+      effectiveStatus: creative.effectiveStatus,
+      thumbnailUrl: creative.thumbnailUrl,
+      imageUrl: creative.imageUrl,
+      permalinkUrl: creative.permalinkUrl,
+      linkUrl: creative.linkUrl,
+      spend: 0,
+      impr: 0,
+      clicks: 0,
+      reach: 0,
+      conv: 0,
+      convValue: 0,
+    });
+  }
+  const metaAds = [...metaAdsById.values()].sort((a, b) => b.spend - a.spend);
 
   const periodSpend =
     (adsUnknown ? 0 : googleAccount.spend) +
@@ -377,6 +447,7 @@ async function bundleFromDb(
       campaigns: metaCampaigns,
     },
     metaPrevious: emptyPeriod(from, to),
+    metaAds,
     conversions: tenant.conversions.map((c) => ({
       name: c.name,
       source: c.source,

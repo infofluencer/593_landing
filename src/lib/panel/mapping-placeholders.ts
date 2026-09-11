@@ -11,6 +11,18 @@ export function isPlaceholderAdsCustomerId(
   return n === "4445556666" || n === "1112223333";
 }
 
+/** Mock / seed Meta act_ ids (mock-data + seed). */
+export function isPlaceholderMetaAccountId(
+  raw: string | null | undefined,
+): boolean {
+  if (!raw?.trim()) return true;
+  const t = raw.trim().toLowerCase();
+  if (t === "act_mareen_001" || t === "act_phase0_demo") return true;
+  if (t.startsWith("act_") && /[a-z]/.test(t.slice(4))) return true;
+  const digits = t.replace(/\D/g, "");
+  return !digits;
+}
+
 export function isPlaceholderGa4PropertyId(
   raw: string | null | undefined,
 ): boolean {

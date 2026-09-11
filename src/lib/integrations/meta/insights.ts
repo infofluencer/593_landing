@@ -1,7 +1,11 @@
 import type { TenantType } from "@prisma/client";
+import { iterateYmdRanges } from "@/lib/date/tr";
 import { getMetaSystemUserToken } from "@/lib/integrations/tokens";
 
 const GRAPH = "https://graph.facebook.com/v21.0";
+
+/** Daily campaign insights: keep each Graph call small (720g lookback → ~24 calls). */
+const META_INSIGHTS_CHUNK_DAYS = 30;
 
 export type MetaInsightRow = {
   date: string;
@@ -106,9 +110,33 @@ export function deriveMetaKpis(
 
 /**
  * Paid campaign insights only (no Instagram organic).
- * Failures throw — caller must not invent zeros.
+ * Pulls `from`→`to` in META_INSIGHTS_CHUNK_DAYS windows (Google-style long history,
+ * Meta-safe request size). Failures throw — caller must not invent zeros.
  */
 export async function fetchMetaCampaignInsights(opts: {
+  metaAccountId: string;
+  from: string;
+  to: string;
+  tenantType: TenantType;
+}): Promise<MetaInsightRow[]> {
+  const rows: MetaInsightRow[] = [];
+  for (const range of iterateYmdRanges(
+    opts.from,
+    opts.to,
+    META_INSIGHTS_CHUNK_DAYS,
+  )) {
+    const chunk = await fetchMetaCampaignInsightsChunk({
+      metaAccountId: opts.metaAccountId,
+      from: range.from,
+      to: range.to,
+      tenantType: opts.tenantType,
+    });
+    rows.push(...chunk);
+  }
+  return rows;
+}
+
+async function fetchMetaCampaignInsightsChunk(opts: {
   metaAccountId: string;
   from: string;
   to: string;
@@ -169,7 +197,7 @@ export async function fetchMetaCampaignInsights(opts: {
     if (!res.ok || json.error) {
       throw new Error(
         json.error?.message ||
-          `Meta insights ${res.status} for ${account}`,
+          `Meta insights ${res.status} for ${account} (${opts.from}…${opts.to})`,
       );
     }
 
