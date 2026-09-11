@@ -12,12 +12,48 @@ import { isPlaceholderMetaAccountId } from "@/lib/panel/mapping-placeholders";
 
 /** Panel slug → Meta ad account id (`act_…`). */
 export const META_AD_ACCOUNT_BY_SLUG: Record<string, string> = {
-  // Populated by scripts/fetch-meta-ad-accounts.ts --write
+  "armonia": "act_297746326552066",
+  "bahex": "act_1249571952455471",
+  "endospine": "act_1531490041307558", // Endoskopik Bel Ameliyato
+  "ercan-yalcin": "act_671669315040403",
+  "mareen": "act_2321566658363452",
+  "mokan": "act_2178439542611486",
+  "mraykota": "act_1364903731510777", // Doç. Dr. Muhammed Raşid Aykota
+  "orvina": "act_1635446947318192",
+  "ramtech": "act_1231587451239600",
+  "sekiz": "act_1406982224128410",
+  "suare": "act_4252118865101784",
+  "tevalli": "act_1167188141041316",
+  "zeynep-ozel": "act_276161233026397",
 };
 
 /** Optional Meta account name → act_ when slug differs from BM name. */
 export const META_AD_ACCOUNT_BY_NAME: Record<string, string> = {
-  // Populated by scripts/fetch-meta-ad-accounts.ts --write
+  "165837674": "act_165837674",
+  "273072363296745": "act_273072363296745",
+  "2990529357911124": "act_2990529357911124",
+  "38310022": "act_38310022",
+  "593 emarketing ads": "act_658697156946582",
+  "anadolu international hospitals": "act_1560103068369525",
+  "armofest": "act_4482442148703522",
+  "armonia bm": "act_297746326552066",
+  "ayakkab m ozel yeni reklam hesab": "act_1071609628391633",
+  "bahex insta": "act_1249571952455471",
+  "doc dr muhammed rasid aykota": "act_1364903731510777",
+  "endoskopik bel ameliyato": "act_1531490041307558",
+  "il silivri anadolu": "act_1079905296390683",
+  "jasmin k na org": "act_943974661513558",
+  "mareen ads": "act_2321566658363452",
+  "mokan travel": "act_2178439542611486",
+  "op dr ercan yalc n": "act_671669315040403",
+  "orvina hair makeup": "act_1635446947318192",
+  "ramtech bilgisayar": "act_1231587451239600",
+  "sekiz ocakbas": "act_1406982224128410",
+  "senkronise": "act_2561490870828625",
+  "suare davet 593": "act_4252118865101784",
+  "tevalli parasol s": "act_1167188141041316",
+  "y ld z teknik universitesi": "act_1090447746482793",
+  "zeynep ozel bridal": "act_276161233026397",
 };
 
 function norm(s: string): string {
