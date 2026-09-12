@@ -48,21 +48,48 @@ function buildResult(
     const provision = json.summary?.provision;
     const lines: string[] = [];
     if (provision?.skipped) {
-      lines.push(`Provision atlandı: ${provision.reason || "Meta kurulu değil"}`);
+      // Tek marka: provision satırını gösterme (kafa karıştırıyor)
+      if (!tenantSlug) {
+        lines.push(`Provision atlandı: ${provision.reason || "Meta kurulu değil"}`);
+      }
     } else {
-      lines.push(`Provision: ${provision?.upserted ?? 0} hesap`);
+      lines.push(`Provision: ${provision?.upserted ?? 0} hesap (BM katalog)`);
     }
     for (const t of tenants) {
-      const s = t.services.meta;
-      if (!s) continue;
-      lines.push(
-        s.ok ? `${t.slug}: insights OK` : `${t.slug}: ${s.error || "hata"}`,
-      );
+      const insights = t.services.meta;
+      const ads = t.services.metaAds;
+      if (insights) {
+        lines.push(
+          insights.ok
+            ? `${t.slug}: kampanya OK`
+            : `${t.slug}: kampanya — ${insights.error || "hata"}`,
+        );
+      }
+      if (ads) {
+        lines.push(
+          ads.ok
+            ? `${t.slug}: reklam/thumbnail OK`
+            : `${t.slug}: reklam/thumbnail — ${ads.error || "hata"}`,
+        );
+      }
+      const adInsights = t.services.metaAdInsights;
+      if (adInsights) {
+        lines.push(
+          adInsights.ok
+            ? `${t.slug}: reklam performansı OK`
+            : `${t.slug}: reklam performansı — ${adInsights.error || "hata"}`,
+        );
+      }
     }
     if (!tenants.length && !provision?.skipped) {
       lines.push("Çekilecek marka bulunamadı");
     }
-    const anyFail = tenants.some((t) => t.services.meta && !t.services.meta.ok);
+    const anyFail = tenants.some(
+      (t) =>
+        (t.services.meta && !t.services.meta.ok) ||
+        (t.services.metaAds && !t.services.metaAds.ok) ||
+        (t.services.metaAdInsights && !t.services.metaAdInsights.ok),
+    );
     if (provision?.skipped) {
       return {
         status: "warn",

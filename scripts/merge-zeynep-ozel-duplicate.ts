@@ -1,19 +1,26 @@
 /**
- * Duplicate Zeynep Özel cleanup:
- * - Keep: zeynep-ozel-bridal (Tamam / e-ticaret)
- * - Merge Meta (+ missing bits) from zeynep-ozel → keep
- * - Delete zeynep-ozel
- * - Rename keep → zeynep-ozel (map / URL uyumu)
+ * Zeynep Özel duplicate cleanup (one-shot, after deploy):
  *
- *   DATABASE_URL=... npx tsx scripts/merge-zeynep-ozel-duplicate.ts
+ * Keep  : zeynep-ozel-bridal (Tamam / ecommerce + data)
+ * Drop  : zeynep-ozel (incomplete lead)
+ * Final : rename keep → zeynep-ozel, real Meta act_
+ *
+ * Container:
+ *   cd /app && npx tsx scripts/merge-zeynep-ozel-duplicate.ts
  */
 import { PrismaClient } from "@prisma/client";
 
 const KEEP_SLUG = "zeynep-ozel-bridal";
 const DROP_SLUG = "zeynep-ozel";
 const FINAL_SLUG = "zeynep-ozel";
+/** Canonical Meta ad account (BM / map). */
+const CANONICAL_META = "act_276161233026397";
 
 const prisma = new PrismaClient();
+
+function isRealMetaAct(id: string): boolean {
+  return id.startsWith("act_") && !/[a-z]/i.test(id.slice(4));
+}
 
 async function main() {
   const keep = await prisma.tenant.findUnique({
@@ -25,39 +32,62 @@ async function main() {
     include: { mapping: true },
   });
 
-  if (!keep) throw new Error(`Keep tenant yok: ${KEEP_SLUG}`);
-  if (!drop) {
-    console.log(`Drop tenant yok (${DROP_SLUG}) — zaten temiz.`);
-    if (keep.slug !== FINAL_SLUG) {
-      await prisma.tenant.update({
-        where: { id: keep.id },
-        data: { slug: FINAL_SLUG },
-      });
-      console.log(`Renamed ${KEEP_SLUG} → ${FINAL_SLUG}`);
+  // Already merged to final slug?
+  if (!keep) {
+    const final = await prisma.tenant.findUnique({
+      where: { slug: FINAL_SLUG },
+    });
+    if (final) {
+      const meta = isRealMetaAct(final.metaAccountId)
+        ? final.metaAccountId
+        : CANONICAL_META;
+      if (final.metaAccountId !== meta || final.type !== "ecommerce") {
+        await prisma.tenant.update({
+          where: { id: final.id },
+          data: { metaAccountId: meta, type: "ecommerce" },
+        });
+      }
+      console.log("Already on", FINAL_SLUG, meta, final.type);
+      console.log("Done.");
+      return;
     }
+    throw new Error(`Keep tenant yok: ${KEEP_SLUG} ve ${FINAL_SLUG}`);
+  }
+
+  if (!drop) {
+    console.log(`Drop yok (${DROP_SLUG}) — sadece keep güncelleniyor.`);
+    const meta = isRealMetaAct(keep.metaAccountId)
+      ? keep.metaAccountId
+      : CANONICAL_META;
+    // Free slug collision if somehow FINAL exists empty — shouldn't
+    await prisma.tenant.update({
+      where: { id: keep.id },
+      data: {
+        slug: FINAL_SLUG,
+        metaAccountId: meta,
+        type: "ecommerce",
+        name: keep.name.includes("Zeynep") ? keep.name : "Zeynep Özel Bridal",
+      },
+    });
+    console.log("OK:", FINAL_SLUG, meta);
+    console.log("Done.");
     return;
   }
 
   console.log("Keep:", keep.slug, keep.metaAccountId, keep.type);
   console.log("Drop:", drop.slug, drop.metaAccountId, drop.type);
 
-  // Prefer real act_ on keep
   let metaAccountId = keep.metaAccountId;
-  const dropMetaOk =
-    drop.metaAccountId.startsWith("act_") &&
-    !/[a-z]/i.test(drop.metaAccountId.slice(4));
-  const keepMetaOk =
-    keep.metaAccountId.startsWith("act_") &&
-    !/[a-z]/i.test(keep.metaAccountId.slice(4));
-  if (!keepMetaOk && dropMetaOk) {
+  if (!isRealMetaAct(keep.metaAccountId) && isRealMetaAct(drop.metaAccountId)) {
     metaAccountId = drop.metaAccountId;
+  } else if (!isRealMetaAct(keep.metaAccountId)) {
+    metaAccountId = CANONICAL_META;
   }
 
-  // Move Meta insights (unique: tenantId+date+campaignId+objective)
+  // Move Meta insights
   const insights = await prisma.metaInsight.findMany({
     where: { tenantId: drop.id },
   });
-  let movedInsights = 0;
   for (const row of insights) {
     await prisma.metaInsight.upsert({
       where: {
@@ -113,13 +143,11 @@ async function main() {
         roasOrigin: row.roasOrigin,
       },
     });
-    movedInsights++;
   }
-  console.log(`Meta insights upserted: ${movedInsights}`);
+  console.log(`Meta insights upserted: ${insights.length}`);
 
-  // Move Meta ads
+  // Move Meta ads (creatives)
   const ads = await prisma.metaAd.findMany({ where: { tenantId: drop.id } });
-  let movedAds = 0;
   for (const row of ads) {
     await prisma.metaAd.upsert({
       where: {
@@ -160,15 +188,13 @@ async function main() {
         syncedAt: row.syncedAt,
       },
     });
-    movedAds++;
   }
-  console.log(`Meta ads upserted: ${movedAds}`);
+  console.log(`Meta ads upserted: ${ads.length}`);
 
   // Move Meta ad insights
   const adInsights = await prisma.metaAdInsight.findMany({
     where: { tenantId: drop.id },
   });
-  let movedAdInsights = 0;
   for (const row of adInsights) {
     await prisma.metaAdInsight.upsert({
       where: {
@@ -220,11 +246,10 @@ async function main() {
         roas: row.roas,
       },
     });
-    movedAdInsights++;
   }
-  console.log(`Meta ad insights upserted: ${movedAdInsights}`);
+  console.log(`Meta ad insights upserted: ${adInsights.length}`);
 
-  // Fill empty Google mapping fields on keep from drop
+  // Mapping: fill empties from drop
   if (keep.mapping && drop.mapping) {
     await prisma.tenantMapping.update({
       where: { tenantId: keep.id },
@@ -239,9 +264,20 @@ async function main() {
         merchantId: keep.mapping.merchantId || drop.mapping.merchantId,
       },
     });
+  } else if (!keep.mapping && drop.mapping) {
+    await prisma.tenantMapping.create({
+      data: {
+        tenantId: keep.id,
+        adsCustomerId: drop.mapping.adsCustomerId,
+        ga4PropertyId: drop.mapping.ga4PropertyId,
+        gtmContainerId: drop.mapping.gtmContainerId,
+        gscSiteUrl: drop.mapping.gscSiteUrl,
+        merchantId: drop.mapping.merchantId,
+      },
+    });
   }
 
-  // Move client memberships that aren't already on keep
+  // Memberships
   const dropMembers = await prisma.membership.findMany({
     where: { tenantId: drop.id },
   });
@@ -259,10 +295,9 @@ async function main() {
     }
   }
 
-  // Sync jobs: delete drop's (keep's remain)
   await prisma.syncJob.deleteMany({ where: { tenantId: drop.id } });
 
-  // metaAccountId is UNIQUE — free it on drop before assigning to keep
+  // UNIQUE metaAccountId: free drop first, then assign to keep
   if (metaAccountId !== keep.metaAccountId) {
     await prisma.tenant.update({
       where: { id: drop.id },
@@ -270,16 +305,19 @@ async function main() {
     });
     await prisma.tenant.update({
       where: { id: keep.id },
-      data: { metaAccountId },
+      data: { metaAccountId, type: "ecommerce" },
     });
     console.log(`metaAccountId → ${metaAccountId}`);
+  } else {
+    await prisma.tenant.update({
+      where: { id: keep.id },
+      data: { type: "ecommerce" },
+    });
   }
 
-  // Free slug: delete drop first
   await prisma.tenant.delete({ where: { id: drop.id } });
   console.log(`Deleted ${DROP_SLUG}`);
 
-  // Canonical slug for maps
   await prisma.tenant.update({
     where: { id: keep.id },
     data: {
@@ -288,7 +326,7 @@ async function main() {
       type: "ecommerce",
     },
   });
-  console.log(`Renamed keep → ${FINAL_SLUG} (ecommerce)`);
+  console.log(`OK: ${FINAL_SLUG} ${metaAccountId} ecommerce`);
   console.log("Done.");
 }
 

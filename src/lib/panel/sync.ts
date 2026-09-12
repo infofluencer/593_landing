@@ -115,14 +115,24 @@ export async function runAgencySync(opts?: {
   if (doGoogle) await ensureGoogleConnection();
   if (doMeta) await ensureMetaConnection();
 
-  const provision: ProvisionResult = doMeta
-    ? await provisionTenantsFromMeta()
-    : {
-        upserted: 0,
-        accounts: [],
-        skipped: true,
-        reason: "Meta sync seçilmedi",
-      };
+  // Tek marka sync’te tüm BM’yi yeniden taramaya gerek yok — sadece o firmanın insights’ı.
+  // Ajans geneli Meta sync’te tenant listesini taze tutmak için provision çalışır.
+  const provision: ProvisionResult =
+    doMeta && !opts?.tenantSlug
+      ? await provisionTenantsFromMeta()
+      : doMeta
+        ? {
+            upserted: 0,
+            accounts: [],
+            skipped: true,
+            reason: "Tek marka sync — BM provision atlandı",
+          }
+        : {
+            upserted: 0,
+            accounts: [],
+            skipped: true,
+            reason: "Meta sync seçilmedi",
+          };
 
   const tenants = await prisma.tenant.findMany({
     where: {
@@ -172,6 +182,74 @@ export async function runAgencySync(opts?: {
         tenant.metaAccountId = mapMetaId;
         metaAccountId = mapMetaId;
       }
+    }
+
+    // --- Meta creatives (thumbnail / link) — önce (hızlı; timeout’tan önce kalsın) ---
+    if (doMeta) {
+      const metaCreatives = await runSynced(
+        {
+          tenantId: tenant.id,
+          provider: "meta",
+          service: "ads",
+          objective: "creatives",
+        },
+        async () => {
+          if (!metaAccountId) {
+            throw new Error(
+              "metaAccountId yok — reklam/kreatif çekilemedi, 0 yazılmadı.",
+            );
+          }
+          const creatives = await fetchMetaAdsWithCreatives({
+            metaAccountId,
+          });
+          const syncedAt = new Date();
+          for (const ad of creatives) {
+            await prisma.metaAd.upsert({
+              where: {
+                tenantId_adId: { tenantId: tenant.id, adId: ad.adId },
+              },
+              update: {
+                adName: ad.adName,
+                adsetId: ad.adsetId,
+                adsetName: ad.adsetName,
+                campaignId: ad.campaignId,
+                campaignName: ad.campaignName,
+                status: ad.status,
+                effectiveStatus: ad.effectiveStatus,
+                creativeId: ad.creativeId,
+                thumbnailUrl: ad.thumbnailUrl,
+                imageUrl: ad.imageUrl,
+                permalinkUrl: ad.permalinkUrl,
+                linkUrl: ad.linkUrl,
+                objectType: ad.objectType,
+                syncedAt,
+              },
+              create: {
+                tenantId: tenant.id,
+                adId: ad.adId,
+                adName: ad.adName,
+                adsetId: ad.adsetId,
+                adsetName: ad.adsetName,
+                campaignId: ad.campaignId,
+                campaignName: ad.campaignName,
+                status: ad.status,
+                effectiveStatus: ad.effectiveStatus,
+                creativeId: ad.creativeId,
+                thumbnailUrl: ad.thumbnailUrl,
+                imageUrl: ad.imageUrl,
+                permalinkUrl: ad.permalinkUrl,
+                linkUrl: ad.linkUrl,
+                objectType: ad.objectType,
+                syncedAt,
+              },
+            });
+          }
+          return { creatives: creatives.length };
+        },
+      );
+      services.metaAds = metaCreatives.ok
+        ? { ok: true }
+        : { ok: false, error: metaCreatives.error };
     }
 
     // --- Meta insights (paid only) ---
@@ -332,67 +410,18 @@ export async function runAgencySync(opts?: {
       );
       services.meta = meta.ok ? { ok: true } : { ok: false, error: meta.error };
 
-      const metaAds = await runSynced(
+      const metaAdPerf = await runSynced(
         {
           tenantId: tenant.id,
           provider: "meta",
-          service: "ads",
+          service: "ad_insights",
           objective: "ad_daily",
         },
         async () => {
           if (!metaAccountId) {
             throw new Error(
-              "metaAccountId yok — reklam/kreatif çekilemedi, 0 yazılmadı.",
+              "metaAccountId yok — reklam insights çekilemedi, 0 yazılmadı.",
             );
-          }
-
-          const creatives = await fetchMetaAdsWithCreatives({
-            metaAccountId,
-          });
-          const syncedAt = new Date();
-          for (const ad of creatives) {
-            await prisma.metaAd.upsert({
-              where: {
-                tenantId_adId: {
-                  tenantId: tenant.id,
-                  adId: ad.adId,
-                },
-              },
-              update: {
-                adName: ad.adName,
-                adsetId: ad.adsetId,
-                adsetName: ad.adsetName,
-                campaignId: ad.campaignId,
-                campaignName: ad.campaignName,
-                status: ad.status,
-                effectiveStatus: ad.effectiveStatus,
-                creativeId: ad.creativeId,
-                thumbnailUrl: ad.thumbnailUrl,
-                imageUrl: ad.imageUrl,
-                permalinkUrl: ad.permalinkUrl,
-                linkUrl: ad.linkUrl,
-                objectType: ad.objectType,
-                syncedAt,
-              },
-              create: {
-                tenantId: tenant.id,
-                adId: ad.adId,
-                adName: ad.adName,
-                adsetId: ad.adsetId,
-                adsetName: ad.adsetName,
-                campaignId: ad.campaignId,
-                campaignName: ad.campaignName,
-                status: ad.status,
-                effectiveStatus: ad.effectiveStatus,
-                creativeId: ad.creativeId,
-                thumbnailUrl: ad.thumbnailUrl,
-                imageUrl: ad.imageUrl,
-                permalinkUrl: ad.permalinkUrl,
-                linkUrl: ad.linkUrl,
-                objectType: ad.objectType,
-                syncedAt,
-              },
-            });
           }
 
           const adRows = await fetchMetaAdInsights({
@@ -550,16 +579,15 @@ export async function runAgencySync(opts?: {
           }
 
           return {
-            creatives: creatives.length,
             insights: adRows.length,
             adsets: adsetRows.length,
             breakdowns: breakdownRows.length,
           };
         },
       );
-      services.metaAds = metaAds.ok
+      services.metaAdInsights = metaAdPerf.ok
         ? { ok: true }
-        : { ok: false, error: metaAds.error };
+        : { ok: false, error: metaAdPerf.error };
     }
 
     if (doGoogle) {
