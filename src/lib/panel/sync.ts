@@ -142,6 +142,12 @@ export async function runAgencySync(opts?: {
     include: { mapping: true },
   });
 
+  if (opts?.tenantSlug && tenants.length === 0) {
+    throw new Error(
+      `Marka bulunamadı: ${opts.tenantSlug} (slug değişmiş olabilir — sayfayı yenile).`,
+    );
+  }
+
   const envVerify = process.env.SITE_VERIFY_ON_SYNC === "true";
   const doSiteVerify = opts?.siteVerify === true || envVerify;
 

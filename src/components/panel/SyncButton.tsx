@@ -146,8 +146,21 @@ export async function runPanelSync(opts: {
       siteVerify: false,
     }),
   });
-  const json = (await res.json()) as SyncResponse;
-  return { httpOk: res.ok, json };
+  const text = await res.text();
+  try {
+    const json = JSON.parse(text) as SyncResponse;
+    return { httpOk: res.ok, json };
+  } catch {
+    const hint = text.trimStart().startsWith("<!")
+      ? "Sunucu HTML döndü (proxy/crash/404). Sayfayı yenileyip doğru marka satırından tekrar dene."
+      : text.slice(0, 160);
+    return {
+      httpOk: false,
+      json: {
+        error: `JSON beklenirken hata (${res.status}): ${hint}`,
+      },
+    };
+  }
 }
 
 function formatElapsed(seconds: number): string {
