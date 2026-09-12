@@ -1,9 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { TenantType } from "@prisma/client";
 import { TenantSyncActions } from "@/components/panel/SyncButton";
+import {
+  brandMapHintsFor,
+  draftMetaAccountId,
+} from "@/lib/panel/brand-map-hints";
 
 type MappingFields = {
   adsCustomerId: string;
@@ -28,10 +32,10 @@ type FormState = {
 
 const STEPS = [
   "Kimlik",
-  "Tip & bütçe",
-  "Google eşleştirme",
-  "Müşteri hesabı",
-  "Sync",
+  "Meta & tip",
+  "Google",
+  "Müşteri",
+  "Veri çek",
 ] as const;
 
 const empty: FormState = {
@@ -69,6 +73,28 @@ function slugifyDraft(name: string): string {
     .replace(/^-+|-+$/g, "");
 }
 
+function applyMapHints(form: FormState): FormState {
+  const slug = form.slug.trim() || slugifyDraft(form.name);
+  const hints = brandMapHintsFor({ slug, name: form.name });
+  return {
+    ...form,
+    slug,
+    metaAccountId: form.metaAccountId.trim()
+      ? draftMetaAccountId(form.metaAccountId)
+      : hints.metaAccountId || "",
+    mapping: {
+      adsCustomerId:
+        form.mapping.adsCustomerId.trim() || hints.adsCustomerId || "",
+      ga4PropertyId:
+        form.mapping.ga4PropertyId.trim() || hints.ga4PropertyId || "",
+      gtmContainerId:
+        form.mapping.gtmContainerId.trim() || hints.gtmContainerId || "",
+      gscSiteUrl: form.mapping.gscSiteUrl,
+      merchantId: form.mapping.merchantId,
+    },
+  };
+}
+
 export default function AddBrandWizard() {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -77,6 +103,15 @@ export default function AddBrandWizard() {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [createdSlug, setCreatedSlug] = useState<string | null>(null);
+
+  const hints = useMemo(
+    () =>
+      brandMapHintsFor({
+        slug: form.slug.trim() || slugifyDraft(form.name),
+        name: form.name,
+      }),
+    [form.slug, form.name],
+  );
 
   function reset() {
     setStep(0);
@@ -98,25 +133,27 @@ export default function AddBrandWizard() {
   async function createTenant(): Promise<string | null> {
     setPending(true);
     setError(null);
+    const prepared = applyMapHints(form);
+    setForm(prepared);
     try {
       const res = await fetch("/api/panel/tenants", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          name: form.name.trim(),
-          slug: form.slug.trim() || undefined,
-          metaAccountId: form.metaAccountId.trim() || null,
-          type: form.type,
-          website: form.website.trim() || null,
-          monthlyBudget: form.monthlyBudget
-            ? Number(form.monthlyBudget)
+          name: prepared.name.trim(),
+          slug: prepared.slug.trim() || undefined,
+          metaAccountId: prepared.metaAccountId.trim() || null,
+          type: prepared.type,
+          website: prepared.website.trim() || null,
+          monthlyBudget: prepared.monthlyBudget
+            ? Number(prepared.monthlyBudget)
             : null,
           mapping: {
-            adsCustomerId: form.mapping.adsCustomerId || null,
-            ga4PropertyId: form.mapping.ga4PropertyId || null,
-            gtmContainerId: form.mapping.gtmContainerId || null,
-            gscSiteUrl: form.mapping.gscSiteUrl || null,
-            merchantId: form.mapping.merchantId || null,
+            adsCustomerId: prepared.mapping.adsCustomerId || null,
+            ga4PropertyId: prepared.mapping.ga4PropertyId || null,
+            gtmContainerId: prepared.mapping.gtmContainerId || null,
+            gscSiteUrl: prepared.mapping.gscSiteUrl || null,
+            merchantId: prepared.mapping.merchantId || null,
           },
         }),
       });
@@ -143,21 +180,26 @@ export default function AddBrandWizard() {
     const password = form.clientPassword;
     if (!email && !password) return true;
     if (!email || !password) {
-      setError("Müşteri için e-posta ve şifre birlikte gerekli (veya ikisini de boş bırakın)");
+      setError(
+        "Müşteri için e-posta ve şifre birlikte gerekli (veya ikisini de boş bırakın)",
+      );
       return false;
     }
     setPending(true);
     setError(null);
     try {
-      const res = await fetch(`/api/panel/tenants/${encodeURIComponent(slug)}/client-user`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          email,
-          password,
-          name: form.clientName.trim() || null,
-        }),
-      });
+      const res = await fetch(
+        `/api/panel/tenants/${encodeURIComponent(slug)}/client-user`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            email,
+            password,
+            name: form.clientName.trim() || null,
+          }),
+        },
+      );
       const json = (await res.json()) as { ok?: boolean; error?: string };
       if (!res.ok) {
         setError(json.error || "Müşteri hesabı oluşturulamadı");
@@ -179,17 +221,34 @@ export default function AddBrandWizard() {
         setError("Marka adı gerekli");
         return;
       }
-      if (!form.slug.trim()) {
-        setField("slug", slugifyDraft(form.name));
-      }
+      const next = applyMapHints({
+        ...form,
+        slug: form.slug.trim() || slugifyDraft(form.name),
+      });
+      setForm(next);
       setStep(1);
       return;
     }
     if (step === 1) {
+      if (!form.metaAccountId.trim() && !hints.metaAccountId) {
+        setError(
+          "Meta reklam hesabı (act_…) girin veya kod map’e ekleyin — yoksa Meta sync çalışmaz.",
+        );
+        return;
+      }
+      if (!form.metaAccountId.trim() && hints.metaAccountId) {
+        setForm((f) => ({ ...f, metaAccountId: hints.metaAccountId! }));
+      } else if (form.metaAccountId.trim()) {
+        setForm((f) => ({
+          ...f,
+          metaAccountId: draftMetaAccountId(f.metaAccountId),
+        }));
+      }
       setStep(2);
       return;
     }
     if (step === 2) {
+      setForm((f) => applyMapHints(f));
       setStep(3);
       return;
     }
@@ -201,13 +260,36 @@ export default function AddBrandWizard() {
       if (!ok) return;
       setStep(4);
       router.refresh();
-      return;
     }
   }
 
   function onBack() {
     setError(null);
     if (step > 0 && step < 4) setStep(step - 1);
+  }
+
+  function fillFromMap(field: "meta" | "ads" | "ga4" | "gtm") {
+    if (field === "meta" && hints.metaAccountId) {
+      setField("metaAccountId", hints.metaAccountId);
+    }
+    if (field === "ads" && hints.adsCustomerId) {
+      setField("mapping", {
+        ...form.mapping,
+        adsCustomerId: hints.adsCustomerId,
+      });
+    }
+    if (field === "ga4" && hints.ga4PropertyId) {
+      setField("mapping", {
+        ...form.mapping,
+        ga4PropertyId: hints.ga4PropertyId,
+      });
+    }
+    if (field === "gtm" && hints.gtmContainerId) {
+      setField("mapping", {
+        ...form.mapping,
+        gtmContainerId: hints.gtmContainerId,
+      });
+    }
   }
 
   return (
@@ -272,6 +354,12 @@ export default function AddBrandWizard() {
             <div className="mt-5 space-y-3">
               {step === 0 ? (
                 <>
+                  <p className="text-xs text-zinc-500">
+                    Slug panel adresi olur (
+                    <code className="text-zinc-600">slug.alanadiniz.com</code>
+                    ). Kod map varsa sonraki adımlarda Meta / Google ID’leri
+                    önerilir.
+                  </p>
                   <Field label="Marka adı">
                     <input
                       className={inputClass}
@@ -306,22 +394,44 @@ export default function AddBrandWizard() {
                       placeholder="mareen"
                     />
                   </Field>
-                  <Field label="Meta account ID (opsiyonel)">
+                </>
+              ) : null}
+
+              {step === 1 ? (
+                <>
+                  <p className="text-xs text-zinc-500">
+                    Meta BM altındaki reklam hesabı (
+                    <code className="text-zinc-600">act_…</code>). System user
+                    bu hesaba atanmış olmalı. DB’ye yazılır; kod map yedek.
+                  </p>
+                  <Field label="Meta reklam hesabı (act_…)">
                     <input
                       className={inputClass}
                       value={form.metaAccountId}
                       onChange={(e) =>
                         setField("metaAccountId", e.target.value)
                       }
-                      placeholder="act_… — boşsa manuel ID atanır"
+                      onBlur={() =>
+                        setField(
+                          "metaAccountId",
+                          draftMetaAccountId(form.metaAccountId),
+                        )
+                      }
+                      placeholder={hints.metaAccountId || "act_123…"}
                     />
                   </Field>
-                </>
-              ) : null}
-
-              {step === 1 ? (
-                <>
-                  <Field label="Tip (KPI modeli)">
+                  {hints.metaAccountId ? (
+                    <HintRow
+                      text={`Map önerisi: ${hints.metaAccountId}`}
+                      onUse={() => fillFromMap("meta")}
+                    />
+                  ) : (
+                    <p className="text-[11px] text-amber-700">
+                      Bu slug için Meta map yok — act_’yi elle girin veya BM’de
+                      hesabı bağlayıp map’i güncelleyin.
+                    </p>
+                  )}
+                  <Field label="Tip (rapor modeli)">
                     <select
                       className={inputClass}
                       value={form.type}
@@ -329,8 +439,10 @@ export default function AddBrandWizard() {
                         setField("type", e.target.value as TenantType)
                       }
                     >
-                      <option value="ecommerce">E-ticaret</option>
-                      <option value="lead">Lead / form</option>
+                      <option value="ecommerce">
+                        E-ticaret (satış / getiri)
+                      </option>
+                      <option value="lead">Lead / form (iletişim)</option>
                     </select>
                   </Field>
                   <Field label="Website">
@@ -358,38 +470,102 @@ export default function AddBrandWizard() {
               {step === 2 ? (
                 <>
                   <p className="text-xs text-zinc-500">
-                    Ayarlar’a da yazılır; kod map yalnızca yedek. Boş bırakılabilir.
+                    Google tarafı MCC altındaki müşteri ID’leri. Boş
+                    bırakılabilir; kod map varsa sync yine dener.
                   </p>
-                  {(
-                    [
-                      ["adsCustomerId", "Google Ads customer ID"],
-                      ["ga4PropertyId", "GA4 property ID"],
-                      ["gtmContainerId", "GTM (GTM-… veya numeric)"],
-                      ["gscSiteUrl", "Search Console site URL"],
-                      ["merchantId", "Merchant Center ID"],
-                    ] as const
-                  ).map(([key, label]) => (
-                    <Field key={key} label={label}>
-                      <input
-                        className={inputClass}
-                        value={form.mapping[key]}
-                        onChange={(e) =>
-                          setField("mapping", {
-                            ...form.mapping,
-                            [key]: e.target.value,
-                          })
-                        }
-                      />
-                    </Field>
-                  ))}
+                  <Field label="Google Ads müşteri ID">
+                    <input
+                      className={inputClass}
+                      value={form.mapping.adsCustomerId}
+                      onChange={(e) =>
+                        setField("mapping", {
+                          ...form.mapping,
+                          adsCustomerId: e.target.value,
+                        })
+                      }
+                      placeholder={hints.adsCustomerId || "1234567890"}
+                    />
+                  </Field>
+                  {hints.adsCustomerId ? (
+                    <HintRow
+                      text={`Map: ${hints.adsCustomerId}`}
+                      onUse={() => fillFromMap("ads")}
+                    />
+                  ) : null}
+                  <Field label="GA4 property">
+                    <input
+                      className={inputClass}
+                      value={form.mapping.ga4PropertyId}
+                      onChange={(e) =>
+                        setField("mapping", {
+                          ...form.mapping,
+                          ga4PropertyId: e.target.value,
+                        })
+                      }
+                      placeholder={
+                        hints.ga4PropertyId || "properties/123456789"
+                      }
+                    />
+                  </Field>
+                  {hints.ga4PropertyId ? (
+                    <HintRow
+                      text={`Map: ${hints.ga4PropertyId}`}
+                      onUse={() => fillFromMap("ga4")}
+                    />
+                  ) : null}
+                  <Field label="GTM container">
+                    <input
+                      className={inputClass}
+                      value={form.mapping.gtmContainerId}
+                      onChange={(e) =>
+                        setField("mapping", {
+                          ...form.mapping,
+                          gtmContainerId: e.target.value,
+                        })
+                      }
+                      placeholder={hints.gtmContainerId || "GTM-XXXX"}
+                    />
+                  </Field>
+                  {hints.gtmContainerId ? (
+                    <HintRow
+                      text={`Map: ${hints.gtmContainerId}`}
+                      onUse={() => fillFromMap("gtm")}
+                    />
+                  ) : null}
+                  <Field label="Search Console site URL">
+                    <input
+                      className={inputClass}
+                      value={form.mapping.gscSiteUrl}
+                      onChange={(e) =>
+                        setField("mapping", {
+                          ...form.mapping,
+                          gscSiteUrl: e.target.value,
+                        })
+                      }
+                      placeholder="https://ornek.com/"
+                    />
+                  </Field>
+                  <Field label="Merchant Center ID (e-ticaret)">
+                    <input
+                      className={inputClass}
+                      value={form.mapping.merchantId}
+                      onChange={(e) =>
+                        setField("mapping", {
+                          ...form.mapping,
+                          merchantId: e.target.value,
+                        })
+                      }
+                      placeholder="Sayısal ID"
+                    />
+                  </Field>
                 </>
               ) : null}
 
               {step === 3 ? (
                 <>
                   <p className="text-xs text-zinc-500">
-                    Opsiyonel — marka subdomain girişi için müşteri kullanıcısı.
-                    Atlamak için boş bırakın.
+                    Opsiyonel — marka subdomain’ine giriş için müşteri
+                    kullanıcısı. Atlamak için boş bırakın.
                   </p>
                   <Field label="Müşteri adı">
                     <input
@@ -427,10 +603,23 @@ export default function AddBrandWizard() {
                     <span className="font-medium text-zinc-900">
                       {form.name}
                     </span>{" "}
-                    oluşturuldu (
+                    hazır (
                     <code className="text-xs text-zinc-500">{createdSlug}</code>
-                    ). Meta / Google çekin, sonra subdomain’i kontrol edin.
+                    ).
                   </p>
+                  <ol className="list-decimal space-y-1 pl-4 text-xs text-zinc-600">
+                    <li>
+                      <strong className="font-medium text-zinc-800">Meta</strong>{" "}
+                      — kampanya + kreatif (720 gün)
+                    </li>
+                    <li>
+                      <strong className="font-medium text-zinc-800">
+                        Google
+                      </strong>{" "}
+                      — Ads / GA4 / GTM / GSC
+                    </li>
+                    <li>Marka subdomain’den müşteri girişini deneyin</li>
+                  </ol>
                   <TenantSyncActions tenantSlug={createdSlug} />
                   <a
                     href={`/settings?tenant=${encodeURIComponent(createdSlug)}`}
@@ -452,7 +641,7 @@ export default function AddBrandWizard() {
               <button
                 type="button"
                 onClick={step === 4 ? close : onBack}
-                disabled={pending || (step === 0)}
+                disabled={pending || step === 0}
                 className="rounded-md border border-zinc-200 px-3 py-1.5 text-sm text-zinc-600 hover:bg-zinc-50 disabled:opacity-40"
               >
                 {step === 4 ? "Listeye dön" : "Geri"}
@@ -484,6 +673,21 @@ export default function AddBrandWizard() {
         </div>
       ) : null}
     </>
+  );
+}
+
+function HintRow({ text, onUse }: { text: string; onUse: () => void }) {
+  return (
+    <div className="-mt-1 flex flex-wrap items-center gap-2 text-[11px] text-zinc-500">
+      <span>{text}</span>
+      <button
+        type="button"
+        onClick={onUse}
+        className="font-medium text-[#e91825] hover:underline"
+      >
+        Kullan
+      </button>
+    </div>
   );
 }
 

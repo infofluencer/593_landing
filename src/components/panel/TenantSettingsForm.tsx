@@ -1,8 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { TenantType } from "@prisma/client";
+import { TenantSyncActions } from "@/components/panel/SyncButton";
+import {
+  brandMapHintsFor,
+  draftMetaAccountId,
+} from "@/lib/panel/brand-map-hints";
+import { isPlaceholderMetaAccountId } from "@/lib/panel/mapping-placeholders";
 
 export type TenantSettingsInitial = {
   name: string;
@@ -32,22 +38,39 @@ export default function TenantSettingsForm({
   initial,
   tenantSlug,
   rootDomain,
+  allowDelete = false,
 }: {
   initial: TenantSettingsInitial;
   /** Required on staff host (admin.*) where there is no x-tenant-slug. */
   tenantSlug: string;
   rootDomain: string;
+  /** DB’de gerçek tenant varsa silmeye izin ver. */
+  allowDelete?: boolean;
 }) {
   const router = useRouter();
   const [form, setForm] = useState(initial);
   const [pending, setPending] = useState(false);
   const [clientPending, setClientPending] = useState(false);
+  const [deletePending, setDeletePending] = useState(false);
+  const [confirmSlug, setConfirmSlug] = useState("");
   const [message, setMessage] = useState<string | null>(null);
+  const [deleteMessage, setDeleteMessage] = useState<string | null>(null);
   const [clientForm, setClientForm] = useState({
     email: initial.clientUsers[0]?.email ?? "",
     name: initial.clientUsers[0]?.name ?? "",
     password: "",
   });
+
+  const hints = useMemo(
+    () =>
+      brandMapHintsFor({
+        slug: form.slug.trim() || tenantSlug,
+        name: form.name,
+      }),
+    [form.slug, form.name, tenantSlug],
+  );
+
+  const metaLooksPlaceholder = isPlaceholderMetaAccountId(form.metaAccountId);
 
   function setField<K extends keyof TenantSettingsInitial>(
     key: K,
@@ -61,6 +84,7 @@ export default function TenantSettingsForm({
     setPending(true);
     setMessage(null);
     try {
+      const meta = draftMetaAccountId(form.metaAccountId) || null;
       const res = await fetch("/api/panel/tenant", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -68,7 +92,7 @@ export default function TenantSettingsForm({
           tenantSlug,
           name: form.name.trim(),
           slug: form.slug.trim().toLowerCase(),
-          metaAccountId: form.metaAccountId.trim() || null,
+          metaAccountId: meta,
           type: form.type,
           website: form.website || null,
           monthlyBudget: form.monthlyBudget
@@ -148,6 +172,41 @@ export default function TenantSettingsForm({
     }
   }
 
+  async function onDeleteBrand() {
+    if (confirmSlug.trim().toLowerCase() !== tenantSlug) {
+      setDeleteMessage("Silmek için slug’ı aynen yazın");
+      return;
+    }
+    const ok = window.confirm(
+      `"${form.name}" markasını ve tüm panel verisini kalıcı silmek istiyor musunuz? Bu geri alınamaz.`,
+    );
+    if (!ok) return;
+
+    setDeletePending(true);
+    setDeleteMessage(null);
+    try {
+      const res = await fetch("/api/panel/tenant", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tenantSlug,
+          confirmSlug: confirmSlug.trim().toLowerCase(),
+        }),
+      });
+      const json = (await res.json()) as { ok?: boolean; error?: string };
+      if (!res.ok) {
+        setDeleteMessage(json.error || "Silme başarısız");
+        return;
+      }
+      router.push("/settings");
+      router.refresh();
+    } catch (err) {
+      setDeleteMessage(err instanceof Error ? err.message : "Network error");
+    } finally {
+      setDeletePending(false);
+    }
+  }
+
   const panelHint = `${form.slug.trim() || tenantSlug}.${rootDomain}`;
 
   return (
@@ -159,7 +218,7 @@ export default function TenantSettingsForm({
             Panel adresi:{" "}
             <code className="text-zinc-600">{panelHint}</code>
             {" — "}
-            slug değişince Dokploy / DNS’i de güncelle.
+            slug değişince DNS / Dokploy’u da güncelleyin.
           </p>
           <div className="grid gap-3 sm:grid-cols-2">
             <Field label="Marka adı">
@@ -185,15 +244,7 @@ export default function TenantSettingsForm({
                 required
               />
             </Field>
-            <Field label="Meta account ID">
-              <input
-                className={inputClass}
-                value={form.metaAccountId}
-                onChange={(e) => setField("metaAccountId", e.target.value)}
-                placeholder="act_… — boşsa act_manual_{slug}"
-              />
-            </Field>
-            <Field label="Tip (KPI modeli)">
+            <Field label="Tip (rapor modeli)">
               <select
                 className={inputClass}
                 value={form.type}
@@ -201,11 +252,11 @@ export default function TenantSettingsForm({
                   setField("type", e.target.value as TenantType)
                 }
               >
-                <option value="ecommerce">E-ticaret (ROAS / satış)</option>
-                <option value="lead">Lead / form (CPL)</option>
+                <option value="ecommerce">E-ticaret (satış / getiri)</option>
+                <option value="lead">Lead / form (iletişim)</option>
               </select>
             </Field>
-            <Field label="Website (Playwright test URL)">
+            <Field label="Website">
               <input
                 className={inputClass}
                 value={form.website}
@@ -242,51 +293,131 @@ export default function TenantSettingsForm({
 
         <section className="space-y-4">
           <h3 className="text-sm font-semibold text-zinc-800">
+            Meta (Facebook / Instagram)
+          </h3>
+          <p className="text-xs text-zinc-500">
+            Ajans BM + system user ile çekilir. Buradaki{" "}
+            <code className="text-zinc-600">act_…</code> önceliklidir; boş /
+            sahteyse kod map yedek olur.
+          </p>
+          <Field label="Meta reklam hesabı (act_…)">
+            <input
+              className={inputClass}
+              value={form.metaAccountId}
+              onChange={(e) => setField("metaAccountId", e.target.value)}
+              onBlur={() =>
+                setField(
+                  "metaAccountId",
+                  draftMetaAccountId(form.metaAccountId) || form.metaAccountId,
+                )
+              }
+              placeholder={hints.metaAccountId || "act_123…"}
+            />
+          </Field>
+          {hints.metaAccountId ? (
+            <HintRow
+              text={`Kod map: ${hints.metaAccountId}`}
+              onUse={() => setField("metaAccountId", hints.metaAccountId!)}
+            />
+          ) : (
+            <p className="text-[11px] text-amber-700">
+              Bu slug için Meta map yok — act_ doğru değilse sync boş kalır.
+            </p>
+          )}
+          {metaLooksPlaceholder ? (
+            <p className="text-[11px] text-amber-700">
+              Kayıtlı Meta ID placeholder görünüyor — gerçek act_ yazın veya
+              map’ten doldurun.
+            </p>
+          ) : null}
+        </section>
+
+        <section className="space-y-4">
+          <h3 className="text-sm font-semibold text-zinc-800">
             Google eşleştirmeleri
           </h3>
           <p className="text-xs text-zinc-500">
-            DB öncelikli; boşsa kod map yedek. Sihirbazdaki alanlarla aynı.
+            MCC altındaki hesaplar. DB öncelikli; boşsa ilgili kod map yedek.
           </p>
           <div className="grid gap-3 sm:grid-cols-2">
-            <Field label="Google Ads customer ID">
-              <input
-                className={inputClass}
-                value={form.mapping.adsCustomerId}
-                onChange={(e) =>
-                  setField("mapping", {
-                    ...form.mapping,
-                    adsCustomerId: e.target.value,
-                  })
-                }
-                placeholder="123-456-7890"
-              />
-            </Field>
-            <Field label="GA4 property">
-              <input
-                className={inputClass}
-                value={form.mapping.ga4PropertyId}
-                onChange={(e) =>
-                  setField("mapping", {
-                    ...form.mapping,
-                    ga4PropertyId: e.target.value,
-                  })
-                }
-                placeholder="properties/123456"
-              />
-            </Field>
-            <Field label="GTM (GTM-XXXX veya accountId/containerId)">
-              <input
-                className={inputClass}
-                value={form.mapping.gtmContainerId}
-                onChange={(e) =>
-                  setField("mapping", {
-                    ...form.mapping,
-                    gtmContainerId: e.target.value,
-                  })
-                }
-                placeholder="GTM-NDHZKCHJ"
-              />
-            </Field>
+            <div className="space-y-1">
+              <Field label="Google Ads müşteri ID">
+                <input
+                  className={inputClass}
+                  value={form.mapping.adsCustomerId}
+                  onChange={(e) =>
+                    setField("mapping", {
+                      ...form.mapping,
+                      adsCustomerId: e.target.value,
+                    })
+                  }
+                  placeholder={hints.adsCustomerId || "1234567890"}
+                />
+              </Field>
+              {hints.adsCustomerId ? (
+                <HintRow
+                  text={`Map: ${hints.adsCustomerId}`}
+                  onUse={() =>
+                    setField("mapping", {
+                      ...form.mapping,
+                      adsCustomerId: hints.adsCustomerId!,
+                    })
+                  }
+                />
+              ) : null}
+            </div>
+            <div className="space-y-1">
+              <Field label="GA4 property">
+                <input
+                  className={inputClass}
+                  value={form.mapping.ga4PropertyId}
+                  onChange={(e) =>
+                    setField("mapping", {
+                      ...form.mapping,
+                      ga4PropertyId: e.target.value,
+                    })
+                  }
+                  placeholder={hints.ga4PropertyId || "properties/123456"}
+                />
+              </Field>
+              {hints.ga4PropertyId ? (
+                <HintRow
+                  text={`Map: ${hints.ga4PropertyId}`}
+                  onUse={() =>
+                    setField("mapping", {
+                      ...form.mapping,
+                      ga4PropertyId: hints.ga4PropertyId!,
+                    })
+                  }
+                />
+              ) : null}
+            </div>
+            <div className="space-y-1">
+              <Field label="GTM container">
+                <input
+                  className={inputClass}
+                  value={form.mapping.gtmContainerId}
+                  onChange={(e) =>
+                    setField("mapping", {
+                      ...form.mapping,
+                      gtmContainerId: e.target.value,
+                    })
+                  }
+                  placeholder={hints.gtmContainerId || "GTM-XXXX"}
+                />
+              </Field>
+              {hints.gtmContainerId ? (
+                <HintRow
+                  text={`Map: ${hints.gtmContainerId}`}
+                  onUse={() =>
+                    setField("mapping", {
+                      ...form.mapping,
+                      gtmContainerId: hints.gtmContainerId!,
+                    })
+                  }
+                />
+              ) : null}
+            </div>
             <Field label="Search Console site URL">
               <input
                 className={inputClass}
@@ -300,7 +431,7 @@ export default function TenantSettingsForm({
                 placeholder="https://ornek.com/"
               />
             </Field>
-            <Field label="Merchant ID (e-ticaret, sayısal)">
+            <Field label="Merchant Center ID (e-ticaret)">
               <input
                 className={inputClass}
                 value={form.mapping.merchantId}
@@ -379,6 +510,15 @@ export default function TenantSettingsForm({
         </div>
       </form>
 
+      <section className="space-y-3 border-t border-zinc-100 pt-8">
+        <h3 className="text-sm font-semibold text-zinc-800">Veri çek</h3>
+        <p className="text-xs text-zinc-500">
+          Bu marka için Meta ve Google’ı ayrı ayrı yenileyin. Meta: kampanya +
+          kreatif (720 gün). Google: Ads / GA4 / GTM / GSC.
+        </p>
+        <TenantSyncActions tenantSlug={tenantSlug} />
+      </section>
+
       <form
         onSubmit={onSaveClient}
         className="space-y-4 border-t border-zinc-100 pt-8"
@@ -445,6 +585,59 @@ export default function TenantSettingsForm({
           {clientPending ? "Kaydediliyor…" : "Müşteri hesabını kaydet"}
         </button>
       </form>
+
+      {allowDelete ? (
+        <section className="space-y-3 rounded-xl border border-red-200 bg-red-50/60 p-4">
+          <div>
+            <h3 className="text-sm font-semibold text-red-900">
+              Tehlikeli alan · markayı sil
+            </h3>
+            <p className="mt-1 text-xs leading-relaxed text-red-800/80">
+              Bu markayı, sync verilerini, uyarıları ve müşteri üyeliklerini
+              kalıcı siler. Meta BM hesabı silinmez; yalnızca panel kaydı gider.
+              Geri alınamaz.
+            </p>
+          </div>
+          <Field label={`Onay için slug yazın: ${tenantSlug}`}>
+            <input
+              className={inputClass}
+              value={confirmSlug}
+              onChange={(e) => setConfirmSlug(e.target.value)}
+              placeholder={tenantSlug}
+              autoComplete="off"
+            />
+          </Field>
+          <button
+            type="button"
+            disabled={
+              deletePending ||
+              confirmSlug.trim().toLowerCase() !== tenantSlug
+            }
+            onClick={() => void onDeleteBrand()}
+            className="rounded-md bg-red-700 px-4 py-2 text-sm font-medium text-white transition hover:bg-red-800 disabled:opacity-50"
+          >
+            {deletePending ? "Siliniyor…" : "Markayı kalıcı sil"}
+          </button>
+          {deleteMessage ? (
+            <p className="text-xs text-red-900/80">{deleteMessage}</p>
+          ) : null}
+        </section>
+      ) : null}
+    </div>
+  );
+}
+
+function HintRow({ text, onUse }: { text: string; onUse: () => void }) {
+  return (
+    <div className="flex flex-wrap items-center gap-2 text-[11px] text-zinc-500">
+      <span>{text}</span>
+      <button
+        type="button"
+        onClick={onUse}
+        className="font-medium text-[#e91825] hover:underline"
+      >
+        Kullan
+      </button>
     </div>
   );
 }

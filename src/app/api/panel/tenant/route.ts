@@ -259,3 +259,78 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
+
+/** Admin/team — markayı ve ilişkili veriyi kalıcı siler. */
+export async function DELETE(request: Request) {
+  const session = await auth();
+  if (!session?.user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  if (session.user.role !== "admin" && session.user.role !== "team") {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  let body: { tenantSlug?: string; confirmSlug?: string };
+  try {
+    body = (await request.json()) as {
+      tenantSlug?: string;
+      confirmSlug?: string;
+    };
+  } catch {
+    return NextResponse.json({ error: "JSON gerekli" }, { status: 400 });
+  }
+
+  const tenantSlug = body.tenantSlug?.trim().toLowerCase() || "";
+  const confirmSlug = body.confirmSlug?.trim().toLowerCase() || "";
+  if (!tenantSlug) {
+    return NextResponse.json({ error: "tenantSlug gerekli" }, { status: 400 });
+  }
+  if (!confirmSlug || confirmSlug !== tenantSlug) {
+    return NextResponse.json(
+      { error: "Onay için slug’ı aynen yazın" },
+      { status: 400 },
+    );
+  }
+
+  const tenant = await prisma.tenant.findUnique({
+    where: { slug: tenantSlug },
+    select: { id: true, slug: true, name: true },
+  });
+  if (!tenant) {
+    return NextResponse.json({ error: "Marka bulunamadı" }, { status: 404 });
+  }
+
+  try {
+    const memberUserIds = (
+      await prisma.membership.findMany({
+        where: { tenantId: tenant.id },
+        select: { userId: true },
+      })
+    ).map((m) => m.userId);
+
+    await prisma.tenant.delete({ where: { id: tenant.id } });
+
+    // Yalnızca bu markaya bağlı kalan client kullanıcıları temizle
+    if (memberUserIds.length) {
+      for (const userId of memberUserIds) {
+        const left = await prisma.membership.count({ where: { userId } });
+        if (left > 0) continue;
+        const user = await prisma.user.findUnique({
+          where: { id: userId },
+          select: { role: true },
+        });
+        if (user?.role === "client") {
+          await prisma.user.delete({ where: { id: userId } });
+        }
+      }
+    }
+
+    return NextResponse.json({
+      ok: true,
+      deleted: { slug: tenant.slug, name: tenant.name },
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
+}

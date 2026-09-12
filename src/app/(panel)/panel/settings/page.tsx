@@ -44,7 +44,8 @@ export default async function SettingsPage({
             Marka seçin
           </h2>
           <p className="mt-1 text-sm text-zinc-500">
-            Sihirbazdaki tüm alanlar burada düzenlenir: kimlik, Google, müşteri.
+            Kimlik, Meta act_, Google eşleştirmeleri, müşteri ve silme. Kod map
+            önerileri formda görünür; DB kaydı önceliklidir.
           </p>
         </div>
         <ul className="divide-y divide-zinc-200 rounded-xl border border-zinc-200 bg-white">
@@ -146,8 +147,8 @@ export default async function SettingsPage({
           {tenant.name}
         </h2>
         <p className="mt-1 text-sm text-zinc-500">
-          Yeni marka sihirbazındaki alanlar: ad, slug, Meta ID, tip, site,
-          bütçe, Google ID’ler, müşteri hesabı.
+          Meta act_ + Google ID’ler + müşteri + veri çek + silme. Map önerileri
+          boş alanlar için yedek.
         </p>
         <p className="mt-2 text-xs text-zinc-500">
           <Link href="/settings" className="text-[#e91825] hover:underline">
@@ -172,6 +173,7 @@ export default async function SettingsPage({
           initial={tenant}
           tenantSlug={slug}
           rootDomain={root}
+          allowDelete={Boolean(db)}
         />
       </div>
     </div>

@@ -13,6 +13,7 @@ import { prisma } from "@/lib/db";
 import { getAgencyOverview } from "@/lib/panel/data";
 import { formatDateTime, formatNumber, formatTry } from "@/lib/panel/format";
 import { resolveAdsCustomerId } from "@/lib/panel/google-ads-customer-map";
+import { resolveMetaAccountId } from "@/lib/panel/meta-ad-account-map";
 import { isStaffRole, rootDomain } from "@/lib/panel/host";
 import { useMockPanelData } from "@/lib/integrations/tokens";
 
@@ -66,10 +67,8 @@ export default async function BrandsPage() {
             Ajans — marka listesi
           </h2>
           <p className="mt-1 text-sm text-zinc-500">
-            Meta ve Google ayrı çekilir — üstten toplu, satırdan firma özel.
-            Marka panelleri yalnızca o markanın hesabıyla açılır (
-            <code className="text-zinc-400">marka.{root}</code>
-            ).
+            Meta BM + Google MCC. Toplu veya satırdan çekin. Marka paneli:{" "}
+            <code className="text-zinc-400">slug.{root}</code>
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -80,21 +79,24 @@ export default async function BrandsPage() {
 
       <ol className="rounded-lg border border-zinc-200 bg-zinc-50/80 px-4 py-3 text-xs leading-relaxed text-zinc-600">
         <li>
-          1. Meta BM’de reklam hesabı açın (veya sihirbazda Meta ID’yi elle
-          yazın).
+          1. Meta’da hesap BM’de olsun · system user’a varlık ata (
+          <code className="text-zinc-500">act_…</code>).
         </li>
         <li>
-          2. <span className="font-medium text-zinc-800">Yeni marka</span>{" "}
-          sihirbazı ile slug, tip, bütçe ve Google ID’leri kaydedin.
+          2. <span className="font-medium text-zinc-800">Yeni marka</span> —
+          slug + Meta act_ (map önerir) + Google ID’ler.
         </li>
-        <li>3. İsteğe bağlı müşteri e-posta + şifre (membership) oluşturun.</li>
-        <li>4. Satırdan Meta / Google çekin.</li>
+        <li>3. İsteğe bağlı müşteri e-posta / şifre.</li>
+        <li>
+          4. Satırdan <span className="font-medium text-zinc-800">Meta</span>{" "}
+          sonra <span className="font-medium text-zinc-800">Google</span> çek.
+        </li>
         <li>
           5.{" "}
           <code className="text-zinc-500">
             {"{slug}"}.{root}
           </code>{" "}
-          ile müşteri girişini doğrulayın.
+          ile müşteri girişini doğrula · eksikler için Ayarlar.
         </li>
       </ol>
 
@@ -125,6 +127,13 @@ export default async function BrandsPage() {
               mapping: row.tenant.mapping,
             }),
           );
+          const metaOk = Boolean(
+            resolveMetaAccountId({
+              slug: row.tenant.slug,
+              name: row.tenant.name,
+              metaAccountId: row.tenant.metaAccountId,
+            }),
+          );
           const ga4Ok = Boolean(row.tenant.mapping.ga4PropertyId);
           const gtmOk = Boolean(row.tenant.mapping.gtmContainerId);
           const gscOk = Boolean(row.tenant.mapping.gscSiteUrl);
@@ -132,6 +141,7 @@ export default async function BrandsPage() {
             useMockPanelData() ||
             (clientByTenantId.get(row.tenant.id) ?? 0) > 0;
           const missing: string[] = [];
+          if (!metaOk) missing.push("Meta");
           if (!adsOk) missing.push("Ads");
           if (!ga4Ok) missing.push("GA4");
           if (!gtmOk) missing.push("GTM");
