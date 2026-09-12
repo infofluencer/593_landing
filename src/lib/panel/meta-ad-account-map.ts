@@ -25,7 +25,6 @@ export const META_AD_ACCOUNT_BY_SLUG: Record<string, string> = {
   "suare": "act_4252118865101784",
   "tevalli": "act_1167188141041316",
   "zeynep-ozel": "act_276161233026397",
-  "zeynep-ozel-bridal": "act_276161233026397",
 };
 
 /** Optional Meta account name → act_ when slug differs from BM name. */
