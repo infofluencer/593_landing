@@ -36,8 +36,8 @@ export function SpendTrendChart({ data }: { data: DailyTrendPoint[] }) {
               <stop offset="100%" stopColor="#4285F4" stopOpacity={0} />
             </linearGradient>
             <linearGradient id="gMeta" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="#0668E1" stopOpacity={0.35} />
-              <stop offset="100%" stopColor="#0668E1" stopOpacity={0} />
+              <stop offset="0%" stopColor="#7C3AED" stopOpacity={0.35} />
+              <stop offset="100%" stopColor="#7C3AED" stopOpacity={0} />
             </linearGradient>
           </defs>
           <CartesianGrid stroke="rgba(24,24,27,0.08)" vertical={false} />
@@ -67,7 +67,7 @@ export function SpendTrendChart({ data }: { data: DailyTrendPoint[] }) {
             type="monotone"
             dataKey="metaSpend"
             name="Meta harcama"
-            stroke="#0668E1"
+            stroke="#7C3AED"
             fill="url(#gMeta)"
             strokeWidth={2}
           />
@@ -106,7 +106,7 @@ export function ConvTrendChart({ data }: { data: DailyTrendPoint[] }) {
           <Bar
             dataKey="metaConv"
             name="Meta dönüşüm"
-            fill="#0668E1"
+            fill="#7C3AED"
             radius={[4, 4, 0, 0]}
           />
         </BarChart>
@@ -189,7 +189,7 @@ export function ConversionPieChart({
 
 export function CampaignBarChart({
   data,
-  color = "#0668E1",
+  color = "#7C3AED",
 }: {
   data: { name: string; harcama: number }[];
   color?: string;

@@ -153,7 +153,8 @@ function buildChannel(
     label: id === "meta" ? "Meta Ads" : "Google Ads",
     short: id === "meta" ? "Meta" : "Google",
     sectionTitle,
-    color: id === "meta" ? "#0668E1" : "#4285F4",
+    // Google mavi · Meta mor — pasta/trend grafiklerinde ayırt edilsin
+    color: id === "meta" ? "#7C3AED" : "#4285F4",
     status,
     statusNote: note,
     tenantType: type,
@@ -167,7 +168,7 @@ function buildChannel(
     ctr: unknown ? 0 : d.ctr,
     cpc: unknown ? 0 : d.cpc,
     costPerResult: unknown || current.conv <= 0 ? null : d.cpa,
-    costPerResultLabel: ecommerce ? "CPA" : "CPL",
+    costPerResultLabel: ecommerce ? "Satış maliyeti" : "Lead maliyeti",
     roas: unknown || !ecommerce ? null : d.roas,
     showRoas: ecommerce,
     showRevenue: ecommerce,
@@ -243,7 +244,7 @@ export function buildPresentation(
       ? [{ name: "Google", value: gSpend, color: "#4285F4" }]
       : []),
     ...(meta.status !== "unknown" && mSpend > 0
-      ? [{ name: "Meta", value: mSpend, color: "#0668E1" }]
+      ? [{ name: "Meta", value: mSpend, color: "#7C3AED" }]
       : []),
   ];
 
@@ -294,6 +295,13 @@ export const METRIC_HELP = {
   roas: "Her 1 TL harcamaya karşılık gelen ciro",
   cpa: "Bir satışın ortalama maliyeti",
   cpl: "Bir lead’in ortalama maliyeti",
-  ctr: "Gösterim başına tıklama oranı",
+  ctr: "Kaç gösterimde bir tıklama geldiği",
   reach: "Reklamı gören tekil kişi sayısı",
+  impr: "Reklamın kaç kez gösterildiği",
+} as const;
+
+/** Kanal marka renkleri — sunum pasta/trend + sayfa grafikleri. */
+export const CHANNEL_BRAND = {
+  google: "#4285F4",
+  meta: "#7C3AED",
 } as const;

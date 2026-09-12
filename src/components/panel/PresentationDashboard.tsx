@@ -68,7 +68,7 @@ export default function PresentationDashboard({
             value="Lead"
             hint={
               <span className="text-[11px] text-zinc-500">
-                Gelir / ROAS gösterilmez
+                Gelir / getiri gösterilmez
               </span>
             }
           />

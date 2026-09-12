@@ -76,7 +76,7 @@ export function ChannelCard({
           ) : null}
           {channel.showRoas && channel.roas != null ? (
             <Kpi
-              label="Getiri (ROAS)"
+              label="Getiri"
               help={METRIC_HELP.roas}
               value={`${formatNumber(channel.roas, 2)}x`}
             />
@@ -84,7 +84,7 @@ export function ChannelCard({
           <Kpi
             label={channel.costPerResultLabel}
             help={
-              channel.costPerResultLabel === "CPL"
+              channel.costPerResultLabel.includes("Lead")
                 ? METRIC_HELP.cpl
                 : METRIC_HELP.cpa
             }
@@ -98,6 +98,11 @@ export function ChannelCard({
             label="Tıklama oranı"
             help={METRIC_HELP.ctr}
             value={`${formatNumber(channel.ctr, 2)}%`}
+          />
+          <Kpi
+            label="Gösterim"
+            help={METRIC_HELP.impr}
+            value={formatNumber(channel.impr)}
           />
           {channel.reach != null ? (
             <Kpi

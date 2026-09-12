@@ -187,7 +187,7 @@ export default async function GooglePage({
     previous.campaigns.map((c) => [c.campaign, c] as const),
   );
 
-  const lastCol = ecommerce ? "ROAS" : "CPL";
+  const lastCol = ecommerce ? "Getiri" : "Lead maliyeti";
   const currency = model.currency;
 
   return (
@@ -257,12 +257,12 @@ export default async function GooglePage({
             />
             {ecommerce ? (
               <PanelStat
-                label="Getiri (ROAS)"
+                label="Getiri"
                 value={`${formatNumber(derivedMetrics(current.account).roas, 2)}x`}
               />
             ) : (
               <PanelStat
-                label="CPL"
+                label="Lead maliyeti"
                 value={
                   current.account.conv > 0
                     ? formatTry(
