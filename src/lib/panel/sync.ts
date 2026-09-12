@@ -36,7 +36,7 @@ import {
 } from "@/lib/panel/mapping-placeholders";
 import { resolveGa4PropertyId } from "@/lib/panel/ga4-property-map";
 import { resolveGtmApiRef } from "@/lib/panel/gtm-container-map";
-import { syncLookbackRange } from "@/lib/panel/period";
+import { syncAdLevelLookbackRange, syncLookbackRange } from "@/lib/panel/period";
 import { runSynced } from "@/lib/panel/sync-job";
 import { verifyTenantSite } from "@/lib/panel/verify-tenant-site";
 import { classifyConversion } from "@/lib/panel/classify-conversion";
@@ -152,6 +152,7 @@ export async function runAgencySync(opts?: {
   const doSiteVerify = opts?.siteVerify === true || envVerify;
 
   const { from, to } = await syncLookbackRange();
+  const adLevel = await syncAdLevelLookbackRange();
   const summary: SyncSummary["tenants"] = [];
 
   for (const tenant of tenants) {
@@ -432,8 +433,8 @@ export async function runAgencySync(opts?: {
 
           const adRows = await fetchMetaAdInsights({
             metaAccountId,
-            from,
-            to,
+            from: adLevel.from,
+            to: adLevel.to,
             tenantType: tenant.type as TenantType,
           });
 
@@ -492,8 +493,8 @@ export async function runAgencySync(opts?: {
 
           const adsetRows = await fetchMetaAdsetInsights({
             metaAccountId,
-            from,
-            to,
+            from: adLevel.from,
+            to: adLevel.to,
             tenantType: tenant.type as TenantType,
           });
           for (const row of adsetRows) {
@@ -547,8 +548,8 @@ export async function runAgencySync(opts?: {
 
           const breakdownRows = await fetchMetaBreakdownInsights({
             metaAccountId,
-            from,
-            to,
+            from: adLevel.from,
+            to: adLevel.to,
             tenantType: tenant.type as TenantType,
           });
           for (const row of breakdownRows) {

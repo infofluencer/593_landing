@@ -10,6 +10,12 @@ import {
 /** Days of ad metrics ingested on each “Veriyi yenile” (Istanbul calendar). */
 export const SYNC_HISTORY_DAYS = 720;
 
+/**
+ * Ad / adset / breakdown insights lookback.
+ * Full 720d × ad-level blows Meta “reduce the amount of data” — keep shorter.
+ */
+export const SYNC_AD_LEVEL_DAYS = 90;
+
 export type PanelPeriod = "mtd" | "1" | "3" | "6" | "12" | "24" | "custom";
 
 export type PanelDateRange = {
@@ -165,6 +171,15 @@ export async function syncLookbackRange(): Promise<{
 }> {
   const today = await getIstanbulTodayYmd();
   return { from: syncFloorYmd(today), to: today };
+}
+
+/** Shorter window for ad / adset / breakdown Meta pulls. */
+export async function syncAdLevelLookbackRange(): Promise<{
+  from: string;
+  to: string;
+}> {
+  const today = await getIstanbulTodayYmd();
+  return { from: addDaysYmd(today, -SYNC_AD_LEVEL_DAYS), to: today };
 }
 
 export function buildPeriodHref(

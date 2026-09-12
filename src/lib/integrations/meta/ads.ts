@@ -112,7 +112,8 @@ function extractPermalink(
 
 /**
  * Ads + creatives under the ad account (owned/client via BM token).
- * Does NOT include ads from other ad accounts that were never shared to this BM.
+ * Light fields + small page size — nested creative/story_spec + limit=100
+ * triggers Meta "reduce the amount of data you're asking for".
  */
 export async function fetchMetaAdsWithCreatives(opts: {
   metaAccountId: string;
@@ -120,26 +121,27 @@ export async function fetchMetaAdsWithCreatives(opts: {
   const token = getMetaSystemUserToken();
   const account = actId(opts.metaAccountId);
 
+  // Keep creative payload small (no object_story_spec blob).
   const fields = [
     "id",
     "name",
     "status",
     "effective_status",
     "campaign_id",
-    "campaign{id,name}",
+    "campaign{name}",
     "adset_id",
-    "adset{id,name}",
+    "adset{name}",
     "preview_shareable_link",
-    "creative{id,name,thumbnail_url,image_url,object_type,link_url,effective_object_story_id,object_story_spec}",
+    "creative{id,thumbnail_url,image_url,object_type,link_url,effective_object_story_id}",
   ].join(",");
 
+  const rows: MetaAdCreativeRow[] = [];
   const params = new URLSearchParams({
     access_token: token,
     fields,
-    limit: "100",
+    limit: "25",
   });
 
-  const rows: MetaAdCreativeRow[] = [];
   let url: string | null = `${GRAPH}/${account}/ads?${params}`;
 
   while (url) {
@@ -147,13 +149,22 @@ export async function fetchMetaAdsWithCreatives(opts: {
     const json = (await res.json()) as {
       data?: GraphAd[];
       paging?: { next?: string };
-      error?: { message?: string };
+      error?: { message?: string; code?: number };
     };
 
     if (!res.ok || json.error) {
-      throw new Error(
-        json.error?.message || `Meta ads ${res.status} for ${account}`,
-      );
+      const msg =
+        json.error?.message || `Meta ads ${res.status} for ${account}`;
+      if (
+        /reduce the amount of data/i.test(msg) &&
+        params.get("limit") === "25"
+      ) {
+        params.set("limit", "10");
+        rows.length = 0;
+        url = `${GRAPH}/${account}/ads?${params}`;
+        continue;
+      }
+      throw new Error(msg);
     }
 
     for (const ad of json.data ?? []) {
@@ -170,10 +181,7 @@ export async function fetchMetaAdsWithCreatives(opts: {
         effectiveStatus: ad.effective_status || ad.status || "",
         creativeId: creative?.id || "",
         thumbnailUrl: creative?.thumbnail_url || null,
-        imageUrl:
-          creative?.image_url ||
-          creative?.object_story_spec?.video_data?.image_url ||
-          null,
+        imageUrl: creative?.image_url || null,
         permalinkUrl: extractPermalink(ad, creative),
         linkUrl: extractLinkUrl(creative),
         objectType: creative?.object_type || null,
