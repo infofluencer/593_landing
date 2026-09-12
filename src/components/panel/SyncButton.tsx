@@ -8,6 +8,8 @@ export type SyncProvider = "meta" | "google";
 type SyncResponse = {
   ok?: boolean;
   error?: string;
+  async?: boolean;
+  message?: string;
   summary?: {
     provision?: { skipped?: boolean; reason?: string; upserted?: number };
     tenants?: Array<{
@@ -15,6 +17,18 @@ type SyncResponse = {
       services: Record<string, { ok: boolean; error?: string }>;
     }>;
   };
+};
+
+type SyncStatusResponse = {
+  ok?: boolean;
+  status?: string;
+  error?: string | null;
+  jobs?: Array<{
+    service: string;
+    objective: string;
+    status: string;
+    error: string | null;
+  }>;
 };
 
 type SyncResultView = {
@@ -42,6 +56,15 @@ function buildResult(
     };
   }
 
+  if (json.async && !json.summary) {
+    return {
+      status: "success",
+      title: `${label} arka planda tamamlandı`,
+      detail: scope,
+      lines: [json.message || "Senkron bitti — sayfayı yenile."],
+    };
+  }
+
   const tenants = json.summary?.tenants ?? [];
 
   if (provider === "meta") {
@@ -52,7 +75,7 @@ function buildResult(
       if (!tenantSlug) {
         lines.push(`Provision atlandı: ${provision.reason || "Meta kurulu değil"}`);
       }
-    } else {
+    } else if (provision) {
       lines.push(`Provision: ${provision?.upserted ?? 0} hesap (BM katalog)`);
     }
     for (const t of tenants) {
@@ -90,7 +113,7 @@ function buildResult(
         (t.services.metaAds && !t.services.metaAds.ok) ||
         (t.services.metaAdInsights && !t.services.metaAdInsights.ok),
     );
-    if (provision?.skipped) {
+    if (provision?.skipped && !tenantSlug) {
       return {
         status: "warn",
         title: "Meta atlandı",
@@ -102,7 +125,7 @@ function buildResult(
       status: anyFail ? "warn" : "success",
       title: anyFail ? "Meta kısmen tamamlandı" : "Meta senkronu bitti",
       detail: scope,
-      lines,
+      lines: lines.length ? lines : ["İşlem tamam"],
     };
   }
 
@@ -130,6 +153,71 @@ function buildResult(
     title: anyFail ? "Google kısmen tamamlandı" : "Google senkronu bitti",
     detail: scope,
     lines,
+  };
+}
+
+function buildStatusResult(
+  provider: SyncProvider,
+  tenantSlug: string,
+  status: SyncStatusResponse,
+): SyncResultView {
+  const label = provider === "meta" ? "Meta" : "Google";
+  const lines: string[] = [];
+  for (const j of status.jobs ?? []) {
+    if (j.status === "success") {
+      lines.push(`${j.service}: OK`);
+    } else if (j.status === "error") {
+      lines.push(`${j.service}: ${j.error || "hata"}`);
+    } else if (j.status === "running") {
+      lines.push(`${j.service}: çalışıyor…`);
+    }
+  }
+  if (status.error) lines.push(status.error);
+  if (!lines.length) lines.push("Senkron tamamlandı");
+
+  if (status.status === "error") {
+    return {
+      status: "error",
+      title: `${label} senkronu başarısız`,
+      detail: `Firma: ${tenantSlug}`,
+      lines,
+    };
+  }
+  const anyJobFail = (status.jobs ?? []).some((j) => j.status === "error");
+  return {
+    status: anyJobFail ? "warn" : "success",
+    title: anyJobFail
+      ? `${label} kısmen tamamlandı`
+      : `${label} senkronu bitti`,
+    detail: `Firma: ${tenantSlug}`,
+    lines,
+  };
+}
+
+async function pollSyncStatus(opts: {
+  provider: SyncProvider;
+  tenantSlug: string;
+  signal?: AbortSignal;
+}): Promise<SyncStatusResponse> {
+  const deadline = Date.now() + 12 * 60 * 1000; // 12 dk
+  while (Date.now() < deadline) {
+    if (opts.signal?.aborted) throw new Error("İptal edildi");
+    const res = await fetch(
+      `/api/panel/sync/status?tenantSlug=${encodeURIComponent(opts.tenantSlug)}&provider=${opts.provider}`,
+    );
+    const json = (await res.json()) as SyncStatusResponse & { error?: string };
+    if (!res.ok) {
+      throw new Error(json.error || `Status ${res.status}`);
+    }
+    if (json.status === "success" || json.status === "error") {
+      return json;
+    }
+    await new Promise((r) => setTimeout(r, 2500));
+  }
+  return {
+    status: "error",
+    error: "Zaman aşımı — sync hâlâ bitmedi. Birkaç dakika sonra sayfayı yenile.",
+    jobs: [],
   };
 }
 
@@ -227,8 +315,8 @@ function SyncStatusDialog({
             <div className="mt-5 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-950">
               <p className="font-medium">İşlem devam ediyor</p>
               <p className="mt-1 text-xs leading-5 text-amber-900/80">
-                Bu pencereyi kapatmayın. API yanıt verene kadar bekleniyor —
-                büyük hesaplarda birkaç dakika sürebilir.
+                Arka planda çalışıyor (proxy 20 sn kesmez). Meta geçmiş +
+                kreatifler birkaç dakika sürebilir — bu pencereyi kapatma.
               </p>
               <p className="mt-2 font-mono text-xs tabular-nums text-amber-900">
                 Geçen süre: {formatElapsed(elapsedSec)}
@@ -341,7 +429,33 @@ export default function SyncButton({
     setResult(null);
     try {
       const { httpOk, json } = await runPanelSync({ provider, tenantSlug });
-      setResult(buildResult(provider, json, httpOk, tenantSlug));
+      if (!httpOk) {
+        setResult(buildResult(provider, json, false, tenantSlug));
+        setPhase("done");
+        return;
+      }
+      // Arka plan sync — poll sentinel job (tek marka)
+      if (json.async && tenantSlug) {
+        const status = await pollSyncStatus({ provider, tenantSlug });
+        setResult(buildStatusResult(provider, tenantSlug, status));
+        setPhase("done");
+        router.refresh();
+        return;
+      }
+      if (json.async && !tenantSlug) {
+        setResult({
+          status: "success",
+          title: `${provider === "meta" ? "Meta" : "Google"} arka planda başladı`,
+          detail: scopeLabel,
+          lines: [
+            json.message || "Tüm markalar için sync başladı.",
+            "Birkaç dakika sonra sayfayı yenile.",
+          ],
+        });
+        setPhase("done");
+        return;
+      }
+      setResult(buildResult(provider, json, true, tenantSlug));
       setPhase("done");
       router.refresh();
     } catch (err) {
