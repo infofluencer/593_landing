@@ -262,11 +262,18 @@ async function main() {
   // Sync jobs: delete drop's (keep's remain)
   await prisma.syncJob.deleteMany({ where: { tenantId: drop.id } });
 
-  // Update keep meta id if needed, then delete drop (cascade leftovers)
-  await prisma.tenant.update({
-    where: { id: keep.id },
-    data: { metaAccountId },
-  });
+  // metaAccountId is UNIQUE — free it on drop before assigning to keep
+  if (metaAccountId !== keep.metaAccountId) {
+    await prisma.tenant.update({
+      where: { id: drop.id },
+      data: { metaAccountId: `__freed_${drop.id}` },
+    });
+    await prisma.tenant.update({
+      where: { id: keep.id },
+      data: { metaAccountId },
+    });
+    console.log(`metaAccountId → ${metaAccountId}`);
+  }
 
   // Free slug: delete drop first
   await prisma.tenant.delete({ where: { id: drop.id } });

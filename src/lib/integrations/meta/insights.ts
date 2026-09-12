@@ -1,5 +1,13 @@
 import type { TenantType } from "@prisma/client";
 import { iterateYmdRanges } from "@/lib/date/tr";
+import {
+  META_INSIGHT_BASE_FIELDS,
+  firstPositive,
+  mapActions,
+  mergeVideoActions,
+  PURCHASE_KEYS,
+  sumKeys,
+} from "@/lib/integrations/meta/metrics";
 import { getMetaSystemUserToken } from "@/lib/integrations/tokens";
 
 const GRAPH = "https://graph.facebook.com/v21.0";
@@ -33,29 +41,13 @@ function actId(metaAccountId: string): string {
     : `act_${metaAccountId}`;
 }
 
-function mapActions(
-  raw: Array<{ action_type?: string; value?: string }> | undefined,
-): Record<string, number> {
-  const out: Record<string, number> = {};
-  for (const a of raw ?? []) {
-    if (!a.action_type) continue;
-    out[a.action_type] = Number(a.value ?? 0);
-  }
-  return out;
-}
-
-const PURCHASE_KEYS = [
-  "purchase",
-  "omni_purchase",
-  "offsite_conversion.fb_pixel_purchase",
-  "web_in_store_purchase",
-];
-
 const LEAD_KEYS = [
   "lead",
   "onsite_conversion.lead_grouped",
   "offsite_conversion.fb_pixel_lead",
+  "onsite_web_lead",
   "complete_registration",
+  "omni_complete_registration",
   "submit_application",
   "contact",
 ];
@@ -66,14 +58,6 @@ const MESSAGE_KEYS = [
   "messaging_conversation_started_7d",
   "messaging_first_reply",
 ];
-
-function sumKeys(map: Record<string, number>, keys: string[]): number {
-  let total = 0;
-  for (const k of keys) {
-    if (map[k] != null) total += map[k]!;
-  }
-  return total;
-}
 
 /**
  * Tenant.type → primary KPI from Meta actions / action_values.
@@ -86,19 +70,18 @@ export function deriveMetaKpis(
   spend: number,
 ): { conversions: number; convValue: number; cpa: number | null; roas: number | null } {
   if (type === "ecommerce") {
-    const conversions = sumKeys(actions, PURCHASE_KEYS);
-    const convValue = sumKeys(actionValues, PURCHASE_KEYS);
+    const conversions = firstPositive(actions, PURCHASE_KEYS);
+    const convValue = firstPositive(actionValues, PURCHASE_KEYS);
     return {
       conversions,
       convValue,
       cpa: conversions > 0 ? spend / conversions : null,
-      roas: spend > 0 ? convValue / spend : null,
+      roas: spend > 0 && convValue > 0 ? convValue / spend : null,
     };
   }
 
   const lead = sumKeys(actions, LEAD_KEYS);
   const messaging = sumKeys(actions, MESSAGE_KEYS);
-  // Primary lead KPI = forms; messaging tracked in actions JSON for UI split
   const conversions = lead > 0 ? lead : messaging;
   return {
     conversions,
@@ -149,15 +132,7 @@ async function fetchMetaCampaignInsightsChunk(opts: {
     "campaign_id",
     "campaign_name",
     "objective",
-    "spend",
-    "impressions",
-    "reach",
-    "frequency",
-    "clicks",
-    "ctr",
-    "cpc",
-    "actions",
-    "action_values",
+    ...META_INSIGHT_BASE_FIELDS,
   ].join(",");
 
   const params = new URLSearchParams({
@@ -189,6 +164,27 @@ async function fetchMetaCampaignInsightsChunk(opts: {
         cpc?: string;
         actions?: Array<{ action_type?: string; value?: string }>;
         action_values?: Array<{ action_type?: string; value?: string }>;
+        video_play_actions?: Array<{ action_type?: string; value?: string }>;
+        video_thruplay_watched_actions?: Array<{
+          action_type?: string;
+          value?: string;
+        }>;
+        video_p25_watched_actions?: Array<{
+          action_type?: string;
+          value?: string;
+        }>;
+        video_p50_watched_actions?: Array<{
+          action_type?: string;
+          value?: string;
+        }>;
+        video_p75_watched_actions?: Array<{
+          action_type?: string;
+          value?: string;
+        }>;
+        video_p100_watched_actions?: Array<{
+          action_type?: string;
+          value?: string;
+        }>;
       }>;
       paging?: { next?: string };
       error?: { message?: string; code?: number; error_subcode?: number };
@@ -203,7 +199,7 @@ async function fetchMetaCampaignInsightsChunk(opts: {
 
     for (const row of json.data ?? []) {
       const spend = Number(row.spend ?? 0);
-      const actions = mapActions(row.actions);
+      const actions = mergeVideoActions(mapActions(row.actions), row);
       const actionValues = mapActions(row.action_values);
       const kpis = deriveMetaKpis(opts.tenantType, actions, actionValues, spend);
 

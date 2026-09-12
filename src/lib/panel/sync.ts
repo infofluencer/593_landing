@@ -11,6 +11,8 @@ import { fetchMerchantProductIssues } from "@/lib/integrations/google/merchant";
 import {
   fetchMetaAdInsights,
   fetchMetaAdsWithCreatives,
+  fetchMetaAdsetInsights,
+  fetchMetaBreakdownInsights,
 } from "@/lib/integrations/meta/ads";
 import { fetchMetaCampaignInsights } from "@/lib/integrations/meta/insights";
 import { provisionTenantsFromMeta } from "@/lib/integrations/meta/provision";
@@ -260,15 +262,21 @@ export async function runAgencySync(opts?: {
           let lead = 0;
           let messaging = 0;
           for (const row of rows) {
-            purchase += Number(
-              (row.actions.purchase ?? 0) +
-                (row.actions.omni_purchase ?? 0) +
-                (row.actions["offsite_conversion.fb_pixel_purchase"] ?? 0),
-            );
+            // omni öncelikli — aynı satışı purchase+omni+offsite ile üçleme
+            const p =
+              Number(row.actions.omni_purchase ?? 0) ||
+              Number(row.actions.purchase ?? 0) ||
+              Number(
+                row.actions["offsite_conversion.fb_pixel_purchase"] ?? 0,
+              ) ||
+              Number(row.actions.onsite_web_purchase ?? 0) ||
+              Number(row.actions["onsite_conversion.purchase"] ?? 0);
+            purchase += p;
             lead += Number(
               (row.actions.lead ?? 0) +
                 (row.actions["onsite_conversion.lead_grouped"] ?? 0) +
-                (row.actions["offsite_conversion.fb_pixel_lead"] ?? 0),
+                (row.actions["offsite_conversion.fb_pixel_lead"] ?? 0) +
+                (row.actions.onsite_web_lead ?? 0),
             );
             messaging += Number(
               (row.actions[
@@ -447,7 +455,106 @@ export async function runAgencySync(opts?: {
             });
           }
 
-          return { creatives: creatives.length, insights: adRows.length };
+          const adsetRows = await fetchMetaAdsetInsights({
+            metaAccountId,
+            from,
+            to,
+            tenantType: tenant.type as TenantType,
+          });
+          for (const row of adsetRows) {
+            await prisma.metaAdsetInsight.upsert({
+              where: {
+                tenantId_date_adsetId: {
+                  tenantId: tenant.id,
+                  date: new Date(row.date),
+                  adsetId: row.adsetId,
+                },
+              },
+              update: {
+                adsetName: row.adsetName,
+                campaignId: row.campaignId,
+                campaignName: row.campaignName,
+                spend: row.spend,
+                impressions: row.impressions,
+                reach: row.reach,
+                clicks: row.clicks,
+                ctr: row.ctr,
+                cpc: row.cpc,
+                actions: row.actions as Prisma.InputJsonValue,
+                actionValues: row.actionValues as Prisma.InputJsonValue,
+                conversions: row.conversions,
+                convValue: row.convValue,
+                cpa: row.cpa,
+                roas: row.roas,
+              },
+              create: {
+                tenantId: tenant.id,
+                date: new Date(row.date),
+                adsetId: row.adsetId,
+                adsetName: row.adsetName,
+                campaignId: row.campaignId,
+                campaignName: row.campaignName,
+                spend: row.spend,
+                impressions: row.impressions,
+                reach: row.reach,
+                clicks: row.clicks,
+                ctr: row.ctr,
+                cpc: row.cpc,
+                actions: row.actions as Prisma.InputJsonValue,
+                actionValues: row.actionValues as Prisma.InputJsonValue,
+                conversions: row.conversions,
+                convValue: row.convValue,
+                cpa: row.cpa,
+                roas: row.roas,
+              },
+            });
+          }
+
+          const breakdownRows = await fetchMetaBreakdownInsights({
+            metaAccountId,
+            from,
+            to,
+            tenantType: tenant.type as TenantType,
+          });
+          for (const row of breakdownRows) {
+            await prisma.metaBreakdownInsight.upsert({
+              where: {
+                tenantId_date_breakdown_key: {
+                  tenantId: tenant.id,
+                  date: new Date(row.date),
+                  breakdown: row.breakdown,
+                  key: row.key,
+                },
+              },
+              update: {
+                spend: row.spend,
+                impressions: row.impressions,
+                reach: row.reach,
+                clicks: row.clicks,
+                conversions: row.conversions,
+                convValue: row.convValue,
+              },
+              create: {
+                tenantId: tenant.id,
+                date: new Date(row.date),
+                breakdown: row.breakdown,
+                key: row.key,
+                spend: row.spend,
+                impressions: row.impressions,
+                reach: row.reach,
+                clicks: row.clicks,
+                conversions: row.conversions,
+                convValue: row.convValue,
+              },
+            });
+          }
+
+          return {
+            creatives: creatives.length,
+            insights: adRows.length,
+            adsets: adsetRows.length,
+            breakdowns: breakdownRows.length,
+          };
         },
       );
       services.metaAds = metaAds.ok

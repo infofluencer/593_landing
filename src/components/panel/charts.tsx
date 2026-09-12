@@ -7,6 +7,7 @@ import {
   BarChart,
   CartesianGrid,
   Cell,
+  ComposedChart,
   Legend,
   Pie,
   PieChart,
@@ -218,6 +219,76 @@ export function CampaignBarChart({
           <Tooltip contentStyle={tooltipStyle} />
           <Bar dataKey="harcama" name="Harcama" fill={color} radius={[4, 4, 0, 0]} />
         </BarChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
+export function MetaDailyChart({
+  data,
+}: {
+  data: { label: string; spend: number; conv: number }[];
+}) {
+  if (!data.length) {
+    return (
+      <p className="flex h-56 items-center justify-center text-sm text-zinc-500">
+        Günlük trend yok
+      </p>
+    );
+  }
+  return (
+    <div className="h-56 w-full">
+      <ResponsiveContainer width="100%" height="100%">
+        <ComposedChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+          <defs>
+            <linearGradient id="metaDailySpend" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="#7C3AED" stopOpacity={0.35} />
+              <stop offset="100%" stopColor="#7C3AED" stopOpacity={0} />
+            </linearGradient>
+          </defs>
+          <CartesianGrid stroke="rgba(24,24,27,0.08)" vertical={false} />
+          <XAxis
+            dataKey="label"
+            tick={{ fill: "#71717a", fontSize: 10 }}
+            axisLine={false}
+            tickLine={false}
+            interval="preserveStartEnd"
+          />
+          <YAxis
+            yAxisId="left"
+            tick={{ fill: "#71717a", fontSize: 11 }}
+            axisLine={false}
+            tickLine={false}
+            width={48}
+          />
+          <YAxis
+            yAxisId="right"
+            orientation="right"
+            tick={{ fill: "#71717a", fontSize: 11 }}
+            axisLine={false}
+            tickLine={false}
+            width={36}
+          />
+          <Tooltip contentStyle={tooltipStyle} />
+          <Legend wrapperStyle={{ fontSize: 12, color: "#71717a" }} />
+          <Area
+            yAxisId="left"
+            type="monotone"
+            dataKey="spend"
+            name="Harcama"
+            stroke="#7C3AED"
+            fill="url(#metaDailySpend)"
+            strokeWidth={2}
+          />
+          <Bar
+            yAxisId="right"
+            dataKey="conv"
+            name="Sonuç"
+            fill="#A78BFA"
+            radius={[3, 3, 0, 0]}
+            opacity={0.85}
+          />
+        </ComposedChart>
       </ResponsiveContainer>
     </div>
   );

@@ -1,8 +1,16 @@
 import type { AlertSeverity, ConversionKind, Role, TenantType } from "@prisma/client";
 import { getTenantBySlug, prisma, TenantAccessError } from "@/lib/db";
 import { useMockPanelData } from "@/lib/integrations/tokens";
+import {
+  deriveMetaFunnel,
+  deriveMetaVideo,
+  sumMetaFunnel,
+  sumMetaVideo,
+} from "@/lib/integrations/meta/metrics";
 import { istanbulYmd, startOfIstanbulMonthYmd, ymdToUtcDate } from "@/lib/date/tr";
 import {
+  EMPTY_META_FUNNEL,
+  EMPTY_META_VIDEO,
   getMockBundleBySlug,
   listVisibleMockBundles,
   type HealthStatus,
@@ -10,6 +18,9 @@ import {
   type MockGa4Overview,
   type MockGtmSnapshot,
   type MockMetaAdPerformance,
+  type MockMetaAdsetPerformance,
+  type MockMetaBreakdownRow,
+  type MockMetaDailyPoint,
   type MockPeriodMetrics,
   type MockTenantBundle,
 } from "@/lib/panel/mock-data";
@@ -52,6 +63,20 @@ const EMPTY_GTM: MockGtmSnapshot = {
   variables: 0,
   siteVerified: "not_tested",
 };
+
+function asActionMap(v: unknown): Record<string, number> {
+  if (!v || typeof v !== "object" || Array.isArray(v)) return {};
+  const out: Record<string, number> = {};
+  for (const [k, val] of Object.entries(v as Record<string, unknown>)) {
+    const n = Number(val);
+    if (!Number.isNaN(n)) out[k] = n;
+  }
+  return out;
+}
+
+function dateKey(d: Date): string {
+  return d.toISOString().slice(0, 10);
+}
 
 function emptyPeriod(from: string, to: string): MockPeriodMetrics {
   return { from, to, account: { ...EMPTY_ACCOUNT }, campaigns: [] };
@@ -173,6 +198,12 @@ async function bundleFromDb(
       },
       metaAds: true,
       metaAdInsights: {
+        where: { date: dateFilter },
+      },
+      metaAdsetInsights: {
+        where: { date: dateFilter },
+      },
+      metaBreakdowns: {
         where: { date: dateFilter },
       },
       ga4Metrics: {
@@ -298,10 +329,9 @@ async function bundleFromDb(
     }
     metaAdsById.set(row.adId, prev);
   }
-  // Active creatives with no spend in range still show (status strip)
+  // Creatives with no spend in range still show (active + past for presentation)
   for (const creative of tenant.metaAds) {
     if (metaAdsById.has(creative.adId)) continue;
-    if (creative.effectiveStatus !== "ACTIVE") continue;
     metaAdsById.set(creative.adId, {
       adId: creative.adId,
       adName: creative.adName,
@@ -321,6 +351,91 @@ async function bundleFromDb(
     });
   }
   const metaAds = [...metaAdsById.values()].sort((a, b) => b.spend - a.spend);
+
+  const metaAdsetsById = new Map<string, MockMetaAdsetPerformance>();
+  for (const row of tenant.metaAdsetInsights) {
+    const prev = metaAdsetsById.get(row.adsetId) || {
+      adsetId: row.adsetId,
+      adsetName: row.adsetName || "(reklam grubu yok)",
+      campaignName: row.campaignName || "",
+      spend: 0,
+      impr: 0,
+      clicks: 0,
+      reach: 0,
+      conv: 0,
+      convValue: 0,
+    };
+    prev.spend += Number(row.spend);
+    prev.impr += row.impressions;
+    prev.clicks += row.clicks;
+    prev.reach += row.reach;
+    prev.conv += Number(row.conversions ?? 0);
+    prev.convValue += Number(row.convValue ?? 0);
+    if (row.adsetName) prev.adsetName = row.adsetName;
+    if (row.campaignName) prev.campaignName = row.campaignName;
+    metaAdsetsById.set(row.adsetId, prev);
+  }
+  const metaAdsets = [...metaAdsetsById.values()].sort(
+    (a, b) => b.spend - a.spend,
+  );
+
+  const breakdownMap = new Map<string, MockMetaBreakdownRow>();
+  for (const row of tenant.metaBreakdowns) {
+    const kind = row.breakdown as MockMetaBreakdownRow["breakdown"];
+    if (kind !== "placement" && kind !== "device" && kind !== "age") continue;
+    const mapKey = `${kind}||${row.key}`;
+    const prev = breakdownMap.get(mapKey) || {
+      breakdown: kind,
+      key: row.key,
+      spend: 0,
+      impr: 0,
+      clicks: 0,
+      reach: 0,
+      conv: 0,
+      convValue: 0,
+    };
+    prev.spend += Number(row.spend);
+    prev.impr += row.impressions;
+    prev.clicks += row.clicks;
+    prev.reach += row.reach;
+    prev.conv += Number(row.conversions ?? 0);
+    prev.convValue += Number(row.convValue ?? 0);
+    breakdownMap.set(mapKey, prev);
+  }
+  const metaBreakdowns = [...breakdownMap.values()].sort(
+    (a, b) => b.spend - a.spend,
+  );
+
+  const dailyMap = new Map<string, MockMetaDailyPoint>();
+  const funnelParts: ReturnType<typeof deriveMetaFunnel>[] = [];
+  const videoParts: ReturnType<typeof deriveMetaVideo>[] = [];
+  for (const m of tenant.metaInsights) {
+    const key = dateKey(m.date);
+    const prev = dailyMap.get(key) || {
+      date: key,
+      spend: 0,
+      clicks: 0,
+      conv: 0,
+      convValue: 0,
+    };
+    prev.spend += Number(m.spend);
+    prev.clicks += m.clicks;
+    prev.conv += Number(m.conversions ?? 0);
+    prev.convValue += Number(m.convValue ?? 0);
+    dailyMap.set(key, prev);
+
+    const actions = asActionMap(m.actions);
+    const actionValues = asActionMap(m.actionValues);
+    funnelParts.push(deriveMetaFunnel(actions, actionValues));
+    videoParts.push(deriveMetaVideo(actions));
+  }
+  const metaDaily = [...dailyMap.values()].sort((a, b) =>
+    a.date.localeCompare(b.date),
+  );
+  const metaFunnel =
+    funnelParts.length > 0 ? sumMetaFunnel(funnelParts) : { ...EMPTY_META_FUNNEL };
+  const metaVideo =
+    videoParts.length > 0 ? sumMetaVideo(videoParts) : { ...EMPTY_META_VIDEO };
 
   const periodSpend =
     (adsUnknown ? 0 : googleAccount.spend) +
@@ -448,6 +563,11 @@ async function bundleFromDb(
     },
     metaPrevious: emptyPeriod(from, to),
     metaAds,
+    metaAdsets,
+    metaBreakdowns,
+    metaDaily,
+    metaFunnel,
+    metaVideo,
     conversions: tenant.conversions.map((c) => ({
       name: c.name,
       source: c.source,

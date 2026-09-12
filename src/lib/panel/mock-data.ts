@@ -150,6 +150,54 @@ export type MockMetaAdPerformance = {
   convValue: number;
 };
 
+export type MockMetaAdsetPerformance = {
+  adsetId: string;
+  adsetName: string;
+  campaignName: string;
+  spend: number;
+  impr: number;
+  clicks: number;
+  reach: number;
+  conv: number;
+  convValue: number;
+};
+
+export type MockMetaBreakdownRow = {
+  breakdown: "placement" | "device" | "age";
+  key: string;
+  spend: number;
+  impr: number;
+  clicks: number;
+  reach: number;
+  conv: number;
+  convValue: number;
+};
+
+export type MockMetaDailyPoint = {
+  date: string;
+  spend: number;
+  clicks: number;
+  conv: number;
+  convValue: number;
+};
+
+export type MockMetaFunnel = {
+  viewContent: number;
+  addToCart: number;
+  checkout: number;
+  purchase: number;
+  purchaseValue: number;
+};
+
+export type MockMetaVideo = {
+  plays: number;
+  thruplay: number;
+  p25: number;
+  p50: number;
+  p75: number;
+  p100: number;
+};
+
 export type MockTenantBundle = {
   tenant: MockTenant;
   thresholds: MockThresholds;
@@ -165,6 +213,12 @@ export type MockTenantBundle = {
   metaPrevious: MockPeriodMetrics;
   /** Meta ads + creatives with period performance */
   metaAds: MockMetaAdPerformance[];
+  /** Ad set rollup from MetaAdsetInsight (preferred over ad rollup) */
+  metaAdsets: MockMetaAdsetPerformance[];
+  metaBreakdowns: MockMetaBreakdownRow[];
+  metaDaily: MockMetaDailyPoint[];
+  metaFunnel: MockMetaFunnel;
+  metaVideo: MockMetaVideo;
   conversions: MockConversion[];
   alerts: MockAlert[];
   syncJobs: MockSyncJob[];
@@ -172,6 +226,23 @@ export type MockTenantBundle = {
   ga4Channels: MockGa4Row[];
   ga4Landings: MockGa4Row[];
   gtm: MockGtmSnapshot;
+};
+
+export const EMPTY_META_FUNNEL: MockMetaFunnel = {
+  viewContent: 0,
+  addToCart: 0,
+  checkout: 0,
+  purchase: 0,
+  purchaseValue: 0,
+};
+
+export const EMPTY_META_VIDEO: MockMetaVideo = {
+  plays: 0,
+  thruplay: 0,
+  p25: 0,
+  p50: 0,
+  p75: 0,
+  p100: 0,
 };
 
 const TODAY = "2026-09-04";
@@ -353,7 +424,132 @@ export const MOCK_TENANTS: MockTenantBundle[] = [
         conv: 54,
         convValue: 145000,
       },
+      {
+        adId: "mock_meta_ad_3",
+        adName: "Statik — Geçmiş test",
+        campaignName: "Prospecting — Lookalike",
+        adsetName: "LAL 1%",
+        effectiveStatus: "PAUSED",
+        thumbnailUrl: null,
+        imageUrl: null,
+        permalinkUrl: null,
+        linkUrl: "https://mareen.com.tr/",
+        spend: 4800,
+        impr: 160000,
+        clicks: 2100,
+        reach: 90000,
+        conv: 12,
+        convValue: 28000,
+      },
     ],
+    metaAdsets: [
+      {
+        adsetId: "mock_as_1",
+        adsetName: "ASC",
+        campaignName: "Advantage+ Alışveriş",
+        spend: 38000,
+        impr: 1200000,
+        clicks: 21000,
+        reach: 560000,
+        conv: 168,
+        convValue: 450000,
+      },
+      {
+        adsetId: "mock_as_2",
+        adsetName: "LAL 1%",
+        campaignName: "Prospecting — Lookalike",
+        spend: 26200,
+        impr: 900000,
+        clicks: 17500,
+        reach: 420000,
+        conv: 100,
+        convValue: 270000,
+      },
+    ],
+    metaBreakdowns: [
+      {
+        breakdown: "placement",
+        key: "instagram",
+        spend: 42000,
+        impr: 1400000,
+        clicks: 25000,
+        reach: 620000,
+        conv: 180,
+        convValue: 480000,
+      },
+      {
+        breakdown: "placement",
+        key: "facebook",
+        spend: 22200,
+        impr: 700000,
+        clicks: 13500,
+        reach: 360000,
+        conv: 88,
+        convValue: 240000,
+      },
+      {
+        breakdown: "device",
+        key: "mobile_app",
+        spend: 51000,
+        impr: 1800000,
+        clicks: 32000,
+        reach: 800000,
+        conv: 220,
+        convValue: 580000,
+      },
+      {
+        breakdown: "device",
+        key: "desktop",
+        spend: 13200,
+        impr: 300000,
+        clicks: 6500,
+        reach: 180000,
+        conv: 48,
+        convValue: 140000,
+      },
+      {
+        breakdown: "age",
+        key: "25-34",
+        spend: 28000,
+        impr: 900000,
+        clicks: 16000,
+        reach: 400000,
+        conv: 120,
+        convValue: 320000,
+      },
+      {
+        breakdown: "age",
+        key: "35-44",
+        spend: 22000,
+        impr: 700000,
+        clicks: 12000,
+        reach: 320000,
+        conv: 90,
+        convValue: 240000,
+      },
+    ],
+    metaDaily: [
+      { date: "2026-08-01", spend: 2100, clicks: 1200, conv: 8, convValue: 22000 },
+      { date: "2026-08-08", spend: 2400, clicks: 1350, conv: 9, convValue: 25000 },
+      { date: "2026-08-15", spend: 2200, clicks: 1280, conv: 9, convValue: 24000 },
+      { date: "2026-08-22", spend: 2500, clicks: 1400, conv: 10, convValue: 27000 },
+      { date: "2026-08-29", spend: 2300, clicks: 1320, conv: 9, convValue: 24500 },
+    ],
+    metaFunnel: {
+      viewContent: 42000,
+      addToCart: 3800,
+      checkout: 920,
+      purchase: 268,
+      purchaseValue: 720000,
+    },
+    metaVideo: {
+      plays: 180000,
+      thruplay: 42000,
+      p25: 90000,
+      p50: 62000,
+      p75: 48000,
+      p100: 31000,
+    },
     conversions: [
       {
         name: "Purchase",
@@ -549,7 +745,99 @@ export const MOCK_TENANTS: MockTenantBundle[] = [
         conv: 42,
         convValue: 0,
       },
+      {
+        adId: "mock_meta_ad_lead_2",
+        adName: "WhatsApp — Eski kreatif",
+        campaignName: "WhatsApp — Mesaj",
+        adsetName: "Broad",
+        effectiveStatus: "PAUSED",
+        thumbnailUrl: null,
+        imageUrl: null,
+        permalinkUrl: "https://www.facebook.com/ads/library",
+        linkUrl: null,
+        spend: 3100,
+        impr: 110000,
+        clicks: 1800,
+        reach: 55000,
+        conv: 14,
+        convValue: 0,
+      },
     ],
+    metaAdsets: [
+      {
+        adsetId: "mock_lead_as_1",
+        adsetName: "Interest",
+        campaignName: "Lead form — Randevu",
+        spend: 12800,
+        impr: 520000,
+        clicks: 7800,
+        reach: 240000,
+        conv: 58,
+        convValue: 0,
+      },
+      {
+        adsetId: "mock_lead_as_2",
+        adsetName: "Broad",
+        campaignName: "WhatsApp — Mesaj",
+        spend: 9300,
+        impr: 370000,
+        clicks: 6400,
+        reach: 170000,
+        conv: 38,
+        convValue: 0,
+      },
+    ],
+    metaBreakdowns: [
+      {
+        breakdown: "placement",
+        key: "facebook",
+        spend: 14000,
+        impr: 520000,
+        clicks: 9000,
+        reach: 250000,
+        conv: 62,
+        convValue: 0,
+      },
+      {
+        breakdown: "placement",
+        key: "instagram",
+        spend: 8100,
+        impr: 370000,
+        clicks: 5200,
+        reach: 160000,
+        conv: 34,
+        convValue: 0,
+      },
+      {
+        breakdown: "device",
+        key: "mobile_app",
+        spend: 18000,
+        impr: 720000,
+        clicks: 11500,
+        reach: 340000,
+        conv: 78,
+        convValue: 0,
+      },
+      {
+        breakdown: "age",
+        key: "25-34",
+        spend: 11000,
+        impr: 400000,
+        clicks: 7000,
+        reach: 190000,
+        conv: 48,
+        convValue: 0,
+      },
+    ],
+    metaDaily: [
+      { date: "2026-08-01", spend: 700, clicks: 450, conv: 3, convValue: 0 },
+      { date: "2026-08-08", spend: 780, clicks: 490, conv: 3, convValue: 0 },
+      { date: "2026-08-15", spend: 720, clicks: 460, conv: 3, convValue: 0 },
+      { date: "2026-08-22", spend: 800, clicks: 510, conv: 4, convValue: 0 },
+      { date: "2026-08-29", spend: 750, clicks: 480, conv: 3, convValue: 0 },
+    ],
+    metaFunnel: { ...EMPTY_META_FUNNEL },
+    metaVideo: { ...EMPTY_META_VIDEO },
     conversions: [
       {
         name: "Form gönderimi",

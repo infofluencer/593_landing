@@ -95,6 +95,8 @@ model Tenant {
   metaInsights    MetaInsight[]
   metaAds         MetaAd[]
   metaAdInsights  MetaAdInsight[]
+  metaAdsetInsights MetaAdsetInsight[]
+  metaBreakdowns  MetaBreakdownInsight[]
   googleAdsMetrics GoogleAdsMetric[]
   ga4Metrics      Ga4Metric[]
   conversions     Conversion[]
@@ -266,6 +268,62 @@ model MetaAdInsight {
   @@unique([tenantId, date, adId])
   @@index([tenantId, date])
   @@index([tenantId, adId])
+}
+
+/// Meta ad set–level daily insights.
+model MetaAdsetInsight {
+  id           String   @id @default(cuid())
+  tenantId     String
+  date         DateTime @db.Date
+  adsetId      String
+  adsetName    String   @default("")
+  campaignId   String   @default("")
+  campaignName String   @default("")
+  spend        Decimal  @default(0) @db.Decimal(14, 2)
+  impressions  Int      @default(0)
+  reach        Int      @default(0)
+  clicks       Int      @default(0)
+  ctr          Decimal? @db.Decimal(10, 6)
+  cpc          Decimal? @db.Decimal(14, 4)
+  actions      Json     @default("{}")
+  actionValues Json     @default("{}")
+  conversions  Decimal? @db.Decimal(14, 4)
+  convValue    Decimal? @db.Decimal(14, 2)
+  cpa          Decimal? @db.Decimal(14, 4)
+  roas         Decimal? @db.Decimal(14, 4)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, date, adsetId])
+  @@index([tenantId, date])
+  @@index([tenantId, adsetId])
+}
+
+/// Meta account insights broken down (placement / device / age).
+model MetaBreakdownInsight {
+  id          String   @id @default(cuid())
+  tenantId    String
+  date        DateTime @db.Date
+  /// placement | device | age
+  breakdown   String
+  /// e.g. facebook, mobile_app, 25-34
+  key         String
+  spend       Decimal  @default(0) @db.Decimal(14, 2)
+  impressions Int      @default(0)
+  reach       Int      @default(0)
+  clicks      Int      @default(0)
+  conversions Decimal? @db.Decimal(14, 4)
+  convValue   Decimal? @db.Decimal(14, 2)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, date, breakdown, key])
+  @@index([tenantId, date])
+  @@index([tenantId, breakdown])
 }
 
 /// Google Ads GAQL metrics (account/campaign rows).
