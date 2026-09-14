@@ -3,6 +3,7 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import AddBrandWizard from "@/components/panel/AddBrandWizard";
+import BrandPanelLinkActions from "@/components/panel/BrandPanelLinkActions";
 import { StatusBadge } from "@/components/panel/StatusBadge";
 import {
   BulkSyncToolbar,
@@ -181,15 +182,21 @@ export default async function BrandsPage() {
                   </div>
                 )}
               </td>
-              <td className="px-3 py-3 font-mono text-xs text-zinc-500">
-                <a
-                  href={`${panelProto}://${panelHost}/`}
-                  className="hover:text-zinc-800 hover:underline"
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  {panelHost}
-                </a>
+              <td className="px-3 py-3">
+                <div className="flex items-center gap-1.5">
+                  <a
+                    href={`${panelProto}://${panelHost}/`}
+                    className="font-mono text-xs text-zinc-500 hover:text-zinc-800 hover:underline"
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    {panelHost}
+                  </a>
+                  <BrandPanelLinkActions
+                    panelHost={panelHost}
+                    panelUrl={`${panelProto}://${panelHost}/`}
+                  />
+                </div>
               </td>
               <td className="px-3 py-3">
                 <StatusBadge status={row.health} />

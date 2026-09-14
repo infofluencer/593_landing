@@ -111,9 +111,9 @@ function extractPermalink(
 }
 
 /**
- * Ads + creatives under the ad account (owned/client via BM token).
- * Light fields + small page size — nested creative/story_spec + limit=100
- * triggers Meta "reduce the amount of data you're asking for".
+ * Ads + creatives — two-phase to avoid Meta "reduce the amount of data":
+ * 1) List ads with creative id only (small pages)
+ * 2) Batch-fetch creative thumbnails/links by id
  */
 export async function fetchMetaAdsWithCreatives(opts: {
   metaAccountId: string;
@@ -121,8 +121,7 @@ export async function fetchMetaAdsWithCreatives(opts: {
   const token = getMetaSystemUserToken();
   const account = actId(opts.metaAccountId);
 
-  // Keep creative payload small (no object_story_spec blob).
-  const fields = [
+  const listFields = [
     "id",
     "name",
     "status",
@@ -132,66 +131,118 @@ export async function fetchMetaAdsWithCreatives(opts: {
     "adset_id",
     "adset{name}",
     "preview_shareable_link",
-    "creative{id,thumbnail_url,image_url,object_type,link_url,effective_object_story_id}",
+    "creative{id}",
   ].join(",");
 
-  const rows: MetaAdCreativeRow[] = [];
-  const params = new URLSearchParams({
-    access_token: token,
-    fields,
-    limit: "25",
-  });
+  const filtering = JSON.stringify([
+    {
+      field: "effective_status",
+      operator: "IN",
+      value: [
+        "ACTIVE",
+        "PAUSED",
+        "CAMPAIGN_PAUSED",
+        "ADSET_PAUSED",
+        "PENDING_REVIEW",
+        "DISAPPROVED",
+        "WITH_ISSUES",
+        "IN_PROCESS",
+      ],
+    },
+  ]);
 
-  let url: string | null = `${GRAPH}/${account}/ads?${params}`;
+  type Listed = {
+    ad: GraphAd;
+    creativeId: string;
+  };
+  const listed: Listed[] = [];
+  let limit = 50;
 
-  while (url) {
-    const res = await fetch(url);
-    const json = (await res.json()) as {
-      data?: GraphAd[];
-      paging?: { next?: string };
-      error?: { message?: string; code?: number };
-    };
+  for (let attempt = 0; attempt < 2; attempt++) {
+    listed.length = 0;
+    const params = new URLSearchParams({
+      access_token: token,
+      fields: listFields,
+      limit: String(limit),
+      filtering,
+    });
+    let url: string | null = `${GRAPH}/${account}/ads?${params}`;
+    let failed = false;
 
-    if (!res.ok || json.error) {
-      const msg =
-        json.error?.message || `Meta ads ${res.status} for ${account}`;
-      if (
-        /reduce the amount of data/i.test(msg) &&
-        params.get("limit") === "25"
-      ) {
-        params.set("limit", "10");
-        rows.length = 0;
-        url = `${GRAPH}/${account}/ads?${params}`;
-        continue;
+    while (url) {
+      const res = await fetch(url);
+      const json = (await res.json()) as {
+        data?: GraphAd[];
+        paging?: { next?: string };
+        error?: { message?: string };
+      };
+      if (!res.ok || json.error) {
+        const msg =
+          json.error?.message || `Meta ads ${res.status} for ${account}`;
+        if (/reduce the amount of data/i.test(msg) && limit > 15) {
+          limit = 15;
+          failed = true;
+          break;
+        }
+        throw new Error(msg);
       }
-      throw new Error(msg);
+      for (const ad of json.data ?? []) {
+        if (!ad.id) continue;
+        listed.push({ ad, creativeId: ad.creative?.id || "" });
+      }
+      url = json.paging?.next ?? null;
     }
-
-    for (const ad of json.data ?? []) {
-      if (!ad.id) continue;
-      const creative = ad.creative;
-      rows.push({
-        adId: ad.id,
-        adName: ad.name || "(unnamed)",
-        adsetId: ad.adset_id || ad.adset?.id || "",
-        adsetName: ad.adset?.name || "",
-        campaignId: ad.campaign_id || ad.campaign?.id || "",
-        campaignName: ad.campaign?.name || "",
-        status: ad.status || "",
-        effectiveStatus: ad.effective_status || ad.status || "",
-        creativeId: creative?.id || "",
-        thumbnailUrl: creative?.thumbnail_url || null,
-        imageUrl: creative?.image_url || null,
-        permalinkUrl: extractPermalink(ad, creative),
-        linkUrl: extractLinkUrl(creative),
-        objectType: creative?.object_type || null,
-      });
-    }
-
-    url = json.paging?.next ?? null;
+    if (!failed) break;
   }
 
-  return rows;
+  const creativeIds = [
+    ...new Set(listed.map((x) => x.creativeId).filter(Boolean)),
+  ];
+  const creativeById = new Map<string, GraphCreative>();
+
+  // Meta allows ?ids=a,b,c — keep batches small
+  const CREATIVE_BATCH = 20;
+  for (let i = 0; i < creativeIds.length; i += CREATIVE_BATCH) {
+    const batch = creativeIds.slice(i, i + CREATIVE_BATCH);
+    const params = new URLSearchParams({
+      access_token: token,
+      ids: batch.join(","),
+      fields:
+        "id,thumbnail_url,image_url,object_type,link_url,effective_object_story_id",
+    });
+    const res = await fetch(`${GRAPH}/?${params}`);
+    const json = (await res.json()) as Record<string, unknown>;
+    if (json.error && typeof json.error === "object") {
+      const err = json.error as { message?: string };
+      throw new Error(
+        err.message || `Meta creatives batch failed for ${account}`,
+      );
+    }
+    for (const id of batch) {
+      const c = json[id] as GraphCreative | undefined;
+      if (c) creativeById.set(id, c);
+    }
+  }
+
+  return listed.map(({ ad, creativeId }) => {
+    const creative = creativeId ? creativeById.get(creativeId) : undefined;
+    return {
+      adId: ad.id!,
+      adName: ad.name || "(unnamed)",
+      adsetId: ad.adset_id || ad.adset?.id || "",
+      adsetName: ad.adset?.name || "",
+      campaignId: ad.campaign_id || ad.campaign?.id || "",
+      campaignName: ad.campaign?.name || "",
+      status: ad.status || "",
+      effectiveStatus: ad.effective_status || ad.status || "",
+      creativeId,
+      thumbnailUrl: creative?.thumbnail_url || null,
+      imageUrl: creative?.image_url || null,
+      permalinkUrl: extractPermalink(ad, creative),
+      linkUrl: extractLinkUrl(creative),
+      objectType: creative?.object_type || null,
+    };
+  });
 }
 
 /**

@@ -193,6 +193,16 @@ export async function runAgencySync(opts?: {
 
     // --- Meta creatives (thumbnail / link) — önce (hızlı; timeout’tan önce kalsın) ---
     if (doMeta) {
+      // Eski birleşik ads/ad_daily job’ı UI’da “reduce data” hatası olarak kalıyordu
+      await prisma.syncJob.deleteMany({
+        where: {
+          tenantId: tenant.id,
+          provider: "meta",
+          service: "ads",
+          objective: "ad_daily",
+        },
+      });
+
       const metaCreatives = await runSynced(
         {
           tenantId: tenant.id,

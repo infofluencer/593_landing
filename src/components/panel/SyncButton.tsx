@@ -163,16 +163,23 @@ function buildStatusResult(
 ): SyncResultView {
   const label = provider === "meta" ? "Meta" : "Google";
   const lines: string[] = [];
+  const labelFor = (service: string, objective: string) => {
+    if (service === "ads" && objective === "creatives") return "reklam/thumbnail";
+    if (service === "insights") return "kampanya";
+    if (service === "ad_insights") return "reklam performansı";
+    return `${service}/${objective}`;
+  };
   for (const j of status.jobs ?? []) {
+    const name = labelFor(j.service, j.objective);
     if (j.status === "success") {
-      lines.push(`${j.service}: OK`);
+      lines.push(`${name}: OK`);
     } else if (j.status === "error") {
-      lines.push(`${j.service}: ${j.error || "hata"}`);
+      lines.push(`${name}: ${j.error || "hata"}`);
     } else if (j.status === "running") {
-      lines.push(`${j.service}: çalışıyor…`);
+      lines.push(`${name}: çalışıyor…`);
     }
   }
-  if (status.error) lines.push(status.error);
+  if (status.error && status.status === "error") lines.push(status.error);
   if (!lines.length) lines.push("Senkron tamamlandı");
 
   if (status.status === "error") {
@@ -183,7 +190,16 @@ function buildStatusResult(
       lines,
     };
   }
+  // panel_sync success → overall success; only warn if a current job failed
   const anyJobFail = (status.jobs ?? []).some((j) => j.status === "error");
+  if (status.status === "success" && !anyJobFail) {
+    return {
+      status: "success",
+      title: `${label} senkronu bitti`,
+      detail: `Firma: ${tenantSlug}`,
+      lines,
+    };
+  }
   return {
     status: anyJobFail ? "warn" : "success",
     title: anyJobFail

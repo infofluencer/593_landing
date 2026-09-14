@@ -56,7 +56,15 @@ export async function GET(request: Request) {
     where: {
       tenantId: tenant.id,
       provider,
-      service: { not: "panel_sync" },
+      AND: [
+        { service: { not: "panel_sync" } },
+        // Stale combined job (pre-split) — ignore
+        {
+          NOT: {
+            AND: [{ service: "ads" }, { objective: "ad_daily" }],
+          },
+        },
+      ],
     },
     orderBy: { updatedAt: "desc" },
     take: 12,
