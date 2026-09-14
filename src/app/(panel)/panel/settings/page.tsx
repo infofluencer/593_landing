@@ -74,15 +74,19 @@ export default async function SettingsPage({
       thresholds: true,
       memberships: {
         where: { user: { role: "client" } },
-        include: { user: { select: { email: true, name: true } } },
+        include: {
+          user: { select: { id: true, email: true, name: true } },
+        },
       },
     },
   });
 
   const clientUsers =
     db?.memberships.map((m) => ({
+      id: m.user.id,
       email: m.user.email,
       name: m.user.name,
+      hasPassword: true,
     })) ?? [];
 
   const tenant = db

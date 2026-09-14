@@ -31,7 +31,12 @@ export type TenantSettingsInitial = {
     convDropoutDays: string;
     minSpendForAlert: string;
   };
-  clientUsers: Array<{ email: string; name: string | null }>;
+  clientUsers: Array<{
+    id: string;
+    email: string;
+    name: string | null;
+    hasPassword: boolean;
+  }>;
 };
 
 export default function TenantSettingsForm({
@@ -56,10 +61,14 @@ export default function TenantSettingsForm({
   const [message, setMessage] = useState<string | null>(null);
   const [deleteMessage, setDeleteMessage] = useState<string | null>(null);
   const [clientForm, setClientForm] = useState({
+    userId: initial.clientUsers[0]?.id ?? "",
     email: initial.clientUsers[0]?.email ?? "",
     name: initial.clientUsers[0]?.name ?? "",
     password: "",
   });
+  const [showPassword, setShowPassword] = useState(false);
+  const [emailCopied, setEmailCopied] = useState(false);
+  const hasExistingClient = initial.clientUsers.length > 0;
 
   const hints = useMemo(
     () =>
@@ -151,18 +160,28 @@ export default function TenantSettingsForm({
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
+            userId: clientForm.userId || undefined,
             email: clientForm.email.trim(),
             password: clientForm.password,
             name: clientForm.name.trim() || null,
           }),
         },
       );
-      const json = (await res.json()) as { ok?: boolean; error?: string };
+      const json = (await res.json()) as {
+        ok?: boolean;
+        error?: string;
+        passwordUpdated?: boolean;
+      };
       if (!res.ok) {
         setMessage(json.error || "Müşteri kaydı başarısız");
       } else {
-        setMessage("Müşteri hesabı kaydedildi");
+        setMessage(
+          json.passwordUpdated
+            ? "Müşteri hesabı kaydedildi (şifre güncellendi)"
+            : "Müşteri hesabı kaydedildi",
+        );
         setClientForm((f) => ({ ...f, password: "" }));
+        setShowPassword(false);
         router.refresh();
       }
     } catch (err) {
@@ -170,6 +189,23 @@ export default function TenantSettingsForm({
     } finally {
       setClientPending(false);
     }
+  }
+
+  async function copyEmail() {
+    const email = clientForm.email.trim();
+    if (!email) return;
+    try {
+      await navigator.clipboard.writeText(email);
+    } catch {
+      const el = document.createElement("textarea");
+      el.value = email;
+      document.body.appendChild(el);
+      el.select();
+      document.execCommand("copy");
+      document.body.removeChild(el);
+    }
+    setEmailCopied(true);
+    window.setTimeout(() => setEmailCopied(false), 1500);
   }
 
   async function onDeleteBrand() {
@@ -525,22 +561,66 @@ export default function TenantSettingsForm({
       >
         <h3 className="text-sm font-semibold text-zinc-800">Müşteri hesabı</h3>
         <p className="text-xs text-zinc-500">
-          Marka subdomain girişi. Şifre en az 8 karakter; mevcut e-posta
-          güncellenir / membership bağlanır.
+          Marka paneli girişi:{" "}
+          <code className="text-zinc-400">
+            {tenantSlug}.{rootDomain}
+          </code>
+          . Kullanıcı adı e-postadır. Şifre hash’li saklanır — mevcut şifre
+          okunamaz; yeni şifre yazarak değiştirirsiniz.
         </p>
-        {initial.clientUsers.length > 0 ? (
-          <ul className="text-xs text-zinc-500">
-            {initial.clientUsers.map((u) => (
-              <li key={u.email}>
-                Kayıtlı:{" "}
-                <span className="font-medium text-zinc-700">{u.email}</span>
-                {u.name ? ` (${u.name})` : ""}
-              </li>
-            ))}
-          </ul>
+
+        {hasExistingClient ? (
+          <div className="rounded-xl border border-zinc-200 bg-zinc-50/80 px-4 py-3">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
+              Kayıtlı giriş
+            </p>
+            <dl className="mt-2 grid gap-2 sm:grid-cols-2">
+              <div>
+                <dt className="text-[11px] text-zinc-500">Kullanıcı (e-posta)</dt>
+                <dd className="mt-0.5 flex items-center gap-2">
+                  <span className="font-mono text-sm font-medium text-zinc-900">
+                    {initial.clientUsers[0]?.email}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => void copyEmail()}
+                    className="rounded border border-zinc-200 bg-white px-1.5 py-0.5 text-[10px] font-medium text-zinc-600 hover:bg-zinc-100"
+                  >
+                    {emailCopied ? "Kopyalandı" : "Kopyala"}
+                  </button>
+                </dd>
+              </div>
+              <div>
+                <dt className="text-[11px] text-zinc-500">Şifre</dt>
+                <dd className="mt-0.5 text-sm font-medium text-zinc-900">
+                  ••••••••{" "}
+                  <span className="text-[11px] font-normal text-zinc-500">
+                    (kayıtlı — görüntülenemez)
+                  </span>
+                </dd>
+              </div>
+              {initial.clientUsers[0]?.name ? (
+                <div className="sm:col-span-2">
+                  <dt className="text-[11px] text-zinc-500">Ad</dt>
+                  <dd className="mt-0.5 text-sm text-zinc-800">
+                    {initial.clientUsers[0].name}
+                  </dd>
+                </div>
+              ) : null}
+            </dl>
+            {initial.clientUsers.length > 1 ? (
+              <p className="mt-2 text-[11px] text-zinc-500">
+                +{initial.clientUsers.length - 1} ek müşteri üyeliği var; form
+                birincisini düzenler.
+              </p>
+            ) : null}
+          </div>
         ) : (
-          <p className="text-xs text-amber-700">Henüz müşteri membership yok.</p>
+          <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+            Henüz müşteri hesabı yok — aşağıdan oluşturun.
+          </p>
         )}
+
         <div className="grid gap-3 sm:grid-cols-2">
           <Field label="Müşteri adı">
             <input
@@ -549,9 +629,10 @@ export default function TenantSettingsForm({
               onChange={(e) =>
                 setClientForm((f) => ({ ...f, name: e.target.value }))
               }
+              autoComplete="off"
             />
           </Field>
-          <Field label="E-posta">
+          <Field label="Kullanıcı adı (e-posta)">
             <input
               className={inputClass}
               type="email"
@@ -563,26 +644,50 @@ export default function TenantSettingsForm({
               autoComplete="off"
             />
           </Field>
-          <Field label="Şifre (min. 8)">
-            <input
-              className={inputClass}
-              type="password"
-              value={clientForm.password}
-              onChange={(e) =>
-                setClientForm((f) => ({ ...f, password: e.target.value }))
+          <div className="sm:col-span-2">
+            <Field
+              label={
+                hasExistingClient
+                  ? "Yeni şifre (boş = değiştirme)"
+                  : "Şifre (min. 8)"
               }
-              required
-              minLength={8}
-              autoComplete="new-password"
-            />
-          </Field>
+            >
+              <div className="flex gap-2">
+                <input
+                  className={inputClass}
+                  type={showPassword ? "text" : "password"}
+                  value={clientForm.password}
+                  onChange={(e) =>
+                    setClientForm((f) => ({ ...f, password: e.target.value }))
+                  }
+                  required={!hasExistingClient}
+                  minLength={hasExistingClient ? undefined : 8}
+                  autoComplete="new-password"
+                  placeholder={
+                    hasExistingClient ? "••••••••  (değiştirmek için yazın)" : ""
+                  }
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((v) => !v)}
+                  className="shrink-0 rounded-md border border-zinc-200 bg-white px-3 text-xs font-medium text-zinc-700 hover:bg-zinc-50"
+                >
+                  {showPassword ? "Gizle" : "Göster"}
+                </button>
+              </div>
+            </Field>
+          </div>
         </div>
         <button
           type="submit"
           disabled={clientPending}
           className="rounded-md border border-zinc-200 bg-white px-4 py-2 text-sm font-medium text-zinc-800 hover:bg-zinc-50 disabled:opacity-50"
         >
-          {clientPending ? "Kaydediliyor…" : "Müşteri hesabını kaydet"}
+          {clientPending
+            ? "Kaydediliyor…"
+            : hasExistingClient
+              ? "Müşteri hesabını güncelle"
+              : "Müşteri hesabı oluştur"}
         </button>
       </form>
 

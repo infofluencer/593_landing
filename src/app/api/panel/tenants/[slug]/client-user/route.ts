@@ -9,6 +9,8 @@ type Body = {
   email?: string;
   password?: string;
   name?: string | null;
+  /** Existing client user id on this tenant (preferred when editing). */
+  userId?: string;
 };
 
 /** Admin/team — create/update client user + membership for a tenant. */
@@ -42,45 +44,102 @@ export async function POST(
     .toLowerCase();
   const password = String(body.password ?? "");
   const name = body.name?.trim() || null;
+  const userId = body.userId?.trim() || "";
 
   if (!email || !email.includes("@")) {
-    return NextResponse.json({ error: "Geçerli e-posta gerekli" }, { status: 400 });
-  }
-  if (password.length < 8) {
     return NextResponse.json(
-      { error: "Şifre en az 8 karakter olmalı" },
+      { error: "Geçerli e-posta gerekli" },
       { status: 400 },
     );
   }
 
-  const passwordHash = await bcrypt.hash(password, 10);
-
   try {
-    const existing = await prisma.user.findUnique({ where: { email } });
-    if (existing && existing.role !== "client") {
+    // Prefer editing the membership user on this tenant
+    let membershipUser =
+      userId
+        ? await prisma.user.findFirst({
+            where: {
+              id: userId,
+              role: "client",
+              memberships: { some: { tenantId: tenant.id } },
+            },
+          })
+        : null;
+
+    if (!membershipUser) {
+      const m = await prisma.membership.findFirst({
+        where: { tenantId: tenant.id, user: { role: "client" } },
+        include: { user: true },
+      });
+      membershipUser = m?.user ?? null;
+    }
+
+    const emailOwner = await prisma.user.findUnique({ where: { email } });
+    if (emailOwner && emailOwner.role !== "client") {
       return NextResponse.json(
         { error: "Bu e-posta staff hesabı — müşteri yapılamaz" },
         { status: 409 },
       );
     }
+    if (
+      emailOwner &&
+      membershipUser &&
+      emailOwner.id !== membershipUser.id
+    ) {
+      return NextResponse.json(
+        { error: "Bu e-posta başka bir müşteri hesabında kayıtlı" },
+        { status: 409 },
+      );
+    }
 
-    const user = existing
-      ? await prisma.user.update({
-          where: { id: existing.id },
-          data: {
-            passwordHash,
-            ...(name ? { name } : {}),
-            role: "client",
-          },
-        })
-      : await prisma.user.create({
-          data: {
-            email,
-            passwordHash,
-            name: name || email.split("@")[0],
-            role: "client",
-          },
-        });
+    // New user → password required. Existing → password optional (leave blank = keep).
+    if (!membershipUser && !emailOwner && password.length < 8) {
+      return NextResponse.json(
+        { error: "Yeni hesap için şifre en az 8 karakter olmalı" },
+        { status: 400 },
+      );
+    }
+    if (password && password.length < 8) {
+      return NextResponse.json(
+        { error: "Şifre en az 8 karakter olmalı" },
+        { status: 400 },
+      );
+    }
+
+    const passwordHash = password
+      ? await bcrypt.hash(password, 10)
+      : null;
+
+    let user;
+    if (membershipUser) {
+      user = await prisma.user.update({
+        where: { id: membershipUser.id },
+        data: {
+          email,
+          ...(name !== null ? { name: name || membershipUser.name } : {}),
+          ...(passwordHash ? { passwordHash } : {}),
+          role: "client",
+        },
+      });
+    } else if (emailOwner) {
+      user = await prisma.user.update({
+        where: { id: emailOwner.id },
+        data: {
+          ...(name ? { name } : {}),
+          ...(passwordHash ? { passwordHash } : {}),
+          role: "client",
+        },
+      });
+    } else {
+      user = await prisma.user.create({
+        data: {
+          email,
+          passwordHash: passwordHash!,
+          name: name || email.split("@")[0],
+          role: "client",
+        },
+      });
+    }
 
     await prisma.membership.upsert({
       where: {
@@ -92,7 +151,14 @@ export async function POST(
 
     return NextResponse.json({
       ok: true,
-      user: { id: user.id, email: user.email, name: user.name, role: user.role },
+      passwordUpdated: Boolean(passwordHash),
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        role: user.role,
+        hasPassword: true,
+      },
       tenantSlug: tenant.slug,
     });
   } catch (err) {
