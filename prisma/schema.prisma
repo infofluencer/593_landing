@@ -150,6 +150,8 @@ model User {
   id           String   @id @default(cuid())
   email        String   @unique
   passwordHash String
+  /// Staff-only recoverable copy for agency settings (auth still uses passwordHash).
+  passwordPlain String?
   name         String?
   role         Role
   createdAt    DateTime @default(now())

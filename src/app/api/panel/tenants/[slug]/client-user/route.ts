@@ -54,7 +54,6 @@ export async function POST(
   }
 
   try {
-    // Prefer editing the membership user on this tenant
     let membershipUser =
       userId
         ? await prisma.user.findFirst({
@@ -92,7 +91,6 @@ export async function POST(
       );
     }
 
-    // New user → password required. Existing → password optional (leave blank = keep).
     if (!membershipUser && !emailOwner && password.length < 8) {
       return NextResponse.json(
         { error: "Yeni hesap için şifre en az 8 karakter olmalı" },
@@ -117,7 +115,9 @@ export async function POST(
         data: {
           email,
           ...(name !== null ? { name: name || membershipUser.name } : {}),
-          ...(passwordHash ? { passwordHash } : {}),
+          ...(passwordHash
+            ? { passwordHash, passwordPlain: password }
+            : {}),
           role: "client",
         },
       });
@@ -126,7 +126,9 @@ export async function POST(
         where: { id: emailOwner.id },
         data: {
           ...(name ? { name } : {}),
-          ...(passwordHash ? { passwordHash } : {}),
+          ...(passwordHash
+            ? { passwordHash, passwordPlain: password }
+            : {}),
           role: "client",
         },
       });
@@ -135,6 +137,7 @@ export async function POST(
         data: {
           email,
           passwordHash: passwordHash!,
+          passwordPlain: password,
           name: name || email.split("@")[0],
           role: "client",
         },
@@ -158,6 +161,7 @@ export async function POST(
         name: user.name,
         role: user.role,
         hasPassword: true,
+        passwordPlain: user.passwordPlain ?? null,
       },
       tenantSlug: tenant.slug,
     });

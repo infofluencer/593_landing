@@ -36,6 +36,7 @@ export type TenantSettingsInitial = {
     email: string;
     name: string | null;
     hasPassword: boolean;
+    passwordPlain: string | null;
   }>;
 };
 
@@ -67,8 +68,11 @@ export default function TenantSettingsForm({
     password: "",
   });
   const [showPassword, setShowPassword] = useState(false);
+  const [showStoredPassword, setShowStoredPassword] = useState(false);
   const [emailCopied, setEmailCopied] = useState(false);
+  const [passwordCopied, setPasswordCopied] = useState(false);
   const hasExistingClient = initial.clientUsers.length > 0;
+  const storedPassword = initial.clientUsers[0]?.passwordPlain ?? null;
 
   const hints = useMemo(
     () =>
@@ -206,6 +210,22 @@ export default function TenantSettingsForm({
     }
     setEmailCopied(true);
     window.setTimeout(() => setEmailCopied(false), 1500);
+  }
+
+  async function copyStoredPassword() {
+    if (!storedPassword) return;
+    try {
+      await navigator.clipboard.writeText(storedPassword);
+    } catch {
+      const el = document.createElement("textarea");
+      el.value = storedPassword;
+      document.body.appendChild(el);
+      el.select();
+      document.execCommand("copy");
+      document.body.removeChild(el);
+    }
+    setPasswordCopied(true);
+    window.setTimeout(() => setPasswordCopied(false), 1500);
   }
 
   async function onDeleteBrand() {
@@ -565,8 +585,8 @@ export default function TenantSettingsForm({
           <code className="text-zinc-400">
             {tenantSlug}.{rootDomain}
           </code>
-          . Kullanıcı adı e-postadır. Şifre hash’li saklanır — mevcut şifre
-          okunamaz; yeni şifre yazarak değiştirirsiniz.
+          . Kullanıcı adı e-postadır. Giriş bcrypt ile doğrulanır; ajans
+          panelinde görüntülemek için şifre ayrıca saklanır.
         </p>
 
         {hasExistingClient ? (
@@ -574,10 +594,10 @@ export default function TenantSettingsForm({
             <p className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
               Kayıtlı giriş
             </p>
-            <dl className="mt-2 grid gap-2 sm:grid-cols-2">
+            <dl className="mt-2 grid gap-3 sm:grid-cols-2">
               <div>
                 <dt className="text-[11px] text-zinc-500">Kullanıcı (e-posta)</dt>
-                <dd className="mt-0.5 flex items-center gap-2">
+                <dd className="mt-0.5 flex flex-wrap items-center gap-2">
                   <span className="font-mono text-sm font-medium text-zinc-900">
                     {initial.clientUsers[0]?.email}
                   </span>
@@ -592,11 +612,33 @@ export default function TenantSettingsForm({
               </div>
               <div>
                 <dt className="text-[11px] text-zinc-500">Şifre</dt>
-                <dd className="mt-0.5 text-sm font-medium text-zinc-900">
-                  ••••••••{" "}
-                  <span className="text-[11px] font-normal text-zinc-500">
-                    (kayıtlı — görüntülenemez)
-                  </span>
+                <dd className="mt-0.5 flex flex-wrap items-center gap-2">
+                  {storedPassword ? (
+                    <>
+                      <span className="font-mono text-sm font-medium text-zinc-900">
+                        {showStoredPassword ? storedPassword : "••••••••"}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setShowStoredPassword((v) => !v)}
+                        className="rounded border border-zinc-200 bg-white px-1.5 py-0.5 text-[10px] font-medium text-zinc-600 hover:bg-zinc-100"
+                      >
+                        {showStoredPassword ? "Gizle" : "Göster"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void copyStoredPassword()}
+                        className="rounded border border-zinc-200 bg-white px-1.5 py-0.5 text-[10px] font-medium text-zinc-600 hover:bg-zinc-100"
+                      >
+                        {passwordCopied ? "Kopyalandı" : "Kopyala"}
+                      </button>
+                    </>
+                  ) : (
+                    <span className="text-sm text-amber-800">
+                      Eski kayıt — şifre görüntülenemez. Aşağıya yeni şifre
+                      yazıp kaydedin; sonra Göster ile görünür.
+                    </span>
+                  )}
                 </dd>
               </div>
               {initial.clientUsers[0]?.name ? (
@@ -654,8 +696,10 @@ export default function TenantSettingsForm({
             >
               <div className="flex gap-2">
                 <input
+                  key={showPassword ? "pw-visible" : "pw-hidden"}
                   className={inputClass}
                   type={showPassword ? "text" : "password"}
+                  name="client-new-password"
                   value={clientForm.password}
                   onChange={(e) =>
                     setClientForm((f) => ({ ...f, password: e.target.value }))
@@ -664,7 +708,9 @@ export default function TenantSettingsForm({
                   minLength={hasExistingClient ? undefined : 8}
                   autoComplete="new-password"
                   placeholder={
-                    hasExistingClient ? "••••••••  (değiştirmek için yazın)" : ""
+                    hasExistingClient
+                      ? "Değiştirmek için yeni şifre yazın"
+                      : ""
                   }
                 />
                 <button

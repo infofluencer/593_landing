@@ -75,7 +75,14 @@ export default async function SettingsPage({
       memberships: {
         where: { user: { role: "client" } },
         include: {
-          user: { select: { id: true, email: true, name: true } },
+          user: {
+            select: {
+              id: true,
+              email: true,
+              name: true,
+              passwordPlain: true,
+            },
+          },
         },
       },
     },
@@ -87,6 +94,7 @@ export default async function SettingsPage({
       email: m.user.email,
       name: m.user.name,
       hasPassword: true,
+      passwordPlain: m.user.passwordPlain ?? null,
     })) ?? [];
 
   const tenant = db

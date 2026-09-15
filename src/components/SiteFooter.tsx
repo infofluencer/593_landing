@@ -123,11 +123,20 @@ export default function SiteFooter() {
 
           <div>
             <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/40">
-              İletişim
+              Adresimiz
             </p>
             <ul className="mt-2 space-y-0 text-[14px] text-[#f4f1ea]/75 sm:mt-4 lg:space-y-3">
-              <li className="flex min-h-11 items-center lg:min-h-0">
-                İstanbul, Türkiye
+              <li className="flex min-h-11 items-center leading-snug lg:min-h-0">
+                <a
+                  href="https://maps.google.com/?q=%C3%96mer+Avni,+%C4%B0nebolu+Sk.+No:51,+34427+Beyo%C4%9Flu/%C4%B0stanbul"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="transition hover:text-[#f4f1ea]"
+                >
+                  Ömer Avni, İnebolu Sk. No:51,
+                  <br />
+                  34427 Beyoğlu/İstanbul
+                </a>
               </li>
               <li>
                 <ContactTrigger className={linkClass}>

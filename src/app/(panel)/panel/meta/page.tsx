@@ -187,27 +187,51 @@ function CreativeCard({
     conv: ad.conv,
     convValue: ad.convValue,
   });
-  const thumb = ad.thumbnailUrl || ad.imageUrl;
-  const openUrl = ad.permalinkUrl || ad.linkUrl;
+  // Prefer full imageUrl; thumbnail_url is often tiny and looks blurry in cards
+  const thumb = ad.imageUrl || ad.thumbnailUrl;
+  const publishedUrl = ad.permalinkUrl;
+  const destinationUrl = ad.linkUrl;
   const isActive = ad.effectiveStatus === "ACTIVE";
   return (
     <article className="overflow-hidden rounded-xl border border-zinc-200 bg-white">
       <div className="relative aspect-[4/3] bg-zinc-100">
         {thumb ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={thumb}
-            alt=""
-            className="h-full w-full object-cover"
-            referrerPolicy="no-referrer"
-          />
+          publishedUrl ? (
+            <a
+              href={publishedUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="block h-full w-full"
+              title="Yayındaki içeriği aç"
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={thumb}
+                alt=""
+                className="h-full w-full object-cover transition hover:opacity-95"
+                referrerPolicy="no-referrer"
+                loading="lazy"
+                decoding="async"
+              />
+            </a>
+          ) : (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={thumb}
+              alt=""
+              className="h-full w-full object-cover"
+              referrerPolicy="no-referrer"
+              loading="lazy"
+              decoding="async"
+            />
+          )
         ) : (
           <div className="flex h-full items-center justify-center text-xs text-zinc-400">
             Görsel yok
           </div>
         )}
         <span
-          className={`absolute left-2 top-2 rounded-md px-2 py-0.5 text-[10px] font-medium ${
+          className={`pointer-events-none absolute left-2 top-2 rounded-md px-2 py-0.5 text-[10px] font-medium ${
             isActive
               ? "bg-emerald-600 text-white"
               : "bg-zinc-800/80 text-white"
@@ -218,9 +242,20 @@ function CreativeCard({
       </div>
       <div className="space-y-2 p-3">
         <div>
-          <p className="line-clamp-2 text-sm font-medium text-zinc-900">
-            {ad.adName}
-          </p>
+          {publishedUrl ? (
+            <a
+              href={publishedUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="line-clamp-2 text-sm font-medium text-zinc-900 hover:underline"
+            >
+              {ad.adName}
+            </a>
+          ) : (
+            <p className="line-clamp-2 text-sm font-medium text-zinc-900">
+              {ad.adName}
+            </p>
+          )}
           <p className="mt-0.5 line-clamp-1 text-[11px] text-zinc-500">
             {ad.campaignName}
             {ad.adsetName ? ` · ${ad.adsetName}` : ""}
@@ -261,29 +296,28 @@ function CreativeCard({
           </div>
         </dl>
         <div className="flex flex-wrap gap-3">
-          {ad.permalinkUrl ? (
+          {publishedUrl ? (
             <a
-              href={ad.permalinkUrl}
+              href={publishedUrl}
               target="_blank"
               rel="noopener noreferrer"
               className="text-[12px] font-medium hover:underline"
               style={{ color: META_COLOR }}
             >
-              Reklamı aç
+              Yayında aç
             </a>
-          ) : null}
-          {ad.linkUrl ? (
+          ) : (
+            <span className="text-[12px] text-zinc-400">Yayın linki yok</span>
+          )}
+          {destinationUrl ? (
             <a
-              href={ad.linkUrl}
+              href={destinationUrl}
               target="_blank"
               rel="noopener noreferrer"
               className="text-[12px] font-medium text-zinc-600 hover:underline"
             >
               Hedef site
             </a>
-          ) : null}
-          {!openUrl ? (
-            <span className="text-[12px] text-zinc-400">Link yok</span>
           ) : null}
         </div>
       </div>

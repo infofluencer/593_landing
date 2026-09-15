@@ -63,12 +63,17 @@ type GraphCreative = {
   name?: string;
   thumbnail_url?: string;
   image_url?: string;
+  image_hash?: string;
   object_type?: string;
   link_url?: string;
   effective_object_story_id?: string;
+  object_story_id?: string;
+  /** Public Instagram post URL when the creative is an IG media/boost. */
+  instagram_permalink_url?: string;
+  effective_instagram_media_id?: string;
   object_story_spec?: {
-    link_data?: { link?: string; image_hash?: string };
-    video_data?: { image_url?: string; video_id?: string };
+    link_data?: { link?: string; image_hash?: string; picture?: string };
+    video_data?: { image_url?: string; video_id?: string; image_hash?: string };
     page_id?: string;
   };
 };
@@ -83,6 +88,7 @@ type GraphAd = {
   campaign?: { id?: string; name?: string };
   adset?: { id?: string; name?: string };
   creative?: GraphCreative;
+  /** Ads Manager preview — NOT the public post; avoid for “open published”. */
   preview_shareable_link?: string;
 };
 
@@ -94,18 +100,26 @@ function extractLinkUrl(creative: GraphCreative | undefined): string | null {
   return null;
 }
 
+/**
+ * Public place where the creative runs (Facebook / Instagram post).
+ * Never prefer preview_shareable_link — that opens Business Manager.
+ */
 function extractPermalink(
-  ad: GraphAd,
+  _ad: GraphAd,
   creative: GraphCreative | undefined,
 ): string | null {
-  if (ad.preview_shareable_link) return ad.preview_shareable_link;
-  const storyId = creative?.effective_object_story_id;
+  if (!creative) return null;
+  if (creative.instagram_permalink_url) {
+    return creative.instagram_permalink_url;
+  }
+  const storyId =
+    creative.effective_object_story_id || creative.object_story_id;
   if (storyId) {
-    // pageId_postId → facebook.com/{pageId}/posts/{postId}
-    const parts = storyId.split("_");
-    if (parts.length === 2 && parts[0] && parts[1]) {
-      return `https://www.facebook.com/${parts[0]}/posts/${parts[1]}`;
-    }
+    // pageId_postId — public facebook.com URL (incl. many unpublished/dark posts)
+    return `https://www.facebook.com/${storyId}`;
+  }
+  if (creative.effective_instagram_media_id) {
+    return `https://www.instagram.com/p/${creative.effective_instagram_media_id}/`;
   }
   return null;
 }
@@ -207,13 +221,36 @@ export async function fetchMetaAdsWithCreatives(opts: {
     const params = new URLSearchParams({
       access_token: token,
       ids: batch.join(","),
-      fields:
-        "id,thumbnail_url,image_url,object_type,link_url,effective_object_story_id",
+      // image_hash → full-res via adimages; thumbnail_url is often ~64–128px (blurry when stretched)
+          fields:
+            "id,thumbnail_url,image_url,image_hash,object_type,link_url,effective_object_story_id,object_story_id,instagram_permalink_url,effective_instagram_media_id,object_story_spec{link_data{image_hash,picture,link},video_data{image_url,image_hash}}",
     });
     const res = await fetch(`${GRAPH}/?${params}`);
     const json = (await res.json()) as Record<string, unknown>;
     if (json.error && typeof json.error === "object") {
       const err = json.error as { message?: string };
+      // Fallback without object_story_spec if payload too large
+      if (/reduce the amount of data/i.test(err.message || "")) {
+        const light = new URLSearchParams({
+          access_token: token,
+          ids: batch.join(","),
+          fields:
+            "id,thumbnail_url,image_url,image_hash,object_type,link_url,effective_object_story_id,object_story_id,instagram_permalink_url,effective_instagram_media_id",
+        });
+        const res2 = await fetch(`${GRAPH}/?${light}`);
+        const json2 = (await res2.json()) as Record<string, unknown>;
+        if (json2.error && typeof json2.error === "object") {
+          const err2 = json2.error as { message?: string };
+          throw new Error(
+            err2.message || `Meta creatives batch failed for ${account}`,
+          );
+        }
+        for (const id of batch) {
+          const c = json2[id] as GraphCreative | undefined;
+          if (c) creativeById.set(id, c);
+        }
+        continue;
+      }
       throw new Error(
         err.message || `Meta creatives batch failed for ${account}`,
       );
@@ -224,8 +261,40 @@ export async function fetchMetaAdsWithCreatives(opts: {
     }
   }
 
+  // Resolve image_hash → full-size CDN URL (not the tiny thumbnail_url)
+  const hashes = new Set<string>();
+  for (const c of creativeById.values()) {
+    if (c.image_hash) hashes.add(c.image_hash);
+    const linkHash = c.object_story_spec?.link_data?.image_hash;
+    if (linkHash) hashes.add(linkHash);
+    const videoHash = c.object_story_spec?.video_data?.image_hash;
+    if (videoHash) hashes.add(videoHash);
+  }
+  const fullUrlByHash = await fetchMetaAdImageUrls({
+    metaAccountId: opts.metaAccountId,
+    token,
+    hashes: [...hashes],
+  });
+
   return listed.map(({ ad, creativeId }) => {
     const creative = creativeId ? creativeById.get(creativeId) : undefined;
+    const hash =
+      creative?.image_hash ||
+      creative?.object_story_spec?.link_data?.image_hash ||
+      creative?.object_story_spec?.video_data?.image_hash ||
+      "";
+    const fullFromHash = hash ? fullUrlByHash.get(hash) : null;
+    const picture = creative?.object_story_spec?.link_data?.picture || null;
+    const videoStill =
+      creative?.object_story_spec?.video_data?.image_url || null;
+    // Prefer full-res; thumbnail_url last (blurry when card-sized)
+    const imageUrl =
+      fullFromHash ||
+      creative?.image_url ||
+      picture ||
+      videoStill ||
+      null;
+    const thumbnailUrl = creative?.thumbnail_url || null;
     return {
       adId: ad.id!,
       adName: ad.name || "(unnamed)",
@@ -236,13 +305,54 @@ export async function fetchMetaAdsWithCreatives(opts: {
       status: ad.status || "",
       effectiveStatus: ad.effective_status || ad.status || "",
       creativeId,
-      thumbnailUrl: creative?.thumbnail_url || null,
-      imageUrl: creative?.image_url || null,
+      thumbnailUrl,
+      imageUrl,
       permalinkUrl: extractPermalink(ad, creative),
       linkUrl: extractLinkUrl(creative),
       objectType: creative?.object_type || null,
     };
   });
+}
+
+/** Full-resolution image URLs for creative image_hash values. */
+async function fetchMetaAdImageUrls(opts: {
+  metaAccountId: string;
+  token: string;
+  hashes: string[];
+}): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  if (!opts.hashes.length) return out;
+  const account = actId(opts.metaAccountId);
+  const HASH_BATCH = 40;
+  for (let i = 0; i < opts.hashes.length; i += HASH_BATCH) {
+    const batch = opts.hashes.slice(i, i + HASH_BATCH);
+    const params = new URLSearchParams({
+      access_token: opts.token,
+      hashes: JSON.stringify(batch),
+      fields: "hash,url,permalink_url,width,height",
+    });
+    const res = await fetch(`${GRAPH}/${account}/adimages?${params}`);
+    const json = (await res.json()) as {
+      data?: Array<{
+        hash?: string;
+        url?: string;
+        permalink_url?: string;
+      }>;
+      error?: { message?: string };
+    };
+    if (!res.ok || json.error) {
+      console.warn(
+        "Meta adimages:",
+        json.error?.message || res.status,
+      );
+      continue;
+    }
+    for (const row of json.data ?? []) {
+      const url = row.url || row.permalink_url;
+      if (row.hash && url) out.set(row.hash, url);
+    }
+  }
+  return out;
 }
 
 /**
