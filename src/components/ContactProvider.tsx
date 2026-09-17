@@ -11,6 +11,7 @@ import {
   type FormEvent,
   type ReactNode,
 } from "react";
+import { trackAppointmentScheduled } from "@/lib/openai-pixel";
 
 type ContactContextValue = {
   open: () => void;
@@ -180,6 +181,7 @@ function ContactChat({
       if (!res.ok) {
         throw new Error(data?.error || "Gönderilemedi.");
       }
+      trackAppointmentScheduled();
       push(
         "bot",
         "Teşekkürler! Talebiniz bize ulaştı. En kısa sürede sizinle iletişime geçeceğiz.",

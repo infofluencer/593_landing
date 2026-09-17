@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import nodemailer from "nodemailer";
+import { sendAppointmentScheduledEvent } from "@/lib/openai-conversions";
 
 export const runtime = "nodejs";
 
@@ -118,6 +119,17 @@ export async function POST(request: Request) {
       { error: "Mail gönderilemedi. Lütfen daha sonra deneyin." },
       { status: 502 },
     );
+  }
+
+  const sourceUrl =
+    request.headers.get("referer") ||
+    request.headers.get("origin") ||
+    "https://593emarketing.com";
+
+  try {
+    await sendAppointmentScheduledEvent({ sourceUrl });
+  } catch (err) {
+    console.error("OpenAI Conversions API failed", err);
   }
 
   return NextResponse.json({ ok: true });

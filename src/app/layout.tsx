@@ -2,9 +2,8 @@ import type { Metadata, Viewport } from "next";
 import { DM_Sans, Montserrat, Syne } from "next/font/google";
 import Script from "next/script";
 import ContactProvider from "@/components/ContactProvider";
+import { OPENAI_PIXEL_ID } from "@/lib/openai-pixel";
 import "./globals.css";
-
-const OPENAI_PIXEL_ID = "Sp9uq3JP83CVrPZ7rrSSS7";
 
 export const viewport: Viewport = {
   width: "device-width",
