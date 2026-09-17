@@ -61,6 +61,13 @@ export default function RootLayout({
       className={`${syne.variable} ${dmSans.variable} ${montserrat.variable} h-full antialiased`}
       suppressHydrationWarning
     >
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `!function(w,d,s,u){if(w.oaiq)return;var q=function(){q.q.push(arguments)};q.q=[];w.oaiq=q;var j=d.createElement(s);j.async=1;j.src=u;var f=d.getElementsByTagName(s)[0];f.parentNode.insertBefore(j,f)}(window,document,"script","https://bzrcdn.openai.com/sdk/oaiq.min.js");oaiq("init",{pixelId:"2tXEominwUS9WcyV99nbBo",debug:true});`,
+          }}
+        />
+      </head>
       <body
         className="min-h-full flex flex-col bg-[#141111] text-[#f4f1ea]"
         suppressHydrationWarning
