@@ -1,7 +1,10 @@
 import type { Metadata, Viewport } from "next";
 import { DM_Sans, Montserrat, Syne } from "next/font/google";
+import Script from "next/script";
 import ContactProvider from "@/components/ContactProvider";
 import "./globals.css";
+
+const OPENAI_PIXEL_ID = "Sp9uq3JP83CVrPZ7rrSSS7";
 
 export const viewport: Viewport = {
   width: "device-width",
@@ -63,6 +66,9 @@ export default function RootLayout({
         className="min-h-full flex flex-col bg-[#141111] text-[#f4f1ea]"
         suppressHydrationWarning
       >
+        <Script id="openai-pixel" strategy="beforeInteractive">
+          {`!function(w,d,s,u){if(w.oaiq)return;var q=function(){q.q.push(arguments)};q.q=[];w.oaiq=q;var j=d.createElement(s);j.async=1;j.src=u;var f=d.getElementsByTagName(s)[0];f.parentNode.insertBefore(j,f)}(window,document,"script","https://bzrcdn.openai.com/sdk/oaiq.min.js");oaiq("init",{pixelId:"${OPENAI_PIXEL_ID}",debug:true});`}
+        </Script>
         <ContactProvider>{children}</ContactProvider>
       </body>
     </html>
