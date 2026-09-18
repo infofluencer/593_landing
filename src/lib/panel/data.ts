@@ -1,4 +1,5 @@
 import type { AlertSeverity, ConversionKind, Role, TenantType } from "@prisma/client";
+import { cache } from "react";
 import { getTenantBySlug, prisma, TenantAccessError } from "@/lib/db";
 import { useMockPanelData } from "@/lib/integrations/tokens";
 import {
@@ -103,7 +104,9 @@ function sumCampaigns(
   );
 }
 
-export async function resolvePanelTenant(slug: string) {
+export const resolvePanelTenant = cache(async function resolvePanelTenant(
+  slug: string,
+) {
   const dbTenant = await getTenantBySlug(slug);
   const mock = useMockPanelData() ? getMockBundleBySlug(slug) : undefined;
 
@@ -147,7 +150,7 @@ export async function resolvePanelTenant(slug: string) {
     mapping,
     bundle: mock ?? null,
   };
-}
+});
 
 function healthFromJobs(
   jobs: { service: string; status: string; error: string | null }[],
@@ -645,6 +648,17 @@ async function bundleFromDb(
   };
 }
 
+const loadTenantBundle = cache(async function loadTenantBundle(
+  slug: string,
+  from: string,
+  to: string,
+): Promise<MockTenantBundle | null> {
+  if (useMockPanelData()) {
+    return getMockBundleBySlug(slug) ?? null;
+  }
+  return bundleFromDb(slug, { from, to });
+});
+
 export async function getTenantBundle(
   slug: string,
   range?: BundleRangeOpts,
@@ -653,15 +667,15 @@ export async function getTenantBundle(
     return getMockBundleBySlug(slug) ?? null;
   }
 
-  // live / auto+credentials: never invent mock numbers — empty DB = empty UI
   if (!range) {
     const today = istanbulYmd();
-    return bundleFromDb(slug, {
-      from: startOfIstanbulMonthYmd(today),
-      to: today,
-    });
+    return loadTenantBundle(
+      slug,
+      startOfIstanbulMonthYmd(today),
+      today,
+    );
   }
-  return bundleFromDb(slug, range);
+  return loadTenantBundle(slug, range.from, range.to);
 }
 
 export async function getAgencyOverview(opts: {

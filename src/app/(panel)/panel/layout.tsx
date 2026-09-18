@@ -23,11 +23,12 @@ async function canAccessTenantMembership(
 ): Promise<boolean> {
   if (tenantIds.includes(tenantId)) return true;
   if (tenantIds.length === 0) return false;
-  const rows = await prisma.tenant.findMany({
-    where: { id: { in: tenantIds } },
-    select: { slug: true },
+  // Session bazen eski id tutuyorsa slug ile doğrula (tek satır, ucuz).
+  const row = await prisma.tenant.findFirst({
+    where: { id: { in: tenantIds }, slug },
+    select: { id: true },
   });
-  return rows.some((r) => r.slug === slug);
+  return Boolean(row);
 }
 
 function staffPageTitle(browserPath: string): string {

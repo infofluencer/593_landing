@@ -4,7 +4,7 @@ import PeriodFilterBar from "@/components/panel/PeriodFilterBar";
 import { StatusBadge } from "@/components/panel/StatusBadge";
 import { GscQueryBarChart, GscTrendChart } from "@/components/panel/charts";
 import { KPICard, DataTable } from "@/components/panel/ds";
-import { requireBundle, resolvePanelTenant } from "@/lib/panel/data";
+import { resolvePanelTenant } from "@/lib/panel/data";
 import { formatNumber } from "@/lib/panel/format";
 import { resolvePanelDateRange } from "@/lib/panel/period";
 import {
@@ -87,7 +87,6 @@ export default async function SearchConsolePage({
   const slug = h.get("x-tenant-slug")!;
   const sp = await searchParams;
   const range = await resolvePanelDateRange(sp);
-  await requireBundle(slug);
   const tenant = await resolvePanelTenant(slug);
   const siteUrl = tenant?.mapping.gscSiteUrl;
 

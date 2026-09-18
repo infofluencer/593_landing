@@ -1,3 +1,4 @@
+import { cache } from "react";
 import {
   PrismaClient,
   type Role,
@@ -22,10 +23,12 @@ if (process.env.NODE_ENV !== "production") {
   globalForPrisma.prisma = prisma;
 }
 
-export async function getTenantBySlug(slug: string): Promise<Tenant | null> {
+export const getTenantBySlug = cache(async function getTenantBySlug(
+  slug: string,
+): Promise<Tenant | null> {
   if (!slug) return null;
   return prisma.tenant.findUnique({ where: { slug } });
-}
+});
 
 export async function getTenantWithMapping(slug: string) {
   if (!slug) return null;
