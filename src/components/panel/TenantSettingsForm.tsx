@@ -16,7 +16,6 @@ export type TenantSettingsInitial = {
   metaAccountId: string;
   type: TenantType;
   website: string;
-  monthlyBudget: string;
   timezone: string;
   currency: string;
   mapping: {
@@ -45,6 +44,7 @@ export default function TenantSettingsForm({
   tenantSlug,
   rootDomain,
   allowDelete = false,
+  detailBasePath = "/settings",
 }: {
   initial: TenantSettingsInitial;
   /** Required on staff host (admin.*) where there is no x-tenant-slug. */
@@ -52,6 +52,11 @@ export default function TenantSettingsForm({
   rootDomain: string;
   /** DB’de gerçek tenant varsa silmeye izin ver. */
   allowDelete?: boolean;
+  /**
+   * Slug değişince / silinince nereye gideceği.
+   * `/brands` → `/brands/{slug}` ; `/settings` → `/settings?tenant=`
+   */
+  detailBasePath?: "/brands" | "/settings";
 }) {
   const router = useRouter();
   const [form, setForm] = useState(initial);
@@ -108,9 +113,6 @@ export default function TenantSettingsForm({
           metaAccountId: meta,
           type: form.type,
           website: form.website || null,
-          monthlyBudget: form.monthlyBudget
-            ? Number(form.monthlyBudget)
-            : null,
           timezone: form.timezone,
           currency: form.currency,
           mapping: {
@@ -142,7 +144,11 @@ export default function TenantSettingsForm({
             : "Kaydedildi",
         );
         if (json.slugChanged && json.slug) {
-          router.replace(`/settings?tenant=${encodeURIComponent(json.slug)}`);
+          const next =
+            detailBasePath === "/brands"
+              ? `/brands/${encodeURIComponent(json.slug)}#ayarlar`
+              : `/settings?tenant=${encodeURIComponent(json.slug)}`;
+          router.replace(next);
         }
         router.refresh();
       }
@@ -254,7 +260,7 @@ export default function TenantSettingsForm({
         setDeleteMessage(json.error || "Silme başarısız");
         return;
       }
-      router.push("/settings");
+      router.push(detailBasePath === "/brands" ? "/brands" : "/settings");
       router.refresh();
     } catch (err) {
       setDeleteMessage(err instanceof Error ? err.message : "Network error");
@@ -318,16 +324,6 @@ export default function TenantSettingsForm({
                 value={form.website}
                 onChange={(e) => setField("website", e.target.value)}
                 placeholder="https://ornek.com"
-              />
-            </Field>
-            <Field label="Aylık bütçe (TRY)">
-              <input
-                className={inputClass}
-                type="number"
-                min={0}
-                step={1}
-                value={form.monthlyBudget}
-                onChange={(e) => setField("monthlyBudget", e.target.value)}
               />
             </Field>
             <Field label="Para birimi">
@@ -504,22 +500,7 @@ export default function TenantSettingsForm({
 
         <section className="space-y-4">
           <h3 className="text-sm font-semibold text-zinc-800">Uyarı eşikleri</h3>
-          <div className="grid gap-3 sm:grid-cols-3">
-            <Field label="Bütçe tempo uyarı %">
-              <input
-                className={inputClass}
-                type="number"
-                min={1}
-                max={200}
-                value={form.thresholds.budgetPaceWarnPct}
-                onChange={(e) =>
-                  setField("thresholds", {
-                    ...form.thresholds,
-                    budgetPaceWarnPct: e.target.value,
-                  })
-                }
-              />
-            </Field>
+          <div className="grid gap-3 sm:grid-cols-2">
             <Field label="Dönüşüm kesintisi (gün)">
               <input
                 className={inputClass}

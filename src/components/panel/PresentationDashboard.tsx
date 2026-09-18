@@ -1,12 +1,15 @@
-import { StatusBadge } from "@/components/panel/StatusBadge";
-import { ChannelCard } from "@/components/panel/ChannelCard";
+import {
+  ChannelCard,
+  ChartCard,
+  KPICard,
+  StatusBadge,
+} from "@/components/panel/ds";
 import {
   ConversionPieChart,
   ConvTrendChart,
   MixPieChart,
   SpendTrendChart,
 } from "@/components/panel/charts";
-import { PanelStat } from "@/components/panel/ui";
 import type { PresentationModel } from "@/lib/panel/presentation";
 import { formatNumber, formatTry } from "@/lib/panel/format";
 
@@ -15,17 +18,27 @@ export default function PresentationDashboard({
 }: {
   model: PresentationModel;
 }) {
+  const isLead = model.tenantType !== "ecommerce";
+  const chartsEmpty = model.daily.length === 0;
+  const mixEmpty = model.mix.every((m) => m.value === 0);
+  const convMixEmpty = model.conversionMix.every((m) => m.value === 0);
+
+  const channelHint =
+    model.google.status === "unknown" && model.meta.status === "unknown"
+      ? null
+      : `${model.google.status === "unknown" ? "—" : "Google Ads"} · ${model.meta.status === "unknown" ? "—" : "Meta"}`;
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#e91825]">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-panel-accent">
             Marka sunumu · {model.typeLabel}
           </p>
-          <h2 className="mt-1 text-xl font-semibold tracking-tight text-zinc-900 sm:text-2xl">
+          <h2 className="mt-1 text-xl font-semibold tracking-tight text-panel-fg sm:text-2xl">
             {model.brand}
           </h2>
-          <p className="mt-1 text-sm text-zinc-500">
+          <p className="mt-1 text-sm text-panel-fg-secondary">
             Yalnızca bu markanın Meta + Google Ads verileri ·{" "}
             {model.periodLabel}
           </p>
@@ -33,51 +46,72 @@ export default function PresentationDashboard({
         <StatusBadge status={model.health} />
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <PanelStat
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <KPICard
+          tier={1}
+          metricKey="spend"
+          kind="money"
           label="Toplam harcama"
           value={formatTry(model.totalSpend, model.currency)}
+          goodDirection="down"
+          accent="var(--panel-accent)"
           hint={
-            <span className="text-[11px] text-zinc-500">Meta + Google</span>
-          }
-        />
-        <PanelStat
-          label="Toplam dönüşüm"
-          value={formatNumber(model.totalConv, 1)}
-          hint={
-            <span className="text-[11px] text-zinc-500">
-              Meta + Google Ads düz toplamı — aynı satış iki kanalda
-              görünebilir (üst sınır; dedupe yok)
+            <span className="text-xs text-panel-fg-secondary">
+              Meta + Google
             </span>
           }
         />
-        {model.totalRevenue != null ? (
-          <PanelStat
+        <KPICard
+          tier={1}
+          metricKey="conversions"
+          kind="count"
+          label="Toplam dönüşüm"
+          value={formatNumber(model.totalConv, 1)}
+          goodDirection="up"
+          accent="var(--panel-accent)"
+          hint={
+            <span className="text-xs text-panel-fg-secondary">
+              Düz toplam — örtüşme olabilir (dedupe yok)
+            </span>
+          }
+        />
+        {model.totalRevenue != null && !isLead ? (
+          <KPICard
+            tier={1}
+            metricKey="revenue"
+            kind="money"
             label="Toplam gelir"
             value={formatTry(model.totalRevenue, model.currency)}
+            goodDirection="up"
+            accent="var(--panel-accent)"
             hint={
-              <span className="text-[11px] text-zinc-500">
-                Meta + Google Ads dönüşüm değeri düz toplamı — örtüşme
-                olabilir (üst sınır; dedupe yok)
+              <span className="text-xs text-panel-fg-secondary">
+                Dönüşüm değeri düz toplamı — üst sınır
               </span>
             }
           />
         ) : (
-          <PanelStat
+          <KPICard
+            tier={1}
+            kind="count"
             label="Model"
             value="Lead"
+            accent="var(--panel-accent)"
             hint={
-              <span className="text-[11px] text-zinc-500">
+              <span className="text-xs text-panel-fg-secondary">
                 Gelir / getiri gösterilmez
               </span>
             }
           />
         )}
-        <PanelStat
+        <KPICard
+          tier={2}
+          metricKey="channelsConnected"
+          kind={channelHint ? "count" : "unknown"}
           label="Kanallar"
-          value={`${model.google.status === "unknown" ? "—" : "Google Ads"} · ${model.meta.status === "unknown" ? "—" : "Meta"}`}
+          value={channelHint}
           hint={
-            <span className="text-[11px] text-zinc-500">
+            <span className="text-xs text-panel-fg-secondary">
               Eksik kanal = Kontrol edilemedi
             </span>
           }
@@ -98,40 +132,40 @@ export default function PresentationDashboard({
       </div>
 
       <div className="grid gap-4 lg:grid-cols-5">
-        <div className="rounded-xl border border-zinc-200 bg-white p-4 lg:col-span-3">
-          <h3 className="text-sm font-semibold text-zinc-800">
-            Haftalık harcama (Meta vs Google)
-          </h3>
-          <div className="mt-3">
-            <SpendTrendChart data={model.daily} />
-          </div>
-        </div>
-        <div className="rounded-xl border border-zinc-200 bg-white p-4 lg:col-span-2">
-          <h3 className="text-sm font-semibold text-zinc-800">
-            Bütçe dağılımı
-          </h3>
+        <ChartCard
+          title="Haftalık harcama (Meta vs Google)"
+          className="lg:col-span-3"
+          empty={chartsEmpty}
+        >
+          <SpendTrendChart data={model.daily} />
+        </ChartCard>
+        <ChartCard
+          title="Bütçe dağılımı"
+          className="lg:col-span-2"
+          empty={mixEmpty}
+          emptyVariant="empty"
+        >
           <MixPieChart data={model.mix} />
-        </div>
+        </ChartCard>
       </div>
 
       <div className="grid gap-4 lg:grid-cols-5">
-        <div className="rounded-xl border border-zinc-200 bg-white p-4 lg:col-span-3">
-          <h3 className="text-sm font-semibold text-zinc-800">
-            Dönüşüm karşılaştırması
-          </h3>
-          <div className="mt-3">
-            <ConvTrendChart data={model.daily} />
-          </div>
-        </div>
-        <div className="rounded-xl border border-zinc-200 bg-white p-4 lg:col-span-2">
-          <h3 className="text-sm font-semibold text-zinc-800">
-            Dönüşüm türleri
-          </h3>
-          <p className="mt-1 text-xs text-zinc-500">
-            Satış · form · WhatsApp ayrı
-          </p>
+        <ChartCard
+          title="Dönüşüm karşılaştırması"
+          className="lg:col-span-3"
+          empty={chartsEmpty}
+        >
+          <ConvTrendChart data={model.daily} />
+        </ChartCard>
+        <ChartCard
+          title="Dönüşüm türleri"
+          description="Satış · form · WhatsApp ayrı"
+          className="lg:col-span-2"
+          empty={convMixEmpty}
+          emptyVariant="empty"
+        >
           <ConversionPieChart data={model.conversionMix} />
-        </div>
+        </ChartCard>
       </div>
     </div>
   );

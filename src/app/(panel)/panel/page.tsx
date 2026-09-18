@@ -2,8 +2,8 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { Suspense } from "react";
 import { auth } from "@/auth";
-import PeriodFilterBar from "@/components/panel/PeriodFilterBar";
 import PresentationDashboard from "@/components/panel/PresentationDashboard";
+import { DateRangePicker } from "@/components/panel/ds";
 import { requireBundle } from "@/lib/panel/data";
 import { resolvePanelDateRange } from "@/lib/panel/period";
 import { buildPresentation } from "@/lib/panel/presentation";
@@ -34,15 +34,13 @@ export default async function PanelHomePage({
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs leading-5 text-emerald-900">
-          Bu ekran <strong className="font-semibold">{model.brand}</strong>{" "}
-          markasına özeldir. Başka firmanın verisi burada görünmez.
-        </div>
+      <div className="rounded-panel-md border border-panel-ok/25 bg-panel-ok-bg px-3 py-2 text-xs leading-5 text-panel-ok">
+        Bu ekran <strong className="font-semibold">{model.brand}</strong>{" "}
+        markasına özeldir. Başka firmanın verisi burada görünmez.
       </div>
 
       <Suspense fallback={null}>
-        <PeriodFilterBar label={range.label} />
+        <DateRangePicker label={range.label} showCompare={false} />
       </Suspense>
 
       <PresentationDashboard model={model} />

@@ -1,13 +1,13 @@
 import { headers } from "next/headers";
 import { Suspense } from "react";
-import { ChannelCard } from "@/components/panel/ChannelCard";
 import {
   CampaignBarChart,
   MetaDailyChart,
 } from "@/components/panel/charts";
 import PeriodFilterBar from "@/components/panel/PeriodFilterBar";
 import { StatusBadge } from "@/components/panel/StatusBadge";
-import { Delta, PanelStat, PanelTable } from "@/components/panel/ui";
+import { KPICard, DataTable } from "@/components/panel/ds";
+import { Delta } from "@/components/panel/ui";
 import { requireBundle } from "@/lib/panel/data";
 import { resolvePanelDateRange } from "@/lib/panel/period";
 import {
@@ -93,9 +93,9 @@ function MetricRow({
   const p = previous ? derivedMetrics(previous) : null;
 
   return (
-    <tr className="text-zinc-700">
-      <td className="px-3 py-2.5 font-medium text-zinc-900">{label}</td>
-      <td className="px-3 py-2.5 tabular-nums">
+    <tr {...(label === "Toplam" ? { "data-total": true } : {})}>
+      <td className="font-medium text-panel-fg">{label}</td>
+      <td className="num">
         {formatTry(current.spend, currency)}
         <div>
           <Delta
@@ -104,32 +104,24 @@ function MetricRow({
           />
         </div>
       </td>
-      <td className="px-3 py-2.5 tabular-nums">
+      <td className="num">
         {current.reach != null ? formatNumber(current.reach) : "—"}
       </td>
-      <td className="px-3 py-2.5 tabular-nums">
-        {formatNumber(current.impr)}
-      </td>
-      <td className="px-3 py-2.5 tabular-nums">
-        {formatNumber(current.clicks)}
-      </td>
-      <td className="px-3 py-2.5 tabular-nums">
-        {formatNumber(c.ctr, 2)}%
-      </td>
-      <td className="px-3 py-2.5 tabular-nums">
-        {formatNumber(current.conv, 1)}
-      </td>
+      <td className="num">{formatNumber(current.impr)}</td>
+      <td className="num">{formatNumber(current.clicks)}</td>
+      <td className="num">{formatNumber(c.ctr, 2)}%</td>
+      <td className="num">{formatNumber(current.conv, 1)}</td>
       {ecommerce ? (
         <>
-          <td className="px-3 py-2.5 tabular-nums">
+          <td className="num">
             {current.spend > 0 ? `${formatNumber(c.roas, 2)}x` : "—"}
           </td>
-          <td className="px-3 py-2.5 tabular-nums">
+          <td className="num">
             {current.conv > 0 ? formatTry(c.cpa, currency) : "—"}
           </td>
         </>
       ) : (
-        <td className="px-3 py-2.5 tabular-nums">
+        <td className="num">
           {current.conv > 0 ? formatTry(c.cpa, currency) : "—"}
         </td>
       )}
@@ -352,7 +344,7 @@ function BreakdownTable({
         <h3 className="text-sm font-semibold text-zinc-800">{title}</h3>
         <p className="mt-1 text-[11px] text-zinc-500">{hint}</p>
       </div>
-      <PanelTable
+      <DataTable
         headers={[
           "Kırılım",
           "Harcama",
@@ -360,6 +352,7 @@ function BreakdownTable({
           resultLabel,
           ecommerce ? "Getiri" : "Maliyet",
         ]}
+        numericCols={[1, 2, 3, 4]}
       >
         {filtered.map((row) => {
           const d = derivedMetrics({
@@ -371,20 +364,14 @@ function BreakdownTable({
             convValue: row.convValue,
           });
           return (
-            <tr key={`${row.breakdown}-${row.key}`} className="text-zinc-700">
-              <td className="px-3 py-2.5 font-medium text-zinc-900">
+            <tr key={`${row.breakdown}-${row.key}`}>
+              <td className="font-medium text-panel-fg">
                 {breakdownKeyTr(kind, row.key)}
               </td>
-              <td className="px-3 py-2.5 tabular-nums">
-                {formatTry(row.spend, currency)}
-              </td>
-              <td className="px-3 py-2.5 tabular-nums">
-                {formatNumber(row.clicks)}
-              </td>
-              <td className="px-3 py-2.5 tabular-nums">
-                {formatNumber(row.conv, 1)}
-              </td>
-              <td className="px-3 py-2.5 tabular-nums">
+              <td className="num">{formatTry(row.spend, currency)}</td>
+              <td className="num">{formatNumber(row.clicks)}</td>
+              <td className="num">{formatNumber(row.conv, 1)}</td>
+              <td className="num">
                 {ecommerce
                   ? row.spend > 0
                     ? `${formatNumber(d.roas, 2)}x`
@@ -396,7 +383,7 @@ function BreakdownTable({
             </tr>
           );
         })}
-      </PanelTable>
+      </DataTable>
     </div>
   );
 }
@@ -465,6 +452,7 @@ export default async function MetaPage({
 
   const resultLabel = ecommerce ? "Satış" : "Lead";
   const costLabel = ecommerce ? "Satış maliyeti" : "Lead maliyeti";
+  const unknown = ch.status === "unknown";
 
   const campaignHeaders = ecommerce
     ? [
@@ -525,104 +513,200 @@ export default async function MetaPage({
         <PeriodFilterBar label={range.label} />
       </Suspense>
 
-      <ChannelCard channel={ch} currency={currency} />
-
       {ch.status === "unknown" ? (
         <div className="rounded-lg border border-zinc-200 bg-zinc-100 px-4 py-3 text-sm text-zinc-700">
           Meta verisi alınamadı. Rakamlar kasıtlı olarak boş bırakıldı.
         </div>
-      ) : (
-        <>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <PanelStat
-              label="Harcama"
-              value={formatTry(metaCurrent.account.spend, currency)}
-              hint={
-                <Delta
-                  value={deltaPct(
-                    metaCurrent.account.spend,
-                    metaPrevious.account.spend,
-                  )}
-                  invert
-                />
-              }
-            />
-            <PanelStat
-              label="Tıklama"
-              value={formatNumber(metaCurrent.account.clicks)}
-              hint={
-                <Delta
-                  value={deltaPct(
+      ) : null}
+
+      {/* Tier 1 — kuzey yıldızı */}
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <KPICard
+          tier={1}
+          metricKey="spend"
+          kind="money"
+          accent="var(--panel-meta)"
+          value={unknown ? null : formatTry(metaCurrent.account.spend, currency)}
+          delta={
+            unknown
+              ? null
+              : deltaPct(
+                  metaCurrent.account.spend,
+                  metaPrevious.account.spend,
+                )
+          }
+          goodDirection="down"
+        />
+        <KPICard
+          tier={1}
+          metricKey="conversions"
+          kind="count"
+          label={resultLabel}
+          accent="var(--panel-meta)"
+          value={
+            unknown ? null : formatNumber(metaCurrent.account.conv, 1)
+          }
+          delta={
+            unknown
+              ? null
+              : deltaPct(metaCurrent.account.conv, metaPrevious.account.conv)
+          }
+          goodDirection="up"
+        />
+        {ecommerce ? (
+          <KPICard
+            tier={1}
+            metricKey="roas"
+            kind="multiplier"
+            accent="var(--panel-meta)"
+            value={
+              unknown
+                ? null
+                : `${formatNumber(derivedMetrics(metaCurrent.account).roas, 2)}x`
+            }
+            goodDirection="up"
+          />
+        ) : (
+          <KPICard
+            tier={1}
+            metricKey="cpl"
+            kind="money"
+            label={costLabel}
+            accent="var(--panel-meta)"
+            value={
+              unknown || metaCurrent.account.conv <= 0
+                ? null
+                : formatTry(
+                    derivedMetrics(metaCurrent.account).cpa,
+                    currency,
+                  )
+            }
+            goodDirection="down"
+          />
+        )}
+        {ecommerce ? (
+          <KPICard
+            tier={1}
+            metricKey="cpa"
+            kind="money"
+            label={costLabel}
+            accent="var(--panel-meta)"
+            value={
+              unknown || metaCurrent.account.conv <= 0
+                ? null
+                : formatTry(
+                    derivedMetrics(metaCurrent.account).cpa,
+                    currency,
+                  )
+            }
+            goodDirection="down"
+          />
+        ) : (
+          <KPICard
+            tier={1}
+            metricKey="clicks"
+            kind="count"
+            accent="var(--panel-meta)"
+            value={
+              unknown ? null : formatNumber(metaCurrent.account.clicks)
+            }
+            delta={
+              unknown
+                ? null
+                : deltaPct(
                     metaCurrent.account.clicks,
                     metaPrevious.account.clicks,
-                  )}
-                />
-              }
+                  )
+            }
+            goodDirection="up"
+          />
+        )}
+      </div>
+
+      {!unknown ? (
+        <>
+          {/* Tier 2 — destekleyici */}
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+            <KPICard
+              tier={2}
+              metricKey="impressions"
+              kind="count"
+              value={formatNumber(metaCurrent.account.impr)}
+              goodDirection="neutral"
             />
-            <PanelStat
-              label={resultLabel}
-              value={formatNumber(metaCurrent.account.conv, 1)}
-              hint={
-                <Delta
-                  value={deltaPct(
-                    metaCurrent.account.conv,
-                    metaPrevious.account.conv,
-                  )}
-                />
+            <KPICard
+              tier={2}
+              metricKey="reach"
+              kind="count"
+              value={
+                metaCurrent.account.reach != null
+                  ? formatNumber(metaCurrent.account.reach)
+                  : null
               }
+              goodDirection="up"
+            />
+            <KPICard
+              tier={2}
+              metricKey="ctr"
+              kind="rate"
+              value={`${formatNumber(derivedMetrics(metaCurrent.account).ctr, 2)}%`}
+              goodDirection="up"
             />
             {ecommerce ? (
-              <PanelStat
-                label="Getiri"
-                value={`${formatNumber(derivedMetrics(metaCurrent.account).roas, 2)}x`}
-                hint={
-                  <span className="text-[11px] text-zinc-500">
-                    1 TL harcamaya karşılık ciro
-                  </span>
-                }
+              <KPICard
+                tier={2}
+                metricKey="clicks"
+                kind="count"
+                value={formatNumber(metaCurrent.account.clicks)}
+                delta={deltaPct(
+                  metaCurrent.account.clicks,
+                  metaPrevious.account.clicks,
+                )}
+                goodDirection="up"
               />
-            ) : (
-              <PanelStat
-                label={costLabel}
-                value={
-                  metaCurrent.account.conv > 0
-                    ? formatTry(
-                        derivedMetrics(metaCurrent.account).cpa,
-                        currency,
-                      )
-                    : "—"
-                }
-                hint={
-                  <span className="text-[11px] text-zinc-500">
-                    Bir sonuç için ortalama maliyet
-                  </span>
-                }
-              />
-            )}
+            ) : null}
+            <KPICard
+              tier={2}
+              metricKey="frequency"
+              kind="count"
+              value={
+                ch.frequency != null ? formatNumber(ch.frequency, 1) : null
+              }
+              goodDirection="neutral"
+            />
+            <KPICard
+              tier={2}
+              metricKey="cpc"
+              kind="money"
+              value={
+                metaCurrent.account.clicks > 0
+                  ? formatTry(
+                      derivedMetrics(metaCurrent.account).cpc,
+                      currency,
+                    )
+                  : null
+              }
+              goodDirection="down"
+            />
+            {!ecommerce ? (
+              <>
+                <KPICard
+                  tier={2}
+                  metricKey="formLeads"
+                  kind="count"
+                  value={formatNumber(formLeads || ch.conv)}
+                  goodDirection="up"
+                />
+                <KPICard
+                  tier={2}
+                  metricKey="whatsappLeads"
+                  kind="count"
+                  value={formatNumber(waLeads)}
+                  goodDirection="up"
+                />
+              </>
+            ) : null}
           </div>
-
-          {!ecommerce ? (
-            <div className="grid gap-3 sm:grid-cols-2">
-              <PanelStat
-                label="Form / iletişim"
-                value={formatNumber(formLeads || ch.conv)}
-                hint={
-                  <span className="text-[11px] text-zinc-500">
-                    Form doldurma ve benzeri sonuçlar
-                  </span>
-                }
-              />
-              <PanelStat
-                label="WhatsApp"
-                value={formatNumber(waLeads)}
-                hint={
-                  <span className="text-[11px] text-zinc-500">
-                    Mesaj / konuşma — formdan ayrı
-                  </span>
-                }
-              />
-            </div>
-          ) : null}
 
           {dailyChart.length > 1 ? (
             <div className="rounded-xl border border-zinc-200 bg-white p-4">
@@ -684,17 +768,57 @@ export default async function MetaPage({
           ) : null}
 
           {hasVideo ? (
-            <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-6">
-              <PanelStat label="Video izleme" value={formatNumber(video.plays)} />
-              <PanelStat
-                label="ThruPlay"
-                value={formatNumber(video.thruplay)}
-              />
-              <PanelStat label="%25" value={formatNumber(video.p25)} />
-              <PanelStat label="%50" value={formatNumber(video.p50)} />
-              <PanelStat label="%75" value={formatNumber(video.p75)} />
-              <PanelStat label="%100" value={formatNumber(video.p100)} />
-            </div>
+            <details className="group rounded-xl border border-zinc-200 bg-white p-4 open:shadow-sm">
+              <summary className="cursor-pointer list-none text-sm font-semibold text-zinc-800 marker:content-none [&::-webkit-details-marker]:hidden">
+                <span className="inline-flex items-center gap-2">
+                  Video detayları
+                  <span className="text-xs font-normal text-zinc-500 group-open:hidden">
+                    · göster
+                  </span>
+                  <span className="hidden text-xs font-normal text-zinc-500 group-open:inline">
+                    · gizle
+                  </span>
+                </span>
+              </summary>
+              <div className="mt-4 grid gap-2 sm:grid-cols-3 lg:grid-cols-6">
+                <KPICard
+                  tier={3}
+                  metricKey="videoViews"
+                  kind="count"
+                  value={formatNumber(video.plays)}
+                />
+                <KPICard
+                  tier={3}
+                  metricKey="thruplay"
+                  kind="count"
+                  value={formatNumber(video.thruplay)}
+                />
+                <KPICard
+                  tier={3}
+                  metricKey="videoP25"
+                  kind="count"
+                  value={formatNumber(video.p25)}
+                />
+                <KPICard
+                  tier={3}
+                  metricKey="videoP50"
+                  kind="count"
+                  value={formatNumber(video.p50)}
+                />
+                <KPICard
+                  tier={3}
+                  metricKey="videoP75"
+                  kind="count"
+                  value={formatNumber(video.p75)}
+                />
+                <KPICard
+                  tier={3}
+                  metricKey="videoP100"
+                  kind="count"
+                  value={formatNumber(video.p100)}
+                />
+              </div>
+            </details>
           ) : null}
 
           {chartData.length > 0 ? (
@@ -720,7 +844,12 @@ export default async function MetaPage({
                 Altındaki küçük oklar önceki döneme göre değişimi gösterir
               </p>
             </div>
-            <PanelTable headers={campaignHeaders}>
+            <DataTable
+              headers={campaignHeaders}
+              numericCols={
+                ecommerce ? [1, 2, 3, 4, 5, 6, 7, 8] : [1, 2, 3, 4, 5, 6, 7]
+              }
+            >
               <MetricRow
                 label="Toplam"
                 current={metaCurrent.account}
@@ -738,7 +867,7 @@ export default async function MetaPage({
                   ecommerce={ecommerce}
                 />
               ))}
-            </PanelTable>
+            </DataTable>
           </div>
 
           {adsets.length > 0 ? (
@@ -751,7 +880,10 @@ export default async function MetaPage({
                   Kampanya içindeki hedef kitle / yerleşim grupları
                 </p>
               </div>
-              <PanelTable headers={adsetHeaders}>
+              <DataTable
+                headers={adsetHeaders}
+                numericCols={[2, 3, 4, 5]}
+              >
                 {adsets.map((row) => {
                   const d = derivedMetrics({
                     campaign: row.adsetName,
@@ -762,37 +894,35 @@ export default async function MetaPage({
                     convValue: row.convValue,
                   });
                   return (
-                    <tr key={row.adsetId} className="text-zinc-700">
-                      <td className="px-3 py-2.5 text-xs text-zinc-600">
+                    <tr key={row.adsetId}>
+                      <td className="text-xs text-panel-fg-secondary">
                         {row.campaignName}
                       </td>
-                      <td className="px-3 py-2.5 font-medium text-zinc-900">
+                      <td className="font-medium text-panel-fg">
                         {row.adsetName}
                       </td>
-                      <td className="px-3 py-2.5 tabular-nums">
+                      <td className="num">
                         {formatTry(row.spend, currency)}
                       </td>
-                      <td className="px-3 py-2.5 tabular-nums">
-                        {formatNumber(row.clicks)}
-                      </td>
-                      <td className="px-3 py-2.5 tabular-nums">
-                        {formatNumber(row.conv, 1)}
-                      </td>
+                      <td className="num">{formatNumber(row.clicks)}</td>
+                      <td className="num">{formatNumber(row.conv, 1)}</td>
                       {ecommerce ? (
-                        <td className="px-3 py-2.5 tabular-nums">
+                        <td className="num">
                           {row.spend > 0
                             ? `${formatNumber(d.roas, 2)}x`
                             : "—"}
                         </td>
                       ) : (
-                        <td className="px-3 py-2.5 tabular-nums">
-                          {row.conv > 0 ? formatTry(d.cpa, currency) : "—"}
+                        <td className="num">
+                          {row.conv > 0
+                            ? formatTry(d.cpa, currency)
+                            : "—"}
                         </td>
                       )}
                     </tr>
                   );
                 })}
-              </PanelTable>
+              </DataTable>
             </div>
           ) : null}
 
@@ -826,7 +956,7 @@ export default async function MetaPage({
             />
           </div>
         </>
-      )}
+      ) : null}
 
       {metaAds.length > 0 ? (
         <div className="space-y-6 border-t border-zinc-100 pt-6">

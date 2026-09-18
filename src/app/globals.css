@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "../styles/panel-tokens.css";
 
 :root {
   --bg: #141111;
@@ -125,7 +126,9 @@ canvas {
 
 /* Locks background scrolling while the mobile nav sheet is open. */
 html.nav-open,
-html.nav-open body {
+html.nav-open body,
+html.panel-drawer-open,
+html.panel-drawer-open body {
   overflow: hidden;
   touch-action: none;
 }

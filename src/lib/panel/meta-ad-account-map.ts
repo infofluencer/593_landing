@@ -15,7 +15,7 @@ export const META_AD_ACCOUNT_BY_SLUG: Record<string, string> = {
   "armonia": "act_297746326552066",
   "bahex": "act_1249571952455471",
   "endospine": "act_1531490041307558", // Endoskopik Bel Ameliyato
-  "ercan-yalcin": "act_671669315040403",
+  "ercan-yalcin": "act_276871377",
   "mareen": "act_2321566658363452",
   "mokan": "act_2178439542611486",
   "mraykota": "act_1364903731510777", // Doç. Dr. Muhammed Raşid Aykota
@@ -45,7 +45,8 @@ export const META_AD_ACCOUNT_BY_NAME: Record<string, string> = {
   "jasmin k na org": "act_943974661513558",
   "mareen ads": "act_2321566658363452",
   "mokan travel": "act_2178439542611486",
-  "op dr ercan yalc n": "act_671669315040403",
+  "276871377": "act_276871377",
+  "op dr ercan yalc n": "act_276871377",
   "orvina hair makeup": "act_1635446947318192",
   "ramtech bilgisayar": "act_1231587451239600",
   "sekiz ocakbas": "act_1406982224128410",

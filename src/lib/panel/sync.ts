@@ -4,6 +4,7 @@ import {
   fetchGoogleAdsCampaignMetrics,
   fetchGoogleAdsConversionActions,
 } from "@/lib/integrations/google/ads";
+import { fetchGoogleSuccessfulInvoices } from "@/lib/integrations/google/billing";
 import { fetchGa4Snapshot } from "@/lib/integrations/google/ga4";
 import { fetchGtmSnapshotResolved } from "@/lib/integrations/google/gtm";
 import { fetchSearchConsoleQuery } from "@/lib/integrations/google/gsc";
@@ -14,6 +15,7 @@ import {
   fetchMetaAdsetInsights,
   fetchMetaBreakdownInsights,
 } from "@/lib/integrations/meta/ads";
+import { fetchMetaSuccessfulCharges } from "@/lib/integrations/meta/billing";
 import { fetchMetaCampaignInsights } from "@/lib/integrations/meta/insights";
 import { provisionTenantsFromMeta } from "@/lib/integrations/meta/provision";
 import type { ProvisionResult } from "@/lib/integrations/meta/provision";
@@ -385,26 +387,30 @@ export async function runAgencySync(opts?: {
             kind: "sale" | "form" | "whatsapp";
             count: number;
           }> = [];
-          if (tenant.type === "ecommerce" && purchase > 0) {
-            metaConvRows.push({
-              name: "Meta omni_purchase",
-              kind: "sale",
-              count: Math.round(purchase),
-            });
-          }
-          if (lead > 0) {
-            metaConvRows.push({
-              name: "Meta lead",
-              kind: "form",
-              count: Math.round(lead),
-            });
-          }
-          if (messaging > 0) {
-            metaConvRows.push({
-              name: "WhatsApp konuşma",
-              kind: "whatsapp",
-              count: Math.round(messaging),
-            });
+          // E-ticaret: yalnızca satın alım. Lead markalar: form + WhatsApp.
+          if (tenant.type === "ecommerce") {
+            if (purchase > 0) {
+              metaConvRows.push({
+                name: "Satın alım ücreti",
+                kind: "sale",
+                count: Math.round(purchase),
+              });
+            }
+          } else {
+            if (lead > 0) {
+              metaConvRows.push({
+                name: "Meta lead",
+                kind: "form",
+                count: Math.round(lead),
+              });
+            }
+            if (messaging > 0) {
+              metaConvRows.push({
+                name: "WhatsApp konuşma",
+                kind: "whatsapp",
+                count: Math.round(messaging),
+              });
+            }
           }
 
           for (const c of metaConvRows) {
@@ -605,6 +611,59 @@ export async function runAgencySync(opts?: {
       services.metaAdInsights = metaAdPerf.ok
         ? { ok: true }
         : { ok: false, error: metaAdPerf.error };
+
+      const metaBilling = await runSynced(
+        {
+          tenantId: tenant.id,
+          provider: "meta",
+          service: "billing",
+          objective: "charges",
+        },
+        async () => {
+          if (!metaAccountId) {
+            throw new Error(
+              "metaAccountId yok — başarılı Meta çekimleri alınamadı.",
+            );
+          }
+          const rows = await fetchMetaSuccessfulCharges({
+            metaAccountId,
+            from,
+            to,
+          });
+          for (const row of rows) {
+            await prisma.billingCharge.upsert({
+              where: {
+                tenantId_provider_externalId: {
+                  tenantId: tenant.id,
+                  provider: "meta",
+                  externalId: row.externalId,
+                },
+              },
+              update: {
+                amount: row.amount,
+                currency: row.currency,
+                chargedAt: row.chargedAt,
+                status: row.status,
+                viewUrl: row.viewUrl,
+              },
+              create: {
+                tenantId: tenant.id,
+                provider: "meta",
+                externalId: row.externalId,
+                amount: row.amount,
+                currency: row.currency,
+                chargedAt: row.chargedAt,
+                status: row.status,
+                viewUrl: row.viewUrl,
+              },
+            });
+          }
+          return rows.length;
+        },
+      );
+      services.metaBilling = metaBilling.ok
+        ? { ok: true }
+        : { ok: false, error: metaBilling.error };
     }
 
     if (doGoogle) {
@@ -634,10 +693,12 @@ export async function runAgencySync(opts?: {
           },
           async () => {
             async function persistAds(customerId: string) {
+              const purchaseOnly = tenant.type === "ecommerce";
               const rows = await fetchGoogleAdsCampaignMetrics({
                 customerId,
                 from,
                 to,
+                purchaseOnly,
               });
 
               for (const row of rows) {
@@ -686,6 +747,7 @@ export async function runAgencySync(opts?: {
                 customerId,
                 from,
                 to,
+                purchaseOnly,
               });
 
               await prisma.conversion.deleteMany({
@@ -749,6 +811,73 @@ export async function runAgencySync(opts?: {
           },
         );
         services.ads = ads.ok ? { ok: true } : { ok: false, error: ads.error };
+
+        const googleBilling = await runSynced(
+          {
+            tenantId: tenant.id,
+            provider: "google",
+            service: "billing",
+            objective: "charges",
+          },
+          async () => {
+            const resolvedId =
+              (
+                await prisma.tenantMapping.findUnique({
+                  where: { tenantId: tenant.id },
+                  select: { adsCustomerId: true },
+                })
+              )?.adsCustomerId || adsCustomerId;
+            if (!resolvedId) {
+              throw new Error(
+                "adsCustomerId yok — Google faturaları alınamadı.",
+              );
+            }
+            const result = await fetchGoogleSuccessfulInvoices({
+              customerId: resolvedId,
+              from,
+              to,
+            });
+            for (const row of result.charges) {
+              await prisma.billingCharge.upsert({
+                where: {
+                  tenantId_provider_externalId: {
+                    tenantId: tenant.id,
+                    provider: "google",
+                    externalId: row.externalId,
+                  },
+                },
+                update: {
+                  amount: row.amount,
+                  currency: row.currency,
+                  chargedAt: row.chargedAt,
+                  status: row.status,
+                  invoiceNumber: row.invoiceNumber,
+                  billingSetupId: row.billingSetupId,
+                  issueYear: row.issueYear,
+                  issueMonth: row.issueMonth,
+                },
+                create: {
+                  tenantId: tenant.id,
+                  provider: "google",
+                  externalId: row.externalId,
+                  amount: row.amount,
+                  currency: row.currency,
+                  chargedAt: row.chargedAt,
+                  status: row.status,
+                  invoiceNumber: row.invoiceNumber,
+                  billingSetupId: row.billingSetupId,
+                  issueYear: row.issueYear,
+                  issueMonth: row.issueMonth,
+                },
+              });
+            }
+            // unsupported / no setup → 0 rows, sync success (not a hard failure)
+            return result.charges.length;
+          },
+        );
+        services.googleBilling = googleBilling.ok
+          ? { ok: true }
+          : { ok: false, error: googleBilling.error };
       }
 
       // --- GA4 (persist) ---

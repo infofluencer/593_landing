@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { TenantType } from "@prisma/client";
+import { Plus } from "lucide-react";
 import { TenantSyncActions } from "@/components/panel/SyncButton";
 import {
   brandMapHintsFor,
@@ -23,7 +24,6 @@ type FormState = {
   metaAccountId: string;
   type: TenantType;
   website: string;
-  monthlyBudget: string;
   mapping: MappingFields;
   clientEmail: string;
   clientPassword: string;
@@ -44,7 +44,6 @@ const empty: FormState = {
   metaAccountId: "",
   type: "lead",
   website: "",
-  monthlyBudget: "",
   mapping: {
     adsCustomerId: "",
     ga4PropertyId: "",
@@ -145,9 +144,6 @@ export default function AddBrandWizard() {
           metaAccountId: prepared.metaAccountId.trim() || null,
           type: prepared.type,
           website: prepared.website.trim() || null,
-          monthlyBudget: prepared.monthlyBudget
-            ? Number(prepared.monthlyBudget)
-            : null,
           mapping: {
             adsCustomerId: prepared.mapping.adsCustomerId || null,
             ga4PropertyId: prepared.mapping.ga4PropertyId || null,
@@ -294,16 +290,22 @@ export default function AddBrandWizard() {
 
   return (
     <>
-      <button
-        type="button"
-        onClick={() => {
-          reset();
-          setOpen(true);
-        }}
-        className="rounded-md bg-[#e91825] px-3.5 py-2 text-sm font-medium text-white transition hover:bg-[#c91420]"
-      >
-        Yeni marka
-      </button>
+      <div className="flex flex-col items-stretch gap-1">
+        <p className="text-center text-[10px] leading-tight text-zinc-500">
+          Ajans
+        </p>
+        <button
+          type="button"
+          onClick={() => {
+            reset();
+            setOpen(true);
+          }}
+          className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-[#e91825] px-3.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#d01420]"
+        >
+          <Plus className="size-4 shrink-0" aria-hidden strokeWidth={2.25} />
+          Yeni marka
+        </button>
+      </div>
 
       {open ? (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-zinc-900/40 p-4 sm:items-center">
@@ -451,17 +453,6 @@ export default function AddBrandWizard() {
                       value={form.website}
                       onChange={(e) => setField("website", e.target.value)}
                       placeholder="https://…"
-                    />
-                  </Field>
-                  <Field label="Aylık bütçe (TRY)">
-                    <input
-                      className={inputClass}
-                      type="number"
-                      min={0}
-                      value={form.monthlyBudget}
-                      onChange={(e) =>
-                        setField("monthlyBudget", e.target.value)
-                      }
                     />
                   </Field>
                 </>

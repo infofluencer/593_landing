@@ -88,7 +88,6 @@ export async function evaluateTenantAlerts(tenantId: string) {
       : thresholds.minSpendForAlert,
   );
 
-  const budget = tenant.monthlyBudget ? Number(tenant.monthlyBudget) : null;
   const now = new Date();
   const monthStart = new Date(
     Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1),
@@ -146,25 +145,6 @@ export async function evaluateTenantAlerts(tenantId: string) {
       severity: "unknown",
       message: `GA4 sync hatası: ${ga4Job.error || "bilinmeyen"}`,
     });
-  }
-
-  if (budget && budget > 0 && mtdSpend >= minSpend) {
-    const day = now.getUTCDate();
-    const daysInMonth = new Date(
-      Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0),
-    ).getUTCDate();
-    const expectedPct = (day / daysInMonth) * 100;
-    const actualPct = (mtdSpend / budget) * 100;
-    const warnPct = thresholds.budgetPaceWarnPct ?? 85;
-
-    if (actualPct >= warnPct && actualPct > expectedPct + 10) {
-      await upsertOpenAlert({
-        tenantId,
-        type: "spend_pace",
-        severity: "warn",
-        message: `Ayın ${day}. gününde bütçenin %${actualPct.toFixed(0)}’i harandı (eşik %${warnPct}).`,
-      });
-    }
   }
 
   const dropoutDays = thresholds.convDropoutDays ?? 3;

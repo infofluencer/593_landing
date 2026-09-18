@@ -14,7 +14,6 @@ export type MockTenant = {
   website: string | null;
   metaAccountId: string;
   type: TenantType;
-  monthlyBudget: number;
   timezone: string;
   currency: string;
   visible: boolean;
@@ -181,6 +180,14 @@ export type MockMetaDailyPoint = {
   convValue: number;
 };
 
+/** Combined Google + Meta spend per calendar day (budget page). */
+export type MockDailySpendPoint = {
+  date: string;
+  google: number;
+  meta: number;
+  total: number;
+};
+
 export type MockMetaFunnel = {
   viewContent: number;
   addToCart: number;
@@ -217,6 +224,8 @@ export type MockTenantBundle = {
   metaAdsets: MockMetaAdsetPerformance[];
   metaBreakdowns: MockMetaBreakdownRow[];
   metaDaily: MockMetaDailyPoint[];
+  /** Günlük Google + Meta harcama (bütçe sayfası) */
+  dailySpend: MockDailySpendPoint[];
   metaFunnel: MockMetaFunnel;
   metaVideo: MockMetaVideo;
   conversions: MockConversion[];
@@ -318,7 +327,6 @@ export const MOCK_TENANTS: MockTenantBundle[] = [
       website: "https://mareen.com.tr/",
       metaAccountId: "act_mareen_001",
       type: "ecommerce",
-      monthlyBudget: 120000,
       timezone: "Europe/Istanbul",
       currency: "TRY",
       visible: true,
@@ -535,6 +543,13 @@ export const MOCK_TENANTS: MockTenantBundle[] = [
       { date: "2026-08-22", spend: 2500, clicks: 1400, conv: 10, convValue: 27000 },
       { date: "2026-08-29", spend: 2300, clicks: 1320, conv: 9, convValue: 24500 },
     ],
+    dailySpend: [
+      { date: "2026-08-01", google: 1800, meta: 2100, total: 3900 },
+      { date: "2026-08-08", google: 2100, meta: 2400, total: 4500 },
+      { date: "2026-08-15", google: 1950, meta: 2200, total: 4150 },
+      { date: "2026-08-22", google: 2200, meta: 2500, total: 4700 },
+      { date: "2026-08-29", google: 2000, meta: 2300, total: 4300 },
+    ],
     metaFunnel: {
       viewContent: 42000,
       addToCart: 3800,
@@ -552,7 +567,7 @@ export const MOCK_TENANTS: MockTenantBundle[] = [
     },
     conversions: [
       {
-        name: "Purchase",
+        name: "Satın alım ücreti",
         source: "Google Ads etiketi",
         primary: true,
         count: 210,
@@ -568,32 +583,15 @@ export const MOCK_TENANTS: MockTenantBundle[] = [
         dupeFlag: true,
       },
       {
-        name: "Meta omni_purchase",
+        name: "Satın alım ücreti",
         source: "Meta Ads",
         primary: true,
         count: 268,
         kind: "sale",
         dupeFlag: false,
       },
-      {
-        name: "WhatsApp",
-        source: "Google Ads etiketi",
-        primary: false,
-        count: 24,
-        kind: "whatsapp",
-        dupeFlag: false,
-      },
     ],
     alerts: [
-      {
-        id: "a_mareen_1",
-        type: "spend_pace",
-        severity: "warn",
-        message: "Ayın 4’ünde bütçenin %65’i harandı — tempo yüksek.",
-        assignee: "medya@593emarketing.com",
-        resolved: false,
-        updatedAt: "2026-09-04T07:40:00+03:00",
-      },
       {
         id: "a_mareen_2",
         type: "dupe_conversion",
@@ -658,7 +656,6 @@ export const MOCK_TENANTS: MockTenantBundle[] = [
       website: "https://example.com",
       metaAccountId: "act_phase0_demo",
       type: "lead",
-      monthlyBudget: 50000,
       timezone: "Europe/Istanbul",
       currency: "TRY",
       visible: true,
@@ -835,6 +832,13 @@ export const MOCK_TENANTS: MockTenantBundle[] = [
       { date: "2026-08-15", spend: 720, clicks: 460, conv: 3, convValue: 0 },
       { date: "2026-08-22", spend: 800, clicks: 510, conv: 4, convValue: 0 },
       { date: "2026-08-29", spend: 750, clicks: 480, conv: 3, convValue: 0 },
+    ],
+    dailySpend: [
+      { date: "2026-08-01", google: 450, meta: 700, total: 1150 },
+      { date: "2026-08-08", google: 520, meta: 780, total: 1300 },
+      { date: "2026-08-15", google: 480, meta: 720, total: 1200 },
+      { date: "2026-08-22", google: 550, meta: 800, total: 1350 },
+      { date: "2026-08-29", google: 500, meta: 750, total: 1250 },
     ],
     metaFunnel: { ...EMPTY_META_FUNNEL },
     metaVideo: { ...EMPTY_META_VIDEO },

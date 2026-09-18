@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
+import { DataTable } from "@/components/panel/ds/DataTable";
 
 export function Delta({
   value,
@@ -50,28 +51,23 @@ export function PanelStat({
   );
 }
 
+/**
+ * @deprecated Prefer `DataTable` from `@/components/panel/ds`.
+ * Thin wrapper — aynı görsel dil (başlık tooltip, zebra, toplam).
+ */
 export function PanelTable({
   headers,
   children,
+  numericCols,
 }: {
   headers: string[];
   children: ReactNode;
+  numericCols?: number[];
 }) {
   return (
-    <div className="overflow-x-auto rounded-lg border border-zinc-200">
-      <table className="min-w-full text-left text-sm">
-        <thead className="bg-zinc-50 text-[11px] uppercase tracking-[0.1em] text-zinc-500">
-          <tr>
-            {headers.map((h) => (
-              <th key={h} className="px-3 py-2.5 font-medium whitespace-nowrap">
-                {h}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-zinc-100 bg-white">{children}</tbody>
-      </table>
-    </div>
+    <DataTable headers={headers} numericCols={numericCols}>
+      {children}
+    </DataTable>
   );
 }
 

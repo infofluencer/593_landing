@@ -3,20 +3,14 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import AddBrandWizard from "@/components/panel/AddBrandWizard";
-import BrandPanelLinkActions from "@/components/panel/BrandPanelLinkActions";
 import { StatusBadge } from "@/components/panel/StatusBadge";
-import {
-  BulkSyncToolbar,
-  TenantSyncActions,
-} from "@/components/panel/SyncButton";
-import { PanelTable } from "@/components/panel/ui";
-import { prisma } from "@/lib/db";
+import { BulkSyncToolbar } from "@/components/panel/SyncButton";
 import { getAgencyOverview } from "@/lib/panel/data";
-import { formatDateTime, formatNumber, formatTry } from "@/lib/panel/format";
-import { resolveAdsCustomerId } from "@/lib/panel/google-ads-customer-map";
-import { resolveMetaAccountId } from "@/lib/panel/meta-ad-account-map";
+import {
+  brandInitials,
+  resolveBrandLogo,
+} from "@/lib/panel/brand-logos";
 import { isStaffRole, rootDomain } from "@/lib/panel/host";
-import { useMockPanelData } from "@/lib/integrations/tokens";
 
 /**
  * Sadece admin/team — ajans portalında (admin.*) tüm markalar.
@@ -35,8 +29,6 @@ export default async function BrandsPage() {
     redirect("/login?error=AccessDenied");
   }
 
-  const host = h.get("x-forwarded-host") ?? h.get("host") ?? "";
-  const isLocal = host.includes("localhost") || host.startsWith("127.");
   const root = rootDomain();
 
   const brands = await getAgencyOverview({
@@ -44,21 +36,6 @@ export default async function BrandsPage() {
     tenantIds: session.user.tenantIds,
     hostSlug: "admin",
   });
-
-  const clientByTenantId = new Map<string, number>();
-  if (!useMockPanelData() && brands.length) {
-    const counts = await prisma.membership.groupBy({
-      by: ["tenantId"],
-      where: {
-        tenantId: { in: brands.map((b) => b.tenant.id) },
-        user: { role: "client" },
-      },
-      _count: { _all: true },
-    });
-    for (const row of counts) {
-      clientByTenantId.set(row.tenantId, row._count._all);
-    }
-  }
 
   return (
     <div className="space-y-5">
@@ -68,11 +45,11 @@ export default async function BrandsPage() {
             Ajans — marka listesi
           </h2>
           <p className="mt-1 text-sm text-zinc-500">
-            Meta BM + Google MCC. Toplu veya satırdan çekin. Marka paneli:{" "}
+            Kareye tıklayarak detay, senkron ve ayarlara gidin. Panel:{" "}
             <code className="text-zinc-400">slug.{root}</code>
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-end justify-end gap-2.5 sm:gap-3">
           <AddBrandWizard />
           <BulkSyncToolbar />
         </div>
@@ -89,8 +66,9 @@ export default async function BrandsPage() {
         </li>
         <li>3. İsteğe bağlı müşteri e-posta / şifre.</li>
         <li>
-          4. Satırdan <span className="font-medium text-zinc-800">Meta</span>{" "}
-          sonra <span className="font-medium text-zinc-800">Google</span> çek.
+          4. Marka detayından{" "}
+          <span className="font-medium text-zinc-800">Meta</span> sonra{" "}
+          <span className="font-medium text-zinc-800">Google</span> çek.
         </li>
         <li>
           5.{" "}
@@ -101,132 +79,53 @@ export default async function BrandsPage() {
         </li>
       </ol>
 
-      <PanelTable
-        headers={[
-          "Marka",
-          "Tip",
-          "Onboarding",
-          "Panel adresi",
-          "Durum",
-          "Harcama",
-          "Dönüşüm",
-          "Son kontrol",
-          "Veri çek",
-          "",
-        ]}
-      >
-        {brands.map((row) => {
-          const isUnknown = row.health === "unknown";
-          const panelHost = isLocal
-            ? `${row.tenant.slug}.localhost:3006`
-            : `${row.tenant.slug}.${root}`;
-          const panelProto = isLocal ? "http" : "https";
-          const adsOk = Boolean(
-            resolveAdsCustomerId({
-              slug: row.tenant.slug,
-              name: row.tenant.name,
-              mapping: row.tenant.mapping,
-            }),
-          );
-          const metaOk = Boolean(
-            resolveMetaAccountId({
-              slug: row.tenant.slug,
-              name: row.tenant.name,
-              metaAccountId: row.tenant.metaAccountId,
-            }),
-          );
-          const ga4Ok = Boolean(row.tenant.mapping.ga4PropertyId);
-          const gtmOk = Boolean(row.tenant.mapping.gtmContainerId);
-          const gscOk = Boolean(row.tenant.mapping.gscSiteUrl);
-          const clientOk =
-            useMockPanelData() ||
-            (clientByTenantId.get(row.tenant.id) ?? 0) > 0;
-          const missing: string[] = [];
-          if (!metaOk) missing.push("Meta");
-          if (!adsOk) missing.push("Ads");
-          if (!ga4Ok) missing.push("GA4");
-          if (!gtmOk) missing.push("GTM");
-          if (!gscOk) missing.push("GSC");
-          if (!clientOk) missing.push("müşteri");
-          const settingsHref = `/settings?tenant=${encodeURIComponent(row.tenant.slug)}`;
+      {brands.length === 0 ? (
+        <p className="rounded-xl border border-dashed border-zinc-300 bg-white px-4 py-10 text-center text-sm text-zinc-500">
+          Henüz görünür marka yok. Yeni marka ekleyin.
+        </p>
+      ) : (
+        <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+          {brands.map((row) => {
+            const logo = resolveBrandLogo(row.tenant.slug, row.tenant.name);
+            const href = `/brands/${encodeURIComponent(row.tenant.slug)}`;
 
-          return (
-            <tr key={row.tenant.slug} className="text-zinc-700">
-              <td className="px-3 py-3">
-                <span className="font-medium text-zinc-900">
-                  {row.tenant.name}
-                </span>
-              </td>
-              <td className="px-3 py-3 text-xs text-zinc-400">
-                {row.tenant.type === "ecommerce" ? "E-ticaret" : "Lead"}
-              </td>
-              <td className="px-3 py-3">
-                {missing.length === 0 ? (
-                  <span className="text-[11px] text-emerald-600">Tamam</span>
-                ) : (
-                  <div className="flex max-w-[14rem] flex-wrap items-center gap-1">
-                    {missing.map((m) => (
-                      <span
-                        key={m}
-                        className="rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-800 ring-1 ring-amber-200/80"
-                      >
-                        {m}
-                      </span>
-                    ))}
-                    <Link
-                      href={settingsHref}
-                      className="text-[10px] font-medium text-[#e91825] hover:underline"
-                    >
-                      Eksikleri tamamla
-                    </Link>
-                  </div>
-                )}
-              </td>
-              <td className="px-3 py-3">
-                <div className="flex items-center gap-1.5">
-                  <a
-                    href={`${panelProto}://${panelHost}/`}
-                    className="font-mono text-xs text-zinc-500 hover:text-zinc-800 hover:underline"
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    {panelHost}
-                  </a>
-                  <BrandPanelLinkActions
-                    panelHost={panelHost}
-                    panelUrl={`${panelProto}://${panelHost}/`}
-                  />
-                </div>
-              </td>
-              <td className="px-3 py-3">
-                <StatusBadge status={row.health} />
-              </td>
-              <td className="px-3 py-3 tabular-nums">
-                {isUnknown
-                  ? "—"
-                  : formatTry(row.periodSpend, row.tenant.currency)}
-              </td>
-              <td className="px-3 py-3 tabular-nums">
-                {isUnknown ? "—" : formatNumber(row.periodConv)}
-              </td>
-              <td className="px-3 py-3 text-xs text-zinc-500">
-                {formatDateTime(row.lastCheckAt)}
-              </td>
-              <td className="px-3 py-3">
-                <TenantSyncActions tenantSlug={row.tenant.slug} />
-              </td>
-              <td className="px-3 py-3 text-right">
+            return (
+              <li key={row.tenant.slug}>
                 <Link
-                  href={settingsHref}
-                  className="text-xs font-medium text-[#e91825] hover:underline"
+                  href={href}
+                  className="group flex flex-col overflow-hidden rounded-[1.15rem] border border-zinc-200/90 bg-white transition duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] hover:-translate-y-1 hover:border-[#e91825]/35 hover:shadow-[0_18px_36px_-24px_rgba(0,0,0,0.45)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#e91825]"
                 >
-                  Ayarlar
+                  <div className="aspect-square w-full p-2 sm:p-2.5">
+                    <div className="flex h-full w-full items-center justify-center overflow-hidden rounded-[0.85rem] bg-[#f4f1ea] transition duration-300 group-hover:bg-[#f7f4ed]">
+                      {logo ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={logo}
+                          alt=""
+                          loading="lazy"
+                          decoding="async"
+                          className="h-full w-full object-contain p-2.5 transition duration-300 group-hover:scale-[1.03] sm:p-3"
+                        />
+                      ) : (
+                        <span className="select-none text-2xl font-semibold tracking-tight text-zinc-400 sm:text-3xl">
+                          {brandInitials(row.tenant.name)}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col items-center gap-1.5 px-2 pb-3 pt-0.5 text-center sm:px-3 sm:pb-3.5">
+                    <p className="line-clamp-2 text-[11px] font-medium leading-snug tracking-tight text-zinc-800 sm:text-xs">
+                      {row.tenant.name}
+                    </p>
+                    <StatusBadge status={row.health} />
+                  </div>
                 </Link>
-              </td>
-            </tr>
-          );
-        })}
-      </PanelTable>
+              </li>
+            );
+          })}
+        </ul>
+      )}
     </div>
   );
 }

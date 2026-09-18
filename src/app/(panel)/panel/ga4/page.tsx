@@ -2,7 +2,7 @@ import { Suspense } from "react";
 import { headers } from "next/headers";
 import PeriodFilterBar from "@/components/panel/PeriodFilterBar";
 import { StatusBadge } from "@/components/panel/StatusBadge";
-import { PanelStat, PanelTable } from "@/components/panel/ui";
+import { KPICard, DataTable } from "@/components/panel/ds";
 import { requireBundle } from "@/lib/panel/data";
 import { resolveGa4PropertyId } from "@/lib/panel/ga4-property-map";
 import { resolvePanelDateRange } from "@/lib/panel/period";
@@ -15,6 +15,72 @@ function formatDuration(sec: number) {
   const m = Math.floor(sec / 60);
   const s = Math.round(sec % 60);
   return `${m}:${String(s).padStart(2, "0")}`;
+}
+
+function sumGa4Rows(rows: MockGa4Row[]) {
+  return rows.reduce(
+    (acc, r) => ({
+      sessions: acc.sessions + r.sessions,
+      users: acc.users + r.users,
+      conversions: acc.conversions + r.conversions,
+    }),
+    { sessions: 0, users: 0, conversions: 0 },
+  );
+}
+
+function Ga4DimTable({
+  title,
+  dimHeader,
+  rows,
+}: {
+  title: string;
+  dimHeader: string;
+  rows: MockGa4Row[];
+}) {
+  const totals = sumGa4Rows(rows);
+  return (
+    <div className="space-y-3">
+      <h3 className="text-sm font-semibold text-zinc-800">{title}</h3>
+      <DataTable
+        headers={[
+          dimHeader,
+          { key: "sessions", label: "Oturum", metricKey: "sessions" },
+          { key: "users", label: "Kullanıcı", metricKey: "users" },
+          {
+            key: "conversions",
+            label: "Dönüşüm",
+            metricKey: "conversions",
+          },
+        ]}
+        numericCols={[1, 2, 3]}
+      >
+        {rows.length > 0 ? (
+          <tr data-total>
+            <td>Toplam</td>
+            <td className="num">{formatNumber(totals.sessions)}</td>
+            <td className="num">{formatNumber(totals.users)}</td>
+            <td className="num">{formatNumber(totals.conversions)}</td>
+          </tr>
+        ) : null}
+        {rows.map((r) => (
+          <tr key={r.dimension}>
+            <td
+              className={
+                dimHeader === "Sayfa"
+                  ? "font-mono text-xs text-panel-fg"
+                  : "font-medium text-panel-fg"
+              }
+            >
+              {r.dimension}
+            </td>
+            <td className="num">{formatNumber(r.sessions)}</td>
+            <td className="num">{formatNumber(r.users)}</td>
+            <td className="num">{formatNumber(r.conversions)}</td>
+          </tr>
+        ))}
+      </DataTable>
+    </div>
+  );
 }
 
 export default async function Ga4Page({
@@ -178,96 +244,108 @@ export default async function Ga4Page({
         </div>
       ) : null}
 
+      {/* Tier 1 — kuzey yıldızı */}
+      <div
+        className={`grid gap-4 sm:grid-cols-2 ${
+          ecommerce ? "xl:grid-cols-4" : "xl:grid-cols-3"
+        }`}
+      >
+        <KPICard
+          tier={1}
+          metricKey="users"
+          kind="count"
+          accent="var(--panel-google-green)"
+          value={unknown ? null : formatNumber(ga4.totalUsers)}
+          goodDirection="up"
+        />
+        <KPICard
+          tier={1}
+          metricKey="sessions"
+          kind="count"
+          accent="var(--panel-google-green)"
+          value={unknown ? null : formatNumber(ga4.sessions)}
+          goodDirection="up"
+        />
+        <KPICard
+          tier={1}
+          metricKey="sessionConvRate"
+          kind="rate"
+          accent="var(--panel-google-green)"
+          value={
+            unknown
+              ? null
+              : `${formatNumber(ga4.sessionConversionRate * 100, 2)}%`
+          }
+          goodDirection="up"
+        />
+        {ecommerce ? (
+          <KPICard
+            tier={1}
+            metricKey="revenue"
+            kind="money"
+            label="Satın alma geliri"
+            accent="var(--panel-google-green)"
+            value={
+              unknown || ga4.purchaseRevenue == null
+                ? null
+                : formatTry(ga4.purchaseRevenue, tenant.currency)
+            }
+            goodDirection="up"
+          />
+        ) : null}
+      </div>
+
       {!unknown ? (
         <>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            <PanelStat
-              label="Kullanıcı"
-              value={formatNumber(ga4.totalUsers)}
-            />
-            <PanelStat label="Oturum" value={formatNumber(ga4.sessions)} />
-            <PanelStat
-              label="Ort. oturum süresi"
+          {/* Tier 2 — destekleyici */}
+          <div
+            className={`grid gap-3 sm:grid-cols-2 lg:grid-cols-3 ${
+              ecommerce && ga4.transactions != null ? "xl:grid-cols-4" : ""
+            }`}
+          >
+            <KPICard
+              tier={2}
+              metricKey="avgSessionDuration"
+              kind="duration"
               value={formatDuration(ga4.averageSessionDuration)}
+              goodDirection="up"
             />
-            <PanelStat
-              label="Hemen çıkma"
+            <KPICard
+              tier={2}
+              metricKey="bounceRate"
+              kind="rate"
               value={`${formatNumber(ga4.bounceRate * 100, 1)}%`}
+              goodDirection="down"
             />
-            <PanelStat
-              label="Sayfa / oturum"
+            <KPICard
+              tier={2}
+              metricKey="pagePerSession"
+              kind="count"
               value={formatNumber(ga4.screenPageViewsPerSession, 1)}
+              goodDirection="up"
             />
-            <PanelStat
-              label="Oturum dönüşüm oranı"
-              value={`${formatNumber(ga4.sessionConversionRate * 100, 2)}%`}
-            />
-            {ecommerce && ga4.purchaseRevenue != null ? (
-              <PanelStat
-                label="Satın alma geliri"
-                value={formatTry(ga4.purchaseRevenue, tenant.currency)}
-              />
-            ) : null}
             {ecommerce && ga4.transactions != null ? (
-              <PanelStat
-                label="İşlem"
+              <KPICard
+                tier={2}
+                metricKey="transactions"
+                kind="count"
                 value={formatNumber(ga4.transactions)}
+                goodDirection="up"
               />
             ) : null}
           </div>
 
           <div className="grid gap-4 lg:grid-cols-2">
-            <div className="space-y-3">
-              <h3 className="text-sm font-semibold text-zinc-800">
-                Kanallar
-              </h3>
-              <PanelTable
-                headers={["Kanal", "Oturum", "Kullanıcı", "Dönüşüm"]}
-              >
-                {ga4Channels.map((r) => (
-                  <tr key={r.dimension} className="text-zinc-700">
-                    <td className="px-3 py-2.5 font-medium text-zinc-900">
-                      {r.dimension}
-                    </td>
-                    <td className="px-3 py-2.5 tabular-nums">
-                      {formatNumber(r.sessions)}
-                    </td>
-                    <td className="px-3 py-2.5 tabular-nums">
-                      {formatNumber(r.users)}
-                    </td>
-                    <td className="px-3 py-2.5 tabular-nums">
-                      {formatNumber(r.conversions)}
-                    </td>
-                  </tr>
-                ))}
-              </PanelTable>
-            </div>
-
-            <div className="space-y-3">
-              <h3 className="text-sm font-semibold text-zinc-800">
-                Açılış sayfaları
-              </h3>
-              <PanelTable
-                headers={["Sayfa", "Oturum", "Kullanıcı", "Dönüşüm"]}
-              >
-                {ga4Landings.map((r) => (
-                  <tr key={r.dimension} className="text-zinc-700">
-                    <td className="px-3 py-2.5 font-mono text-xs text-zinc-900">
-                      {r.dimension}
-                    </td>
-                    <td className="px-3 py-2.5 tabular-nums">
-                      {formatNumber(r.sessions)}
-                    </td>
-                    <td className="px-3 py-2.5 tabular-nums">
-                      {formatNumber(r.users)}
-                    </td>
-                    <td className="px-3 py-2.5 tabular-nums">
-                      {formatNumber(r.conversions)}
-                    </td>
-                  </tr>
-                ))}
-              </PanelTable>
-            </div>
+            <Ga4DimTable
+              title="Kanallar"
+              dimHeader="Kanal"
+              rows={ga4Channels}
+            />
+            <Ga4DimTable
+              title="Açılış sayfaları"
+              dimHeader="Sayfa"
+              rows={ga4Landings}
+            />
           </div>
         </>
       ) : null}

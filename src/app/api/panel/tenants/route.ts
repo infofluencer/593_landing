@@ -13,7 +13,6 @@ type CreateBody = {
   name?: string;
   type?: TenantType;
   website?: string | null;
-  monthlyBudget?: number | null;
   timezone?: string;
   currency?: string;
   metaAccountId?: string | null;
@@ -104,8 +103,6 @@ export async function POST(request: Request) {
         type,
         website: emptyToNull(body.website),
         metaAccountId,
-        monthlyBudget:
-          body.monthlyBudget == null ? null : body.monthlyBudget,
         timezone: body.timezone?.trim() || "Europe/Istanbul",
         currency: body.currency?.trim() || "TRY",
         visible: true,

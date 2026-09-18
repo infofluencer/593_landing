@@ -99,11 +99,21 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         token.role = user.role;
         token.tenantIds = user.tenantIds;
       }
+      // NextAuth Credentials bazen id’yi yalnızca `sub`’a yazar.
+      if (!token.id && typeof token.sub === "string") {
+        token.id = token.sub;
+      }
       return token;
     },
     async session({ session, token }) {
       if (session.user) {
-        session.user.id = typeof token.id === "string" ? token.id : "";
+        const id =
+          typeof token.id === "string" && token.id
+            ? token.id
+            : typeof token.sub === "string"
+              ? token.sub
+              : "";
+        session.user.id = id;
         session.user.role =
           token.role === "admin" ||
           token.role === "team" ||

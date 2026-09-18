@@ -3,6 +3,10 @@ import {
   getGoogleAdsDeveloperToken,
   getGoogleAdsLoginCustomerId,
 } from "@/lib/integrations/tokens";
+import {
+  isEcommerceSaleConversion,
+  isPurchaseCategory,
+} from "@/lib/panel/classify-conversion";
 
 const ADS_API = "https://googleads.googleapis.com/v25";
 
@@ -106,11 +110,16 @@ async function adsSearch(opts: {
 /**
  * GAQL read via Google Ads API search (login-customer-id = MCC).
  * Never invents zeros on auth/API failure — caller must record SyncJob.error.
+ *
+ * purchaseOnly (e-ticaret): dönüşüm = yalnızca PURCHASE / Satın alım ücreti.
+ * Harcama·gösterim·tıklama tüm kampanyadan; conv/convValue PURCHASE segmentinden.
  */
 export async function fetchGoogleAdsCampaignMetrics(opts: {
   customerId: string;
   from: string; // YYYY-MM-DD
   to: string;
+  /** E-ticaret: sadece Satın alım (PURCHASE) dönüşümü say */
+  purchaseOnly?: boolean;
 }): Promise<AdsCampaignRow[]> {
   const customerId = opts.customerId.replace(/-/g, "");
   const query = `
@@ -130,7 +139,7 @@ export async function fetchGoogleAdsCampaignMetrics(opts: {
 
   const { json } = await adsSearch({ customerId, query });
 
-  return ((json.results ?? []) as Array<{
+  const rows = ((json.results ?? []) as Array<{
     campaign?: { id?: string; name?: string };
     segments?: { date?: string };
     metrics?: {
@@ -155,6 +164,65 @@ export async function fetchGoogleAdsCampaignMetrics(opts: {
       convValue,
     };
   });
+
+  if (!opts.purchaseOnly) return rows;
+
+  const purchaseByKey = await fetchPurchaseConversionsByCampaignDay({
+    customerId,
+    from: opts.from,
+    to: opts.to,
+  });
+
+  return rows.map((row) => {
+    const hit = purchaseByKey.get(`${row.campaignId}|${row.date}`);
+    return {
+      ...row,
+      conv: hit?.conv ?? 0,
+      convValue: hit?.convValue ?? 0,
+    };
+  });
+}
+
+/** Campaign+day → PURCHASE category conversions only. */
+async function fetchPurchaseConversionsByCampaignDay(opts: {
+  customerId: string;
+  from: string;
+  to: string;
+}): Promise<Map<string, { conv: number; convValue: number }>> {
+  const query = `
+    SELECT
+      campaign.id,
+      segments.date,
+      segments.conversion_action_category,
+      metrics.conversions,
+      metrics.conversions_value
+    FROM campaign
+    WHERE segments.date BETWEEN '${opts.from}' AND '${opts.to}'
+      AND campaign.status != 'REMOVED'
+      AND segments.conversion_action_category = 'PURCHASE'
+  `;
+
+  const { json } = await adsSearch({
+    customerId: opts.customerId,
+    query,
+  });
+
+  const map = new Map<string, { conv: number; convValue: number }>();
+  for (const row of (json.results ?? []) as Array<{
+    campaign?: { id?: string };
+    segments?: { date?: string };
+    metrics?: { conversions?: number; conversionsValue?: number };
+  }>) {
+    const id = row.campaign?.id;
+    const date = row.segments?.date;
+    if (!id || !date) continue;
+    const key = `${id}|${date}`;
+    const prev = map.get(key) ?? { conv: 0, convValue: 0 };
+    prev.conv += Number(row.metrics?.conversions ?? 0);
+    prev.convValue += Number(row.metrics?.conversionsValue ?? 0);
+    map.set(key, prev);
+  }
+  return map;
 }
 
 export type AdsConversionAction = {
@@ -162,12 +230,15 @@ export type AdsConversionAction = {
   source: string;
   primary: boolean;
   count: number;
+  category: string | null;
 };
 
 export async function fetchGoogleAdsConversionActions(opts: {
   customerId: string;
   from: string;
   to: string;
+  /** E-ticaret: yalnızca PURCHASE / Satın alım ücreti aksiyonları */
+  purchaseOnly?: boolean;
 }): Promise<AdsConversionAction[]> {
   const customerId = opts.customerId.replace(/-/g, "");
   const query = `
@@ -191,6 +262,7 @@ export async function fetchGoogleAdsConversionActions(opts: {
     metrics?: { conversions?: number; allConversions?: number };
   }>) {
     const name = row.segments?.conversionActionName || "Unknown";
+    const category = row.segments?.conversionActionCategory ?? null;
     const count = Number(row.metrics?.conversions ?? 0);
     const prev = byName.get(name);
     if (prev) {
@@ -201,10 +273,23 @@ export async function fetchGoogleAdsConversionActions(opts: {
         source: "Google Ads",
         primary: true,
         count,
+        category,
       });
     }
   }
-  return [...byName.values()];
+
+  const all = [...byName.values()];
+  if (!opts.purchaseOnly) return all;
+
+  return all.filter((a) => {
+    if (isPurchaseCategory(a.category)) return true;
+    // Kategori yok / belirsizse isimden Satın alım ücreti
+    const cat = (a.category ?? "").toUpperCase();
+    if (!cat || cat === "UNKNOWN" || cat === "DEFAULT" || cat === "UNSPECIFIED") {
+      return isEcommerceSaleConversion(a.name);
+    }
+    return false;
+  });
 }
 
 export type AdsAdGroupRow = {

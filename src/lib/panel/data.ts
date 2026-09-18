@@ -15,6 +15,7 @@ import {
   listVisibleMockBundles,
   type HealthStatus,
   type MockCampaignMetric,
+  type MockDailySpendPoint,
   type MockGa4Overview,
   type MockGtmSnapshot,
   type MockMetaAdPerformance,
@@ -116,9 +117,6 @@ export async function resolvePanelTenant(slug: string) {
   const name = dbTenant?.name ?? mock!.tenant.name;
   const type: TenantType = dbTenant?.type ?? mock!.tenant.type;
   const currency = dbTenant?.currency ?? mock!.tenant.currency;
-  const monthlyBudget = dbTenant?.monthlyBudget
-    ? Number(dbTenant.monthlyBudget)
-    : (mock?.tenant.monthlyBudget ?? null);
   const website = dbTenant?.website ?? mock?.tenant.website ?? null;
   const timezone =
     dbTenant?.timezone ?? mock?.tenant.timezone ?? "Europe/Istanbul";
@@ -145,7 +143,6 @@ export async function resolvePanelTenant(slug: string) {
     type,
     website,
     currency,
-    monthlyBudget,
     timezone,
     mapping,
     bundle: mock ?? null,
@@ -437,6 +434,37 @@ async function bundleFromDb(
   const metaVideo =
     videoParts.length > 0 ? sumMetaVideo(videoParts) : { ...EMPTY_META_VIDEO };
 
+  const spendByDay = new Map<string, MockDailySpendPoint>();
+  if (!adsUnknown) {
+    for (const m of tenant.googleAdsMetrics) {
+      const key = dateKey(m.date);
+      const prev = spendByDay.get(key) || {
+        date: key,
+        google: 0,
+        meta: 0,
+        total: 0,
+      };
+      prev.google += Number(m.cost);
+      spendByDay.set(key, prev);
+    }
+  }
+  if (!metaUnknown) {
+    for (const m of tenant.metaInsights) {
+      const key = dateKey(m.date);
+      const prev = spendByDay.get(key) || {
+        date: key,
+        google: 0,
+        meta: 0,
+        total: 0,
+      };
+      prev.meta += Number(m.spend);
+      spendByDay.set(key, prev);
+    }
+  }
+  const dailySpend = [...spendByDay.values()]
+    .map((d) => ({ ...d, total: d.google + d.meta }))
+    .sort((a, b) => b.date.localeCompare(a.date));
+
   const periodSpend =
     (adsUnknown ? 0 : googleAccount.spend) +
     (metaUnknown ? 0 : metaAccount.spend);
@@ -508,7 +536,6 @@ async function bundleFromDb(
       website: tenant.website,
       metaAccountId: tenant.metaAccountId,
       type: tenant.type,
-      monthlyBudget: tenant.monthlyBudget ? Number(tenant.monthlyBudget) : 0,
       timezone: tenant.timezone,
       currency: tenant.currency,
       visible: tenant.visible,
@@ -566,6 +593,7 @@ async function bundleFromDb(
     metaAdsets,
     metaBreakdowns,
     metaDaily,
+    dailySpend,
     metaFunnel,
     metaVideo,
     conversions: tenant.conversions.map((c) => ({

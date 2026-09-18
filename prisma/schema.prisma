@@ -60,6 +60,13 @@ enum SiteVerifyStatus {
   error
 }
 
+enum BoardCardPriority {
+  low
+  normal
+  high
+  urgent
+}
+
 /// Agency-level OAuth / system-user (one row per provider).
 /// Tokens NEVER stored raw — secret-store reference only.
 model AgencyConnection {
@@ -81,7 +88,6 @@ model Tenant {
   website       String?
   metaAccountId String     @unique
   type          TenantType @default(lead)
-  monthlyBudget Decimal?   @db.Decimal(14, 2)
   timezone      String     @default("Europe/Istanbul")
   currency      String     @default("TRY")
   visible       Boolean    @default(true)
@@ -98,10 +104,12 @@ model Tenant {
   metaAdsetInsights MetaAdsetInsight[]
   metaBreakdowns  MetaBreakdownInsight[]
   googleAdsMetrics GoogleAdsMetric[]
+  billingCharges  BillingCharge[]
   ga4Metrics      Ga4Metric[]
   conversions     Conversion[]
   alerts          Alert[]
   syncJobs        SyncJob[]
+  boardCards      BoardCard[]
 }
 
 model TenantThreshold {
@@ -157,8 +165,128 @@ model User {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  memberships    Membership[]
-  assignedAlerts Alert[]      @relation("AlertAssignee")
+  memberships      Membership[]
+  assignedAlerts   Alert[]      @relation("AlertAssignee")
+  teamMemberships  TeamMember[]
+  cardAssignments  BoardCardAssignee[]
+  createdCards     BoardCard[]  @relation("CardCreator")
+  cardActivities   BoardCardActivity[]
+}
+
+/// Ajans içi ekip (yalnızca admin/team staff). Üye çoka-çok (TeamMember).
+model Team {
+  id          String   @id @default(cuid())
+  name        String
+  slug        String   @unique
+  description String?
+  /// Kanban filtre / rozet rengi (hex).
+  color       String   @default("#71717a")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  members TeamMember[]
+  cards   BoardCard[]
+}
+
+/// TeamMembership — bir kullanıcı birden fazla takımda olabilir.
+model TeamMember {
+  id        String   @id @default(cuid())
+  teamId    String
+  userId    String
+  createdAt DateTime @default(now())
+
+  team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([teamId, userId])
+  @@index([userId])
+}
+
+/// Ajans durum tablosu (Trello tarzı) — tek board, yalnızca staff host.
+model Board {
+  id        String   @id @default(cuid())
+  name      String   @default("Ajans durumu")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  columns BoardColumn[]
+}
+
+model BoardColumn {
+  id       String @id @default(cuid())
+  boardId  String
+  name     String
+  position Int
+  /// Tailwind-friendly accent hex, e.g. #e91825
+  color    String?
+
+  board Board       @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  cards BoardCard[]
+
+  @@index([boardId, position])
+}
+
+model BoardCard {
+  id            String            @id @default(cuid())
+  columnId      String
+  title         String
+  description   String?
+  position      Int
+  priority      BoardCardPriority @default(normal)
+  /// Kart hangi takıma ait (filtre / grup).
+  teamId        String?
+  tenantId      String?
+  dueAt         DateTime?
+  labels        String[]          @default([])
+  sourceAlertId String?
+  createdById   String?
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+
+  column      BoardColumn         @relation(fields: [columnId], references: [id], onDelete: Cascade)
+  team        Team?               @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  createdBy   User?               @relation("CardCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  tenant      Tenant?             @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  sourceAlert Alert?              @relation(fields: [sourceAlertId], references: [id], onDelete: SetNull)
+  assignees   BoardCardAssignee[]
+  activities  BoardCardActivity[]
+
+  @@index([columnId, position])
+  @@index([teamId])
+  @@index([tenantId])
+  @@index([sourceAlertId])
+  @@index([dueAt])
+}
+
+/// Kart ↔ staff çoklu atama.
+model BoardCardAssignee {
+  id        String   @id @default(cuid())
+  cardId    String
+  userId    String
+  createdAt DateTime @default(now())
+
+  card BoardCard @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  user User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([cardId, userId])
+  @@index([userId])
+}
+
+/// Kart durum / atama değişiklikleri (salt okuma audit).
+model BoardCardActivity {
+  id        String   @id @default(cuid())
+  cardId    String
+  actorId   String?
+  /// created | moved | assigned | unassigned | priority | due | labels | team | tenant | updated
+  type      String
+  message   String?
+  meta      Json     @default("{}")
+  createdAt DateTime @default(now())
+
+  card  BoardCard @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  actor User?     @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([cardId, createdAt])
 }
 
 model Membership {
@@ -328,6 +456,37 @@ model MetaBreakdownInsight {
   @@index([tenantId, breakdown])
 }
 
+/// Successful billing charges / paid invoices (Meta auto-pay + Google monthly invoices).
+model BillingCharge {
+  id             String   @id @default(cuid())
+  tenantId       String
+  provider       Provider
+  /// Meta transaction_id or Google invoice id
+  externalId     String
+  amount         Decimal  @db.Decimal(14, 2)
+  currency       String   @default("TRY")
+  chargedAt      DateTime
+  /// completed | paid
+  status         String   @default("completed")
+  /// Meta receipt URL (browser); Google uses pdf via download API
+  viewUrl        String?
+  /// Google invoice number shown on PDF
+  invoiceNumber  String?
+  /// Google: customers/{cid}/billingSetups/{id}
+  billingSetupId String?
+  /// Google: for refreshing pdf_url
+  issueYear      Int?
+  issueMonth     String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, provider, externalId])
+  @@index([tenantId, chargedAt])
+  @@index([tenantId, provider])
+}
+
 /// Google Ads GAQL metrics (account/campaign rows).
 model GoogleAdsMetric {
   id           String   @id @default(cuid())
@@ -415,8 +574,9 @@ model Alert {
   createdAt  DateTime      @default(now())
   updatedAt  DateTime      @updatedAt
 
-  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  assignee User?  @relation("AlertAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  tenant    Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  assignee  User?       @relation("AlertAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  boardCards BoardCard[]
 
   @@index([tenantId, resolved])
   @@index([tenantId, severity])

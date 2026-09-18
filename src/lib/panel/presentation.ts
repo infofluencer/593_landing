@@ -250,15 +250,28 @@ export function buildPresentation(
 
   const byKind = { sale: 0, form: 0, whatsapp: 0, other: 0 };
   for (const c of bundle.conversions) {
+    if (type === "ecommerce" && c.kind !== "sale") continue;
     byKind[c.kind] += c.count;
   }
   const conversionMix = (
-    [
-      { name: "Satış", value: byKind.sale, fill: CONV_COLORS.sale },
-      { name: "Form / lead", value: byKind.form, fill: CONV_COLORS.form },
-      { name: "WhatsApp", value: byKind.whatsapp, fill: CONV_COLORS.whatsapp },
-      { name: "Diğer", value: byKind.other, fill: CONV_COLORS.other },
-    ] as const
+    type === "ecommerce"
+      ? ([
+          {
+            name: "Satın alım ücreti",
+            value: byKind.sale,
+            fill: CONV_COLORS.sale,
+          },
+        ] as const)
+      : ([
+          { name: "Satış", value: byKind.sale, fill: CONV_COLORS.sale },
+          { name: "Form / lead", value: byKind.form, fill: CONV_COLORS.form },
+          {
+            name: "WhatsApp",
+            value: byKind.whatsapp,
+            fill: CONV_COLORS.whatsapp,
+          },
+          { name: "Diğer", value: byKind.other, fill: CONV_COLORS.other },
+        ] as const)
   ).filter((x) => x.value > 0);
 
   return {
@@ -288,10 +301,11 @@ export function buildPresentation(
   };
 }
 
+/** @deprecated Prefer getMetricDescription / METRIC_DESCRIPTIONS */
 export const METRIC_HELP = {
   spend: "Reklama harcanan tutar",
   clicks: "Reklama tıklayan kişi sayısı",
-  conv: "Hedeflenen sonuç (satış, form, WhatsApp…)",
+  conv: "E-ticarette yalnızca Satın alım ücreti; lead’de form / WhatsApp",
   roas: "Her 1 TL harcamaya karşılık gelen ciro",
   cpa: "Bir satışın ortalama maliyeti",
   cpl: "Bir lead’in ortalama maliyeti",

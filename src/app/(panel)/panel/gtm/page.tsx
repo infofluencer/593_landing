@@ -4,7 +4,8 @@ import { auth } from "@/auth";
 import { StatusBadge } from "@/components/panel/StatusBadge";
 import SiteVerifyButton from "@/components/panel/SiteVerifyButton";
 import PanelLoadingBlock from "@/components/panel/PanelLoadingBlock";
-import { PanelStat, PanelTable } from "@/components/panel/ui";
+import { KPICard } from "@/components/panel/ds";
+import { PanelTable } from "@/components/panel/ui";
 import { requireBundle } from "@/lib/panel/data";
 import { fetchGtmSnapshotResolved } from "@/lib/integrations/google/gtm";
 import { resolveGtmApiRef, resolveGtmPublicId } from "@/lib/panel/gtm-container-map";
@@ -147,27 +148,76 @@ async function GtmConfigSection({
         </div>
       ) : null}
 
+      {/* Tier 1 — konteyner kimliği / doğrulama */}
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        <KPICard
+          tier={1}
+          kind="count"
+          label="Public ID"
+          accent="var(--panel-google-yellow)"
+          value={configUnknown ? null : publicId || null}
+          goodDirection="neutral"
+        />
+        <KPICard
+          tier={1}
+          kind="count"
+          label="Canlı sürüm"
+          accent="var(--panel-google-yellow)"
+          value={
+            configUnknown || !liveVersion || liveVersion === "—"
+              ? null
+              : liveVersion
+          }
+          goodDirection="neutral"
+        />
+        <KPICard
+          tier={1}
+          metricKey="gtmSiteVerify"
+          kind="status"
+          accent="var(--panel-google-yellow)"
+          value={
+            configUnknown
+              ? null
+              : (VERIFY_LABEL[siteStatus] ?? siteStatus)
+          }
+          goodDirection="neutral"
+        />
+      </div>
+
       {!configUnknown ? (
         <>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <PanelStat label="Public ID" value={publicId || "—"} />
-            <PanelStat label="Canlı sürüm" value={liveVersion} />
-            <PanelStat
+          {/* Tier 2 — workspace detay */}
+          <div
+            className={`grid gap-3 sm:grid-cols-2 ${
+              mode === "mock" ? "lg:grid-cols-3" : ""
+            }`}
+          >
+            <KPICard
+              tier={2}
+              kind="status"
               label="Yayımlanmamış değişiklik"
               value={unpublishedChanges ? "Var" : "Yok"}
+              goodDirection="neutral"
             />
-            <PanelStat
-              label="Site doğrulama"
-              value={VERIFY_LABEL[siteStatus] ?? siteStatus}
-            />
+            {mode === "mock" ? (
+              <>
+                <KPICard
+                  tier={2}
+                  kind="count"
+                  label="Trigger"
+                  value={String(triggers)}
+                  goodDirection="neutral"
+                />
+                <KPICard
+                  tier={2}
+                  kind="count"
+                  label="Variable"
+                  value={String(variables)}
+                  goodDirection="neutral"
+                />
+              </>
+            ) : null}
           </div>
-
-          {mode === "mock" ? (
-            <div className="grid gap-3 sm:grid-cols-2">
-              <PanelStat label="Trigger" value={String(triggers)} />
-              <PanelStat label="Variable" value={String(variables)} />
-            </div>
-          ) : null}
 
           {tags.length > 0 ? (
             <PanelTable

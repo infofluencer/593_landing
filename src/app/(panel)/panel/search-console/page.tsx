@@ -3,7 +3,7 @@ import { headers } from "next/headers";
 import PeriodFilterBar from "@/components/panel/PeriodFilterBar";
 import { StatusBadge } from "@/components/panel/StatusBadge";
 import { GscQueryBarChart, GscTrendChart } from "@/components/panel/charts";
-import { PanelStat, PanelTable } from "@/components/panel/ui";
+import { KPICard, DataTable } from "@/components/panel/ds";
 import { requireBundle, resolvePanelTenant } from "@/lib/panel/data";
 import { formatNumber } from "@/lib/panel/format";
 import { resolvePanelDateRange } from "@/lib/panel/period";
@@ -214,31 +214,56 @@ export default async function SearchConsolePage({
         <p className="text-sm text-zinc-500">Bu dönem için sorgu yok.</p>
       ) : null}
 
+      {/* Tier 1 — organik kuzey yıldızı (veri yoksa Kontrol edilemedi) */}
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        <KPICard
+          tier={1}
+          metricKey="gscClicks"
+          kind="count"
+          accent="var(--panel-google-blue)"
+          value={hasData ? formatNumber(periodClicks) : null}
+          hint={
+            hasData ? (
+              <span className="text-[11px] text-panel-fg-secondary">
+                {queryRows.length} sorgu satırı
+              </span>
+            ) : null
+          }
+          goodDirection="up"
+        />
+        <KPICard
+          tier={1}
+          metricKey="gscImpressions"
+          kind="count"
+          accent="var(--panel-google-blue)"
+          value={hasData ? formatNumber(periodImpr) : null}
+          goodDirection="up"
+        />
+        <KPICard
+          tier={1}
+          metricKey="gscCtr"
+          kind="rate"
+          accent="var(--panel-google-blue)"
+          value={hasData ? `${formatNumber(avgCtr * 100, 2)}%` : null}
+          goodDirection="up"
+        />
+      </div>
+
       {hasData ? (
         <>
+          {/* Tier 2 — konum */}
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <PanelStat
-              label="Tıklama"
-              value={formatNumber(periodClicks)}
-              hint={
-                <span className="text-[11px] text-zinc-500">
-                  {queryRows.length} sorgu satırı
-                </span>
-              }
-            />
-            <PanelStat label="Gösterim" value={formatNumber(periodImpr)} />
-            <PanelStat
-              label="Ort. CTR"
-              value={`${formatNumber(avgCtr * 100, 2)}%`}
-            />
-            <PanelStat
-              label="Ort. konum"
+            <KPICard
+              tier={2}
+              metricKey="gscPosition"
+              kind="count"
               value={formatNumber(avgPos, 1)}
               hint={
-                <span className="text-[11px] text-zinc-500">
+                <span className="text-[11px] text-panel-fg-secondary">
                   Gösterim ağırlıklı
                 </span>
               }
+              goodDirection="down"
             />
           </div>
 
@@ -258,29 +283,38 @@ export default async function SearchConsolePage({
           </div>
 
           {queryRows.length > 0 ? (
-            <PanelTable
-              headers={["Sorgu", "Tıklama", "Gösterim", "CTR", "Konum"]}
+            <DataTable
+              headers={[
+                "Sorgu",
+                {
+                  key: "clicks",
+                  label: "Tıklama",
+                  metricKey: "gscClicks",
+                },
+                {
+                  key: "impr",
+                  label: "Gösterim",
+                  metricKey: "gscImpressions",
+                },
+                { key: "ctr", label: "CTR", metricKey: "gscCtr" },
+                {
+                  key: "pos",
+                  label: "Konum",
+                  metricKey: "gscPosition",
+                },
+              ]}
+              numericCols={[1, 2, 3, 4]}
             >
               {queryRows.map((r) => (
-                <tr key={r.keys.join("|")} className="text-zinc-700">
-                  <td className="px-3 py-2.5 font-medium text-zinc-900">
-                    {r.keys[0]}
-                  </td>
-                  <td className="px-3 py-2.5 tabular-nums">
-                    {formatNumber(r.clicks)}
-                  </td>
-                  <td className="px-3 py-2.5 tabular-nums">
-                    {formatNumber(r.impressions)}
-                  </td>
-                  <td className="px-3 py-2.5 tabular-nums">
-                    {formatNumber(r.ctr * 100, 2)}%
-                  </td>
-                  <td className="px-3 py-2.5 tabular-nums">
-                    {formatNumber(r.position, 1)}
-                  </td>
+                <tr key={r.keys.join("|")}>
+                  <td className="font-medium text-panel-fg">{r.keys[0]}</td>
+                  <td className="num">{formatNumber(r.clicks)}</td>
+                  <td className="num">{formatNumber(r.impressions)}</td>
+                  <td className="num">{formatNumber(r.ctr * 100, 2)}%</td>
+                  <td className="num">{formatNumber(r.position, 1)}</td>
                 </tr>
               ))}
-            </PanelTable>
+            </DataTable>
           ) : null}
         </>
       ) : null}

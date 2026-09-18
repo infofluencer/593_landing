@@ -10,7 +10,6 @@ type SeedTenant = {
   website: string;
   metaAccountId: string;
   type: TenantType;
-  monthlyBudget: number;
   mapping: {
     adsCustomerId: string | null;
     ga4PropertyId: string | null;
@@ -28,7 +27,6 @@ const SEED_TENANTS: SeedTenant[] = [
     website: "https://mareen.com.tr/",
     metaAccountId: "act_mareen_001",
     type: "ecommerce",
-    monthlyBudget: 120000,
     mapping: {
       adsCustomerId: GOOGLE_ADS_CUSTOMER_BY_SLUG.mareen ?? null,
       ga4PropertyId: null,
@@ -43,7 +41,6 @@ const SEED_TENANTS: SeedTenant[] = [
     website: "https://example.com",
     metaAccountId: "act_phase0_demo",
     type: "lead",
-    monthlyBudget: 50000,
     mapping: {
       adsCustomerId: null,
       ga4PropertyId: null,
@@ -62,7 +59,6 @@ async function upsertTenant(t: SeedTenant) {
       name: t.name,
       website: t.website,
       type: t.type,
-      monthlyBudget: t.monthlyBudget,
       timezone: "Europe/Istanbul",
       currency: "TRY",
       visible: true,
@@ -73,7 +69,6 @@ async function upsertTenant(t: SeedTenant) {
       website: t.website,
       metaAccountId: t.metaAccountId,
       type: t.type,
-      monthlyBudget: t.monthlyBudget,
       timezone: "Europe/Istanbul",
       currency: "TRY",
       visible: true,
@@ -173,7 +168,7 @@ async function main() {
   }
 
   const adminHash = await bcrypt.hash("demo1234", 10);
-  await prisma.user.upsert({
+  const admin = await prisma.user.upsert({
     where: { email: "admin@593emarketing.com" },
     update: { passwordHash: adminHash, role: "admin", name: "593 Admin" },
     create: {
@@ -183,6 +178,104 @@ async function main() {
       role: "admin",
     },
   });
+
+  const teamHash = await bcrypt.hash("team1234", 10);
+  const teamUser = await prisma.user.upsert({
+    where: { email: "team@593emarketing.com" },
+    update: {
+      passwordHash: teamHash,
+      role: "team",
+      name: "593 Team",
+      passwordPlain: "team1234",
+    },
+    create: {
+      email: "team@593emarketing.com",
+      passwordHash: teamHash,
+      passwordPlain: "team1234",
+      name: "593 Team",
+      role: "team",
+    },
+  });
+
+  const DEFAULT_TEAMS: Array<{
+    name: string;
+    description: string;
+    color: string;
+  }> = [
+    { name: "Meta", description: "Meta reklam operasyonları", color: "#0866FF" },
+    { name: "Google", description: "Google Ads & Search", color: "#4285F4" },
+    { name: "Analytics", description: "GA4, GTM, ölçümleme", color: "#E37400" },
+    { name: "Kreatif", description: "Kreatif ve içerik üretimi", color: "#7C3AED" },
+    {
+      name: "Hesap yönetimi",
+      description: "Müşteri ilişkileri ve hesap yönetimi",
+      color: "#0D9488",
+    },
+  ];
+
+  const staffIds = [admin.id, teamUser.id];
+  for (const def of DEFAULT_TEAMS) {
+    const slug = def.name
+      .toLocaleLowerCase("tr")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/ğ/g, "g")
+      .replace(/ü/g, "u")
+      .replace(/ş/g, "s")
+      .replace(/ı/g, "i")
+      .replace(/ö/g, "o")
+      .replace(/ç/g, "c")
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "");
+
+    const team =
+      (await prisma.team.findFirst({
+        where: { OR: [{ name: def.name }, { slug }] },
+      })) ??
+      (await prisma.team.create({
+        data: {
+          name: def.name,
+          slug,
+          color: def.color,
+          description: def.description,
+        },
+      }));
+
+    await prisma.team.update({
+      where: { id: team.id },
+      data: {
+        description: def.description,
+        color: def.color,
+        slug: team.slug || slug,
+        name: def.name,
+      },
+    });
+
+    for (const userId of staffIds) {
+      await prisma.teamMember.upsert({
+        where: { teamId_userId: { teamId: team.id, userId } },
+        update: {},
+        create: { teamId: team.id, userId },
+      });
+    }
+  }
+
+  const boardCount = await prisma.board.count();
+  if (boardCount === 0) {
+    await prisma.board.create({
+      data: {
+        name: "Ajans durumu",
+        columns: {
+          create: [
+            { name: "Yapılacak", color: "#71717a", position: 0 },
+            { name: "Devam ediyor", color: "#2563eb", position: 1 },
+            { name: "İncelemede", color: "#d97706", position: 2 },
+            { name: "Tamamlandı", color: "#16a34a", position: 3 },
+          ],
+        },
+      },
+    });
+  }
 
   const mareen = tenants.find((t) => t.slug === "mareen")!;
   const demo = tenants.find((t) => t.slug === "demo")!;
@@ -240,6 +333,7 @@ async function main() {
     `mareen(${mareen.type})`,
     `demo(${demo.type})`,
     "admin@593emarketing.com / demo1234 → admin.localhost:3006",
+    "team@593emarketing.com / team1234 → admin.localhost:3006",
     "musteri@mareen.com / client1234 → mareen.localhost:3006",
     "musteri@demo.com / lead1234 → demo.localhost:3006",
   );

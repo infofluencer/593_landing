@@ -17,7 +17,6 @@ type PatchBody = {
   metaAccountId?: string | null;
   type?: TenantType;
   website?: string | null;
-  monthlyBudget?: number | null;
   timezone?: string;
   currency?: string;
   mapping?: {
@@ -153,12 +152,6 @@ export async function PATCH(request: Request) {
           ...(body.type ? { type: body.type } : {}),
           ...(body.website !== undefined
             ? { website: emptyToNull(body.website) }
-            : {}),
-          ...(body.monthlyBudget !== undefined
-            ? {
-                monthlyBudget:
-                  body.monthlyBudget == null ? null : body.monthlyBudget,
-              }
             : {}),
           ...(body.timezone ? { timezone: body.timezone } : {}),
           ...(body.currency ? { currency: body.currency } : {}),
