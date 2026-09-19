@@ -1,5 +1,6 @@
 import type { Provider } from "@prisma/client";
 import { prisma } from "@/lib/db";
+import { normalizeMetaViewUrl } from "@/lib/integrations/meta/billing";
 
 export type BillingChargeRow = {
   id: string;
@@ -37,7 +38,8 @@ export async function getTenantBillingCharges(
     currency: r.currency,
     chargedAt: r.chargedAt.toISOString(),
     status: r.status,
-    viewUrl: r.viewUrl,
+    viewUrl:
+      r.provider === "meta" ? normalizeMetaViewUrl(r.viewUrl) : r.viewUrl,
     invoiceNumber: r.invoiceNumber,
   }));
 }

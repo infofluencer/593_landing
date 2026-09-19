@@ -8,6 +8,7 @@ import {
   downloadGoogleInvoicePdf,
   fetchGoogleInvoicePdfUrl,
 } from "@/lib/integrations/google/billing";
+import { normalizeMetaViewUrl } from "@/lib/integrations/meta/billing";
 
 export const runtime = "nodejs";
 
@@ -52,13 +53,14 @@ export async function GET(
   }
 
   if (charge.provider === "meta") {
-    if (!charge.viewUrl) {
+    const viewUrl = normalizeMetaViewUrl(charge.viewUrl);
+    if (!viewUrl) {
       return NextResponse.json(
         { error: "Meta makbuz linki yok" },
         { status: 404 },
       );
     }
-    return NextResponse.redirect(charge.viewUrl);
+    return NextResponse.redirect(viewUrl);
   }
 
   const adsCustomerId = resolveAdsCustomerId({

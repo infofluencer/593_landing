@@ -29,6 +29,25 @@ function actId(metaAccountId: string): string {
     : `act_${metaAccountId}`;
 }
 
+/** www.facebook.com/ads/receipt → 404; Business Suite receipt hâlâ açılıyor. */
+export function metaReceiptViewUrl(transactionId: string): string {
+  return `https://business.facebook.com/ads/receipt/?transaction_id=${encodeURIComponent(transactionId)}`;
+}
+
+/** Eski www receipt URL’lerini Business Suite’e çevir (DB’de kalanlar için). */
+export function normalizeMetaViewUrl(
+  url: string | null | undefined,
+): string | null {
+  if (!url) return null;
+  const m = /(?:www\.)?facebook\.com\/ads\/receipt\/?\?(?:.*&)?transaction_id=([^&]+)/i.exec(
+    url,
+  );
+  if (m?.[1]) {
+    return metaReceiptViewUrl(decodeURIComponent(m[1]));
+  }
+  return url;
+}
+
 function ymdToUnixStart(ymd: string): number {
   return Math.floor(new Date(`${ymd}T00:00:00+03:00`).getTime() / 1000);
 }
@@ -101,7 +120,7 @@ export async function fetchMetaSuccessfulCharges(opts: {
         amount: minor / 100,
         currency: (extra.currency || "TRY").toUpperCase(),
         chargedAt,
-        viewUrl: `https://www.facebook.com/ads/receipt/?transaction_id=${encodeURIComponent(tx)}`,
+        viewUrl: metaReceiptViewUrl(tx),
         status: "completed",
       });
     }

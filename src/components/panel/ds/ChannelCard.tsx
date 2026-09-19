@@ -25,8 +25,8 @@ export function ChannelCard({
 
   return (
     <section
-      className="rounded-panel-lg border border-panel-border bg-panel-surface shadow-panel"
-      style={{ boxShadow: `inset 3px 0 0 ${accent}, var(--panel-shadow)` }}
+      className="rounded-panel-lg border-2 bg-panel-surface shadow-panel"
+      style={{ borderColor: accent }}
     >
       <header className="flex flex-wrap items-start gap-3 border-b border-panel-border px-5 py-4 sm:px-6">
         <div className="mr-auto flex min-w-0 items-start gap-3">

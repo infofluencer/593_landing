@@ -2,37 +2,27 @@ import type { ReactNode } from "react";
 import { formatTry } from "@/lib/panel/format";
 
 /**
- * Bütçe temposu — gerçekleşen / (opsiyonel hedef) / tahmini ay sonu.
+ * Bütçe temposu — gerçekleşen / (opsiyonel hedef).
  */
 export function BudgetBar({
   realized,
-  forecast,
   target,
   currency = "TRY",
-  periodIsMtd = true,
 }: {
   realized: number | null;
-  forecast?: number | null;
   target?: number | null;
   currency?: string;
-  /** false ise tahmini gizlenir / — */
-  periodIsMtd?: boolean;
 }) {
   const hasRealized = realized != null;
   const hasTarget = target != null && target > 0;
-  const showForecast = periodIsMtd && forecast != null;
   const max = Math.max(
     hasRealized ? realized! : 0,
-    showForecast ? forecast! : 0,
     hasTarget ? target! : 0,
     1,
   );
 
   const realizedPct = hasRealized
     ? Math.min(100, Math.round((realized! / max) * 100))
-    : 0;
-  const forecastPct = showForecast
-    ? Math.min(100, Math.round((forecast! / max) * 100))
     : 0;
   const targetPct = hasTarget
     ? Math.min(100, Math.round((target! / max) * 100))
@@ -57,7 +47,6 @@ export function BudgetBar({
         <h3 className="text-sm font-semibold text-panel-fg">Bütçe temposu</h3>
         <p className="mt-0.5 text-xs text-panel-fg-secondary">
           Gerçekleşen harcama
-          {showForecast ? " · tahmini ay sonu" : ""}
           {hasTarget ? " · hedef" : ""}
         </p>
       </header>
@@ -68,17 +57,10 @@ export function BudgetBar({
         </p>
       ) : (
         <>
-          <div className="grid gap-4 sm:grid-cols-3">
+          <div className="grid gap-4 sm:grid-cols-2">
             <Stat
               label="Gerçekleşen"
               value={formatTry(realized!, currency)}
-            />
-            <Stat
-              label="Tahmini ay sonu"
-              value={
-                showForecast ? formatTry(forecast!, currency) : "—"
-              }
-              muted={!showForecast}
             />
             <Stat
               label="Hedef"
@@ -95,13 +77,6 @@ export function BudgetBar({
           </div>
 
           <div className="relative mt-6 h-3 overflow-hidden rounded-full bg-panel-surface-muted">
-            {showForecast ? (
-              <div
-                className="absolute inset-y-0 left-0 rounded-full bg-panel-border-strong/80"
-                style={{ width: `${forecastPct}%` }}
-                title="Tahmini"
-              />
-            ) : null}
             <div
               className="absolute inset-y-0 left-0 rounded-full bg-panel-fg"
               style={{ width: `${realizedPct}%` }}
@@ -120,12 +95,6 @@ export function BudgetBar({
               <span className="size-2 rounded-full bg-panel-fg" />
               Gerçekleşen
             </span>
-            {showForecast ? (
-              <span className="inline-flex items-center gap-1.5">
-                <span className="size-2 rounded-full bg-panel-border-strong" />
-                Tahmini
-              </span>
-            ) : null}
             {hasTarget ? (
               <span className="inline-flex items-center gap-1.5">
                 <span className="h-2 w-0.5 bg-panel-accent" />

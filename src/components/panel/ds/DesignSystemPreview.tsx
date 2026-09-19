@@ -270,10 +270,8 @@ export default function DesignSystemPreview() {
           <h3 className="text-sm font-semibold text-panel-fg">BudgetBar</h3>
           <BudgetBar
             realized={128450}
-            forecast={186000}
             target={200000}
             currency="TRY"
-            periodIsMtd
           />
         </div>
       </section>

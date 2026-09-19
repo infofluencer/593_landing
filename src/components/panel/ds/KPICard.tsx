@@ -74,7 +74,7 @@ export function KPICard({
   tier?: KpiTier;
   /** metric-descriptions anahtarı — (?) tooltip */
   metricKey?: string;
-  /** Tier 1 sol şerit / üst aksan rengi (provider veya anlam). */
+  /** Accent rengi varsa kartı saran tam border olur. */
   accent?: string;
   sparkline?: ReactNode;
   className?: string;
@@ -102,30 +102,18 @@ export function KPICard({
     <div
       className={[
         shell.radius,
-        "relative overflow-visible border border-panel-border bg-panel-surface",
+        "relative border bg-panel-surface",
+        accentColor ? "border-2" : "border-panel-border",
         tier === 1 ? "shadow-panel-md" : "shadow-panel",
         shell.pad,
         className,
       ].join(" ")}
       style={
         accentColor
-          ? ({
-              boxShadow:
-                tier === 1
-                  ? `inset 3px 0 0 ${accentColor}, var(--panel-shadow-md)`
-                  : undefined,
-            } as CSSProperties)
+          ? ({ borderColor: accentColor } as CSSProperties)
           : undefined
       }
     >
-      {tier === 1 && accentColor ? (
-        <span
-          className="pointer-events-none absolute inset-x-0 top-0 h-0.5 opacity-80"
-          style={{ background: accentColor }}
-          aria-hidden
-        />
-      ) : null}
-
       <div className="flex items-start justify-between gap-2">
         <div className={`flex items-center gap-1.5 ${shell.label} ${labelTone}`}>
           <span>{resolvedLabel}</span>

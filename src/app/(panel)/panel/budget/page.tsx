@@ -6,10 +6,6 @@ import { KPICard } from "@/components/panel/ds";
 import { PanelTable } from "@/components/panel/ui";
 import { requireBundle } from "@/lib/panel/data";
 import { formatDate, formatTry } from "@/lib/panel/format";
-import {
-  estimateMonthEndSpend,
-  mockToday,
-} from "@/lib/panel/mock-data";
 import { resolvePanelDateRange } from "@/lib/panel/period";
 
 export default async function BudgetPage({
@@ -29,23 +25,10 @@ export default async function BudgetPage({
     bundle;
   const googleSpend = current.account.spend;
   const metaSpend = metaCurrent.account.spend;
-  const isMtd = range.period === "mtd";
-
-  const today = mockToday();
-  const day = today.getDate();
-  const daysInMonth = new Date(
-    today.getFullYear(),
-    today.getMonth() + 1,
-    0,
-  ).getDate();
 
   // Harcama varsa göster — Meta/GTM hatası bütçeyi kilitlemez.
   const spent =
     periodSpend > 0 || googleSpend > 0 || metaSpend > 0 ? periodSpend : null;
-  const projected =
-    spent === null || !isMtd
-      ? null
-      : estimateMonthEndSpend(spent, day, daysInMonth);
 
   return (
     <div className="space-y-5">
@@ -55,7 +38,7 @@ export default async function BudgetPage({
             Bütçe ve yayın temposu
           </h2>
           <p className="mt-1 text-sm text-zinc-500">
-            Gerçekleşen harcama · kanal kırılımı · tahmini ay sonu
+            Gerçekleşen harcama · kanal kırılımı
           </p>
         </div>
         <StatusBadge status={spent === null ? "unknown" : health} />
@@ -67,13 +50,13 @@ export default async function BudgetPage({
 
       {spent === null ? (
         <div className="rounded-lg border border-zinc-200 bg-zinc-100 px-4 py-3 text-sm text-zinc-700">
-          Harcama verisi alınamadı. Tahmin hesaplanmadı — durum:{" "}
+          Harcama verisi alınamadı — durum:{" "}
           <strong>Kontrol edilemedi</strong> (sıfır yazılmadı).
         </div>
       ) : null}
 
       {/* Tier 1 — dönem özeti */}
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="max-w-md">
         <KPICard
           tier={1}
           metricKey="spend"
@@ -87,26 +70,6 @@ export default async function BudgetPage({
             spent !== null ? (
               <span className="text-[11px] text-panel-fg-secondary">
                 {range.label}
-              </span>
-            ) : null
-          }
-          goodDirection="neutral"
-        />
-        <KPICard
-          tier={1}
-          metricKey="spend"
-          kind="money"
-          label="Tahmini ay sonu"
-          accent="var(--panel-accent)"
-          value={
-            projected != null
-              ? formatTry(projected, tenant.currency)
-              : null
-          }
-          hint={
-            projected == null ? (
-              <span className="text-[11px] text-panel-fg-secondary">
-                Yalnızca “Bu ay” için
               </span>
             ) : null
           }
