@@ -6,6 +6,7 @@ import PeriodFilterBar from "@/components/panel/PeriodFilterBar";
 import { formatTry } from "@/lib/panel/format";
 import {
   budgetPacePct,
+  isManualCampaignId,
   summarizeBudgetPlan,
   type BrandBudgetPlan,
   type BudgetProvider,
@@ -18,6 +19,8 @@ type DraftRow = {
   campaignId: string;
   campaignName: string;
   label: string;
+  audience: string;
+  location: string;
   monthly: string;
   daily: string;
   monthSpend: number;
@@ -100,6 +103,8 @@ function PlannerForm({ plan }: { plan: BrandBudgetPlan }) {
       campaignId: c.campaignId,
       campaignName: c.campaignName,
       label: c.label ?? "",
+      audience: c.audience ?? "",
+      location: c.location ?? "",
       monthly: moneyToInput(c.monthlyBudget),
       daily: moneyToInput(c.dailyBudget),
       monthSpend: c.monthSpend,
@@ -109,6 +114,11 @@ function PlannerForm({ plan }: { plan: BrandBudgetPlan }) {
   );
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [removed, setRemoved] = useState<
+    Array<{ provider: BudgetProvider; campaignId: string }>
+  >([]);
+  const [draftName, setDraftName] = useState("");
+  const [draftProvider, setDraftProvider] = useState<BudgetProvider>("meta");
 
   const visible = useMemo(
     () => (filter === "all" ? rows : rows.filter((r) => r.provider === filter)),
@@ -138,7 +148,7 @@ function PlannerForm({ plan }: { plan: BrandBudgetPlan }) {
   function setRow(
     provider: BudgetProvider,
     campaignId: string,
-    field: "monthly" | "daily" | "label",
+    field: "monthly" | "daily" | "label" | "audience" | "location",
     value: string,
   ) {
     setRows((prev) =>
@@ -148,6 +158,42 @@ function PlannerForm({ plan }: { plan: BrandBudgetPlan }) {
           : row,
       ),
     );
+  }
+
+  function addManualCampaign() {
+    const name = draftName.trim();
+    if (!name) {
+      setError("Elle eklemek için kampanya adı yazın");
+      return;
+    }
+    const campaignId = `manual_${crypto.randomUUID().replace(/-/g, "").slice(0, 16)}`;
+    setError(null);
+    setRows((prev) => [
+      {
+        provider: draftProvider,
+        campaignId,
+        campaignName: name,
+        label: name,
+        audience: "",
+        location: "",
+        monthly: "",
+        daily: "",
+        monthSpend: 0,
+        todaySpend: 0,
+        avgDailySpend: 0,
+      },
+      ...prev,
+    ]);
+    setDraftName("");
+  }
+
+  function removeManualCampaign(provider: BudgetProvider, campaignId: string) {
+    setRows((prev) =>
+      prev.filter(
+        (row) => !(row.provider === provider && row.campaignId === campaignId),
+      ),
+    );
+    setRemoved((prev) => [...prev, { provider, campaignId }]);
   }
 
   async function onSave() {
@@ -170,9 +216,12 @@ function PlannerForm({ plan }: { plan: BrandBudgetPlan }) {
               campaignId: row.campaignId,
               campaignName: row.campaignName,
               label: row.label,
+              audience: row.audience,
+              location: row.location,
               monthlyBudget: row.monthly,
               dailyBudget: row.daily,
             })),
+            removeCampaigns: removed,
           }),
         },
       );
@@ -182,6 +231,7 @@ function PlannerForm({ plan }: { plan: BrandBudgetPlan }) {
         return;
       }
       setMessage("Planlanan bütçe kaydedildi.");
+      setRemoved([]);
       startTransition(() => {
         router.refresh();
       });
@@ -350,10 +400,10 @@ function PlannerForm({ plan }: { plan: BrandBudgetPlan }) {
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <p className="text-sm font-semibold text-zinc-900">
-            Kampanya bütçesi
+            Kampanya planı
           </p>
           <p className="mt-0.5 text-xs text-zinc-500">
-            Liste API’den · rakamları siz yazın
+            API’den gelenler + elle eklenen plan kampanyaları
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-1.5">
@@ -385,9 +435,54 @@ function PlannerForm({ plan }: { plan: BrandBudgetPlan }) {
         </div>
       </div>
 
+      {plan.canEdit ? (
+        <div className="flex flex-wrap items-end gap-2 rounded-lg border border-dashed border-zinc-200 bg-zinc-50 px-3 py-2.5">
+          <label className="min-w-[7rem] space-y-1">
+            <span className="text-[10px] font-medium uppercase tracking-[0.1em] text-zinc-500">
+              Platform
+            </span>
+            <select
+              className={nameInputClass}
+              value={draftProvider}
+              onChange={(e) =>
+                setDraftProvider(e.target.value as BudgetProvider)
+              }
+            >
+              <option value="meta">Meta</option>
+              <option value="google">Google</option>
+            </select>
+          </label>
+          <label className="min-w-[12rem] flex-1 space-y-1">
+            <span className="text-[10px] font-medium uppercase tracking-[0.1em] text-zinc-500">
+              Yeni kampanya
+            </span>
+            <input
+              className={nameInputClass}
+              placeholder="API’de yok — plan için ad yazın"
+              value={draftName}
+              onChange={(e) => setDraftName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  addManualCampaign();
+                }
+              }}
+            />
+          </label>
+          <button
+            type="button"
+            onClick={addManualCampaign}
+            className="rounded-md border border-zinc-200 bg-white px-3 py-1.5 text-xs font-semibold text-zinc-800 hover:border-zinc-300"
+          >
+            Kampanya ekle
+          </button>
+        </div>
+      ) : null}
+
       {visible.length === 0 ? (
         <p className="rounded-lg border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-600">
-          Bu ay için kampanya yok. Önce marka detayından Meta / Google çekin.
+          Bu dönemde API kampanyası yok. Yukarıdan plan kampanyası
+          ekleyebilirsiniz.
         </p>
       ) : (
         <div className="overflow-x-auto rounded-lg border border-zinc-200">
@@ -399,6 +494,12 @@ function PlannerForm({ plan }: { plan: BrandBudgetPlan }) {
                 </th>
                 <th className="px-3 py-2" rowSpan={2}>
                   Platform
+                </th>
+                <th
+                  className="border-l border-zinc-200 px-3 py-2 text-center text-[#e91825]"
+                  colSpan={2}
+                >
+                  Planlama
                 </th>
                 <th
                   className="border-l border-zinc-200 px-3 py-2 text-center text-[#e91825]"
@@ -417,6 +518,10 @@ function PlannerForm({ plan }: { plan: BrandBudgetPlan }) {
                 </th>
               </tr>
               <tr>
+                <th className="border-l border-zinc-200 px-3 py-2">
+                  Hedef kitle
+                </th>
+                <th className="px-3 py-2">Konum</th>
                 <th className="border-l border-zinc-200 px-3 py-2 text-right">
                   Günlük
                 </th>
@@ -448,8 +553,25 @@ function PlannerForm({ plan }: { plan: BrandBudgetPlan }) {
                           )
                         }
                       />
-                      {row.label.trim() &&
-                      row.label.trim() !== row.campaignName ? (
+                      {isManualCampaignId(row.campaignId) ? (
+                        <div className="mt-1 flex flex-wrap items-center gap-2">
+                          <span className="rounded bg-zinc-100 px-1.5 py-0.5 text-[10px] font-semibold text-zinc-600">
+                            Elle eklendi
+                          </span>
+                          {plan.canEdit ? (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                removeManualCampaign(row.provider, row.campaignId)
+                              }
+                              className="text-[10px] font-medium text-rose-600 hover:underline"
+                            >
+                              Kaldır
+                            </button>
+                          ) : null}
+                        </div>
+                      ) : row.label.trim() &&
+                        row.label.trim() !== row.campaignName ? (
                         <p className="mt-0.5 truncate text-[10px] text-zinc-400">
                           API: {row.campaignName}
                         </p>
@@ -469,6 +591,38 @@ function PlannerForm({ plan }: { plan: BrandBudgetPlan }) {
                       >
                         {row.provider === "meta" ? "Meta" : "Google"}
                       </span>
+                    </td>
+                    <td className="border-l border-zinc-100 px-3 py-2 align-middle">
+                      <input
+                        className={nameInputClass}
+                        placeholder="ör. 25–34, kadın"
+                        disabled={!plan.canEdit}
+                        value={row.audience}
+                        onChange={(e) =>
+                          setRow(
+                            row.provider,
+                            row.campaignId,
+                            "audience",
+                            e.target.value,
+                          )
+                        }
+                      />
+                    </td>
+                    <td className="px-3 py-2 align-middle">
+                      <input
+                        className={nameInputClass}
+                        placeholder="ör. İstanbul, Ankara"
+                        disabled={!plan.canEdit}
+                        value={row.location}
+                        onChange={(e) =>
+                          setRow(
+                            row.provider,
+                            row.campaignId,
+                            "location",
+                            e.target.value,
+                          )
+                        }
+                      />
                     </td>
                     <td className="border-l border-zinc-100 px-3 py-2 align-middle">
                       <input

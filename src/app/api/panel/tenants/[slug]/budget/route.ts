@@ -14,6 +14,8 @@ type CampaignBody = {
   campaignId?: string;
   campaignName?: string;
   label?: string | null;
+  audience?: string | null;
+  location?: string | null;
   monthlyBudget?: unknown;
   dailyBudget?: unknown;
 };
@@ -23,6 +25,7 @@ type PatchBody = {
   monthlyBudget?: unknown;
   dailyBudget?: unknown;
   campaigns?: CampaignBody[];
+  removeCampaigns?: Array<{ provider?: string; campaignId?: string }>;
 };
 
 /** Admin/team — marka + kampanya bütçe planı (İstanbul ayı). */
@@ -66,9 +69,17 @@ export async function PATCH(
         campaignId: row.campaignId ?? "",
         campaignName: row.campaignName,
         label: typeof row.label === "string" ? row.label : "",
+        audience: typeof row.audience === "string" ? row.audience : "",
+        location: typeof row.location === "string" ? row.location : "",
         monthlyBudget: parseBudgetAmount(row.monthlyBudget),
         dailyBudget: parseBudgetAmount(row.dailyBudget),
       })),
+      removeCampaigns: Array.isArray(body.removeCampaigns)
+        ? body.removeCampaigns.map((row) => ({
+            provider: row.provider as BudgetProvider,
+            campaignId: row.campaignId ?? "",
+          }))
+        : [],
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Kaydedilemedi";

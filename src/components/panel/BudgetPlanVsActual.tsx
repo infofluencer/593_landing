@@ -4,6 +4,7 @@ import { PanelTable } from "@/components/panel/ui";
 import {
   budgetPacePct,
   displayCampaignName,
+  isManualCampaignId,
   summarizeBudgetPlan,
   type BrandBudgetPlan,
   type BudgetProvider,
@@ -194,13 +195,15 @@ export default function BudgetPlanVsActual({
               headers={[
                 "Kampanya",
                 ...(provider ? [] : ["Platform"]),
+                "Hedef kitle",
+                "Konum",
                 "Planlanan günlük",
                 "Planlanan aylık",
                 "Gerçekleşen günlük",
                 "Gerçekleşen",
                 "Tempo",
               ]}
-              numericCols={provider ? [1, 2, 3, 4, 5] : [2, 3, 4, 5, 6]}
+              numericCols={provider ? [3, 4, 5, 6, 7] : [4, 5, 6, 7, 8]}
             >
               {campaigns.map((row) => {
                 const pace = budgetPacePct(row.monthSpend, row.monthlyBudget);
@@ -208,8 +211,12 @@ export default function BudgetPlanVsActual({
                   <tr key={`${row.provider}-${row.campaignId}`}>
                     <td className="font-medium text-panel-fg">
                       <span>{displayCampaignName(row)}</span>
-                      {row.label?.trim() &&
-                      row.label.trim() !== row.campaignName ? (
+                      {isManualCampaignId(row.campaignId) ? (
+                        <span className="mt-0.5 block text-[10px] font-normal text-panel-fg-muted">
+                          Elle eklendi
+                        </span>
+                      ) : row.label?.trim() &&
+                        row.label.trim() !== row.campaignName ? (
                         <span className="mt-0.5 block text-[10px] font-normal text-panel-fg-muted">
                           {row.campaignName}
                         </span>
@@ -218,6 +225,8 @@ export default function BudgetPlanVsActual({
                     {provider ? null : (
                       <td>{row.provider === "meta" ? "Meta" : "Google"}</td>
                     )}
+                    <td>{row.audience?.trim() || "—"}</td>
+                    <td>{row.location?.trim() || "—"}</td>
                     <td className="num">
                       {row.dailyBudget != null
                         ? formatTry(row.dailyBudget, currency)

@@ -20,6 +20,8 @@ export type BudgetCampaignRow = {
   campaignName: string;
   /** Kullanıcının verdiği görünen ad */
   label: string | null;
+  audience: string | null;
+  location: string | null;
   monthlyBudget: number | null;
   dailyBudget: number | null;
   monthSpend: number;
@@ -326,6 +328,8 @@ export async function loadBrandBudgetPlan(
         campaignId: id,
         campaignName: campaignName.trim() || id,
         label: null,
+        audience: null,
+        location: null,
         monthlyBudget: null,
         dailyBudget: null,
         monthSpend: 0,
@@ -390,6 +394,8 @@ export async function loadBrandBudgetPlan(
     const existing = map.get(campaignKey(provider, alias.campaignId.trim()));
     if (!existing) continue;
     existing.label = alias.label.trim() || null;
+    existing.audience = alias.audience.trim() || null;
+    existing.location = alias.location.trim() || null;
     if (alias.sourceName.trim() && !existing.campaignName) {
       existing.campaignName = alias.sourceName.trim();
     }
@@ -464,10 +470,20 @@ export type SaveBrandBudgetInput = {
     campaignId: string;
     campaignName?: string;
     label?: string | null;
+    audience?: string | null;
+    location?: string | null;
     monthlyBudget: number | null;
     dailyBudget: number | null;
   }>;
+  removeCampaigns?: Array<{
+    provider: BudgetProvider;
+    campaignId: string;
+  }>;
 };
+
+export function isManualCampaignId(campaignId: string): boolean {
+  return campaignId.startsWith("manual_");
+}
 
 export async function tenantHasBudgetPlan(
   tenantId: string,
@@ -526,11 +542,25 @@ export async function saveBrandBudgetPlan(
         campaignId,
         campaignName: (row.campaignName ?? "").trim(),
         label: (row.label ?? "").trim(),
+        audience: (row.audience ?? "").trim(),
+        location: (row.location ?? "").trim(),
         monthlyBudget: row.monthlyBudget,
         dailyBudget: row.dailyBudget,
       };
     })
     .filter((row): row is NonNullable<typeof row> => row != null);
+
+  const removals = (input.removeCampaigns ?? [])
+    .map((row) => ({
+      provider: row.provider,
+      campaignId: row.campaignId.trim(),
+    }))
+    .filter(
+      (row) =>
+        row.campaignId &&
+        (row.provider === "google" || row.provider === "meta") &&
+        isManualCampaignId(row.campaignId),
+    );
 
   await prisma.$transaction(async (tx) => {
     const brandEmpty =
@@ -572,14 +602,34 @@ export async function saveBrandBudgetPlan(
       });
     }
 
+    for (const row of removals) {
+      await tx.$executeRaw`
+        DELETE FROM "CampaignBudget"
+        WHERE "tenantId" = ${tenantId}
+          AND provider = ${row.provider}::"Provider"
+          AND "campaignId" = ${row.campaignId}
+      `;
+      await tx.$executeRaw`
+        DELETE FROM "CampaignAlias"
+        WHERE "tenantId" = ${tenantId}
+          AND provider = ${row.provider}::"Provider"
+          AND "campaignId" = ${row.campaignId}
+      `;
+    }
+
     for (const row of campaigns) {
-      if (row.label) {
+      const keepAlias =
+        Boolean(row.label || row.audience || row.location) ||
+        isManualCampaignId(row.campaignId);
+      if (keepAlias) {
         await upsertCampaignAlias(tx, {
           tenantId,
           provider: row.provider,
           campaignId: row.campaignId,
-          label: row.label,
-          sourceName: row.campaignName,
+          label: row.label || row.campaignName,
+          sourceName: row.campaignName || row.label,
+          audience: row.audience,
+          location: row.location,
         });
       } else {
         await tx.$executeRaw`
@@ -639,13 +689,15 @@ type CampaignAliasRow = {
   campaignId: string;
   label: string;
   sourceName: string;
+  audience: string;
+  location: string;
 };
 
 async function listCampaignAliases(
   tenantId: string,
 ): Promise<CampaignAliasRow[]> {
   return prisma.$queryRaw<CampaignAliasRow[]>`
-    SELECT provider, "campaignId", label, "sourceName"
+    SELECT provider, "campaignId", label, "sourceName", audience, location
     FROM "CampaignAlias"
     WHERE "tenantId" = ${tenantId}
   `;
@@ -724,18 +776,24 @@ async function upsertCampaignAlias(
     campaignId: string;
     label: string;
     sourceName: string;
+    audience: string;
+    location: string;
   },
 ) {
   await db.$executeRaw`
     INSERT INTO "CampaignAlias"
-      (id, "tenantId", provider, "campaignId", label, "sourceName", "createdAt", "updatedAt")
+      (id, "tenantId", provider, "campaignId", label, "sourceName",
+       audience, location, "createdAt", "updatedAt")
     VALUES
       (${newCuidLike()}, ${row.tenantId}, ${row.provider}::"Provider",
-       ${row.campaignId}, ${row.label}, ${row.sourceName}, NOW(), NOW())
+       ${row.campaignId}, ${row.label}, ${row.sourceName},
+       ${row.audience}, ${row.location}, NOW(), NOW())
     ON CONFLICT ("tenantId", provider, "campaignId")
     DO UPDATE SET
       label = EXCLUDED.label,
       "sourceName" = COALESCE(NULLIF(EXCLUDED."sourceName", ''), "CampaignAlias"."sourceName"),
+      audience = EXCLUDED.audience,
+      location = EXCLUDED.location,
       "updatedAt" = NOW()
   `;
 }

@@ -162,6 +162,10 @@ model CampaignAlias {
   campaignId String
   label      String
   sourceName String   @default("")
+  /// Planlama — hedef kitle
+  audience   String   @default("")
+  /// Planlama — çıkılacak konum
+  location   String   @default("")
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 

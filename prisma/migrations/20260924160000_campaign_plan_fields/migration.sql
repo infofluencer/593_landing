@@ -1,0 +1,3 @@
+-- AlterTable
+ALTER TABLE "CampaignAlias" ADD COLUMN IF NOT EXISTS "audience" TEXT NOT NULL DEFAULT '';
+ALTER TABLE "CampaignAlias" ADD COLUMN IF NOT EXISTS "location" TEXT NOT NULL DEFAULT '';
