@@ -3,6 +3,7 @@ import { randomBytes } from "crypto";
 import { prisma } from "@/lib/db";
 import { getIstanbulTodayYmd } from "@/lib/date/now";
 import {
+  addDaysYmd,
   formatYmdTr,
   isValidYmd,
   subMonthsYmd,
@@ -28,6 +29,8 @@ export type BudgetCampaignRow = {
   todaySpend: number;
   /** Seçilen dönemde gün başına ortalama harcama */
   avgDailySpend: number;
+  /** Şu an yayında (Meta reklam durumu / Google son 7 gün) */
+  active: boolean;
 };
 
 export function utcDateYmd(date: Date): string {
@@ -286,8 +289,19 @@ export async function loadBrandBudgetPlan(
   const spendFrom = ymdToUtcDate(from);
   const spendTo = ymdToUtcDate(to);
 
-  const [googleRows, metaRows, brandRows, campaignRows, aliases] =
-    await Promise.all([
+  const liveFrom = addDaysYmd(today, -6);
+  const recentDate = ymdToUtcDate(liveFrom);
+
+  const [
+    googleRows,
+    metaRows,
+    brandRows,
+    campaignRows,
+    aliases,
+    metaAds,
+    recentGoogle,
+    recentMeta,
+  ] = await Promise.all([
     prisma.googleAdsMetric.findMany({
       where: { tenantId: tenant.id, date: { gte: fromDate, lte: toDate } },
       select: {
@@ -309,7 +323,36 @@ export async function loadBrandBudgetPlan(
     listTenantBudgets(tenant.id, months),
     listCampaignBudgets(tenant.id, months),
     listCampaignAliases(tenant.id),
+    prisma.metaAd.findMany({
+      where: { tenantId: tenant.id },
+      select: { campaignId: true, effectiveStatus: true },
+    }),
+    prisma.googleAdsMetric.findMany({
+      where: { tenantId: tenant.id, date: { gte: recentDate } },
+      select: { campaignId: true },
+      distinct: ["campaignId"],
+    }),
+    prisma.metaInsight.findMany({
+      where: { tenantId: tenant.id, date: { gte: recentDate } },
+      select: { campaignId: true },
+      distinct: ["campaignId"],
+    }),
   ]);
+
+  const metaHasAd = new Set<string>();
+  const metaLive = new Set<string>();
+  for (const ad of metaAds) {
+    const id = ad.campaignId.trim();
+    if (!id) continue;
+    metaHasAd.add(id);
+    if (ad.effectiveStatus === "ACTIVE") metaLive.add(id);
+  }
+  const googleLive = new Set(
+    recentGoogle.map((row) => row.campaignId.trim()).filter(Boolean),
+  );
+  const metaRecent = new Set(
+    recentMeta.map((row) => row.campaignId.trim()).filter(Boolean),
+  );
 
   const map = new Map<string, BudgetCampaignRow>();
 
@@ -335,6 +378,7 @@ export async function loadBrandBudgetPlan(
         monthSpend: 0,
         todaySpend: 0,
         avgDailySpend: 0,
+        active: false,
       });
       return;
     }
@@ -407,8 +451,15 @@ export async function loadBrandBudgetPlan(
     .map((row) => ({
       ...row,
       avgDailySpend: row.monthSpend / daysElapsed,
+      active: campaignIsActive(row.provider, row.campaignId, {
+        metaHasAd,
+        metaLive,
+        metaRecent,
+        googleLive,
+      }),
     }))
     .sort((a, b) => {
+      if (a.active !== b.active) return a.active ? -1 : 1;
       if (b.monthSpend !== a.monthSpend) return b.monthSpend - a.monthSpend;
       if (a.provider !== b.provider) return a.provider.localeCompare(b.provider);
       return a.campaignName.localeCompare(b.campaignName, "tr");
@@ -483,6 +534,24 @@ export type SaveBrandBudgetInput = {
 
 export function isManualCampaignId(campaignId: string): boolean {
   return campaignId.startsWith("manual_");
+}
+
+function campaignIsActive(
+  provider: BudgetProvider,
+  campaignId: string,
+  sets: {
+    metaHasAd: Set<string>;
+    metaLive: Set<string>;
+    metaRecent: Set<string>;
+    googleLive: Set<string>;
+  },
+): boolean {
+  if (isManualCampaignId(campaignId)) return true;
+  if (provider === "meta") {
+    if (sets.metaHasAd.has(campaignId)) return sets.metaLive.has(campaignId);
+    return sets.metaRecent.has(campaignId);
+  }
+  return sets.googleLive.has(campaignId);
 }
 
 export async function tenantHasBudgetPlan(

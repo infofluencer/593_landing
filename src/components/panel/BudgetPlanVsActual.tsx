@@ -205,56 +205,79 @@ export default function BudgetPlanVsActual({
               ]}
               numericCols={provider ? [3, 4, 5, 6, 7] : [4, 5, 6, 7, 8]}
             >
-              {campaigns.map((row) => {
-                const pace = budgetPacePct(row.monthSpend, row.monthlyBudget);
-                return (
-                  <tr key={`${row.provider}-${row.campaignId}`}>
-                    <td className="font-medium text-panel-fg">
-                      <span>{displayCampaignName(row)}</span>
-                      {isManualCampaignId(row.campaignId) ? (
-                        <span className="mt-0.5 block text-[10px] font-normal text-panel-fg-muted">
-                          Elle eklendi
-                        </span>
-                      ) : row.label?.trim() &&
-                        row.label.trim() !== row.campaignName ? (
-                        <span className="mt-0.5 block text-[10px] font-normal text-panel-fg-muted">
-                          {row.campaignName}
-                        </span>
-                      ) : null}
-                    </td>
-                    {provider ? null : (
-                      <td>{row.provider === "meta" ? "Meta" : "Google"}</td>
-                    )}
-                    <td>{row.audience?.trim() || "—"}</td>
-                    <td>{row.location?.trim() || "—"}</td>
-                    <td className="num">
-                      {row.dailyBudget != null
-                        ? formatTry(row.dailyBudget, currency)
-                        : "—"}
-                    </td>
-                    <td className="num">
-                      {row.monthlyBudget != null
-                        ? formatTry(row.monthlyBudget, currency)
-                        : "—"}
-                    </td>
-                    <td className="num">
-                      {formatTry(row.avgDailySpend, currency)}
-                      {plan.isCurrentMonth ? (
-                        <span className="mt-0.5 block text-[10px] font-normal text-panel-fg-muted">
-                          Bugün {formatTry(row.todaySpend, currency)}
-                        </span>
-                      ) : null}
-                    </td>
-                    <td className="num">
-                      {formatTry(row.monthSpend, currency)}
-                    </td>
-                    <td
-                      className={`num font-semibold ${paceClass(pace, plan.warnPct)}`}
-                    >
-                      {pace == null ? "—" : `%${pace}`}
-                    </td>
-                  </tr>
+              {(["active", "inactive"] as const).flatMap((group) => {
+                const rows = campaigns.filter((row) =>
+                  group === "active" ? row.active : !row.active,
                 );
+                if (rows.length === 0) return [];
+                const colSpan = provider ? 8 : 9;
+                return [
+                  <tr key={group} className="bg-zinc-50">
+                    <td
+                      colSpan={colSpan}
+                      className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-zinc-500"
+                    >
+                      {group === "active" ? "Aktif · planlanan" : "Aktif değil"}
+                      <span className="ml-1.5 font-medium normal-case tracking-normal text-zinc-400">
+                        {rows.length}
+                      </span>
+                    </td>
+                  </tr>,
+                  ...rows.map((row) => {
+                    const pace = budgetPacePct(row.monthSpend, row.monthlyBudget);
+                    return (
+                      <tr
+                        key={`${row.provider}-${row.campaignId}`}
+                        className={row.active ? undefined : "text-zinc-500"}
+                      >
+                        <td className="font-medium text-panel-fg">
+                          <span>{displayCampaignName(row)}</span>
+                          {isManualCampaignId(row.campaignId) ? (
+                            <span className="mt-0.5 block text-[10px] font-normal text-panel-fg-muted">
+                              Elle eklendi
+                            </span>
+                          ) : row.label?.trim() &&
+                            row.label.trim() !== row.campaignName ? (
+                            <span className="mt-0.5 block text-[10px] font-normal text-panel-fg-muted">
+                              {row.campaignName}
+                            </span>
+                          ) : null}
+                        </td>
+                        {provider ? null : (
+                          <td>{row.provider === "meta" ? "Meta" : "Google"}</td>
+                        )}
+                        <td>{row.audience?.trim() || "—"}</td>
+                        <td>{row.location?.trim() || "—"}</td>
+                        <td className="num">
+                          {row.dailyBudget != null
+                            ? formatTry(row.dailyBudget, currency)
+                            : "—"}
+                        </td>
+                        <td className="num">
+                          {row.monthlyBudget != null
+                            ? formatTry(row.monthlyBudget, currency)
+                            : "—"}
+                        </td>
+                        <td className="num">
+                          {formatTry(row.avgDailySpend, currency)}
+                          {plan.isCurrentMonth ? (
+                            <span className="mt-0.5 block text-[10px] font-normal text-panel-fg-muted">
+                              Bugün {formatTry(row.todaySpend, currency)}
+                            </span>
+                          ) : null}
+                        </td>
+                        <td className="num">
+                          {formatTry(row.monthSpend, currency)}
+                        </td>
+                        <td
+                          className={`num font-semibold ${paceClass(pace, plan.warnPct)}`}
+                        >
+                          {pace == null ? "—" : `%${pace}`}
+                        </td>
+                      </tr>
+                    );
+                  }),
+                ];
               })}
             </PanelTable>
           )}

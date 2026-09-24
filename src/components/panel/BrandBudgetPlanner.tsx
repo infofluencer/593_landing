@@ -26,6 +26,7 @@ type DraftRow = {
   monthSpend: number;
   todaySpend: number;
   avgDailySpend: number;
+  active: boolean;
 };
 
 function moneyToInput(value: number | null): string {
@@ -110,6 +111,7 @@ function PlannerForm({ plan }: { plan: BrandBudgetPlan }) {
       monthSpend: c.monthSpend,
       todaySpend: c.todaySpend,
       avgDailySpend: c.avgDailySpend,
+      active: c.active,
     })),
   );
   const [message, setMessage] = useState<string | null>(null);
@@ -123,6 +125,11 @@ function PlannerForm({ plan }: { plan: BrandBudgetPlan }) {
   const visible = useMemo(
     () => (filter === "all" ? rows : rows.filter((r) => r.provider === filter)),
     [filter, rows],
+  );
+  const activeRows = useMemo(() => visible.filter((r) => r.active), [visible]);
+  const inactiveRows = useMemo(
+    () => visible.filter((r) => !r.active),
+    [visible],
   );
 
   const summary = useMemo(
@@ -181,6 +188,7 @@ function PlannerForm({ plan }: { plan: BrandBudgetPlan }) {
         monthSpend: 0,
         todaySpend: 0,
         avgDailySpend: 0,
+        active: true,
       },
       ...prev,
     ]);
@@ -403,7 +411,7 @@ function PlannerForm({ plan }: { plan: BrandBudgetPlan }) {
             Kampanya planı
           </p>
           <p className="mt-0.5 text-xs text-zinc-500">
-            API’den gelenler + elle eklenen plan kampanyaları
+            Aktif olanlar ayrı · durdurulanlar altta
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-1.5">
@@ -428,6 +436,7 @@ function PlannerForm({ plan }: { plan: BrandBudgetPlan }) {
             </button>
           ))}
           <span className="pl-1 text-[11px] text-zinc-500">
+            {activeRows.length} aktif · {inactiveRows.length} değil ·{" "}
             {plan.isCurrentMonth
               ? `${plan.dayOfMonth}/${plan.daysInMonth} gün`
               : `${plan.daysInMonth} gün`}
@@ -533,145 +542,38 @@ function PlannerForm({ plan }: { plan: BrandBudgetPlan }) {
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-100">
-              {visible.map((row) => {
-                const monthly = parseDraft(row.monthly);
-                const rowPace = budgetPacePct(row.monthSpend, monthly);
-                return (
-                  <tr key={`${row.provider}-${row.campaignId}`}>
-                    <td className="min-w-[14rem] max-w-[20rem] px-3 py-2 align-middle">
-                      <input
-                        className={nameInputClass}
-                        placeholder={row.campaignName}
-                        disabled={!plan.canEdit}
-                        value={row.label}
-                        onChange={(e) =>
-                          setRow(
-                            row.provider,
-                            row.campaignId,
-                            "label",
-                            e.target.value,
-                          )
-                        }
-                      />
-                      {isManualCampaignId(row.campaignId) ? (
-                        <div className="mt-1 flex flex-wrap items-center gap-2">
-                          <span className="rounded bg-zinc-100 px-1.5 py-0.5 text-[10px] font-semibold text-zinc-600">
-                            Elle eklendi
-                          </span>
-                          {plan.canEdit ? (
-                            <button
-                              type="button"
-                              onClick={() =>
-                                removeManualCampaign(row.provider, row.campaignId)
-                              }
-                              className="text-[10px] font-medium text-rose-600 hover:underline"
-                            >
-                              Kaldır
-                            </button>
-                          ) : null}
-                        </div>
-                      ) : row.label.trim() &&
-                        row.label.trim() !== row.campaignName ? (
-                        <p className="mt-0.5 truncate text-[10px] text-zinc-400">
-                          API: {row.campaignName}
-                        </p>
-                      ) : (
-                        <p className="mt-0.5 text-[10px] text-zinc-400">
-                          Görünen adı özelleştir
-                        </p>
-                      )}
-                    </td>
-                    <td className="px-3 py-2 align-middle">
-                      <span
-                        className={`rounded-md px-1.5 py-0.5 text-[10px] font-semibold ${
-                          row.provider === "meta"
-                            ? "bg-blue-50 text-blue-800"
-                            : "bg-emerald-50 text-emerald-800"
-                        }`}
-                      >
-                        {row.provider === "meta" ? "Meta" : "Google"}
-                      </span>
-                    </td>
-                    <td className="border-l border-zinc-100 px-3 py-2 align-middle">
-                      <input
-                        className={nameInputClass}
-                        placeholder="ör. 25–34, kadın"
-                        disabled={!plan.canEdit}
-                        value={row.audience}
-                        onChange={(e) =>
-                          setRow(
-                            row.provider,
-                            row.campaignId,
-                            "audience",
-                            e.target.value,
-                          )
-                        }
-                      />
-                    </td>
-                    <td className="px-3 py-2 align-middle">
-                      <input
-                        className={nameInputClass}
-                        placeholder="ör. İstanbul, Ankara"
-                        disabled={!plan.canEdit}
-                        value={row.location}
-                        onChange={(e) =>
-                          setRow(
-                            row.provider,
-                            row.campaignId,
-                            "location",
-                            e.target.value,
-                          )
-                        }
-                      />
-                    </td>
-                    <td className="border-l border-zinc-100 px-3 py-2 align-middle">
-                      <input
-                        className={inputClass}
-                        inputMode="decimal"
-                        placeholder="—"
-                        disabled={!plan.canEdit}
-                        value={row.daily}
-                        onChange={(e) =>
-                          setRow(row.provider, row.campaignId, "daily", e.target.value)
-                        }
-                      />
-                    </td>
-                    <td className="px-3 py-2 align-middle">
-                      <input
-                        className={inputClass}
-                        inputMode="decimal"
-                        placeholder="—"
-                        disabled={!plan.canEdit}
-                        value={row.monthly}
-                        onChange={(e) =>
-                          setRow(
-                            row.provider,
-                            row.campaignId,
-                            "monthly",
-                            e.target.value,
-                          )
-                        }
-                      />
-                    </td>
-                    <td className="border-l border-zinc-100 px-3 py-2 text-right align-middle tabular-nums text-zinc-800">
-                      {formatTry(row.avgDailySpend, plan.currency)}
-                      {plan.isCurrentMonth ? (
-                        <p className="mt-0.5 text-[10px] text-zinc-500">
-                          Bugün {formatTry(row.todaySpend, plan.currency)}
-                        </p>
-                      ) : null}
-                    </td>
-                    <td className="px-3 py-2 text-right align-middle font-medium tabular-nums text-zinc-800">
-                      {formatTry(row.monthSpend, plan.currency)}
-                    </td>
-                    <td
-                      className={`border-l border-zinc-100 px-3 py-2 text-right align-middle text-xs font-semibold tabular-nums ${paceTone(rowPace, plan.warnPct)}`}
-                    >
-                      {rowPace == null ? "—" : `%${rowPace}`}
-                    </td>
-                  </tr>
-                );
-              })}
+              {activeRows.length > 0 ? (
+                <GroupHeader
+                  label="Aktif · planlanan"
+                  count={activeRows.length}
+                />
+              ) : null}
+              {activeRows.map((row) => (
+                <PlannerRow
+                  key={`${row.provider}-${row.campaignId}`}
+                  row={row}
+                  plan={plan}
+                  muted={false}
+                  onChange={setRow}
+                  onRemove={removeManualCampaign}
+                />
+              ))}
+              {inactiveRows.length > 0 ? (
+                <GroupHeader
+                  label="Aktif değil"
+                  count={inactiveRows.length}
+                />
+              ) : null}
+              {inactiveRows.map((row) => (
+                <PlannerRow
+                  key={`${row.provider}-${row.campaignId}`}
+                  row={row}
+                  plan={plan}
+                  muted
+                  onChange={setRow}
+                  onRemove={removeManualCampaign}
+                />
+              ))}
             </tbody>
           </table>
         </div>
@@ -695,6 +597,156 @@ function PlannerForm({ plan }: { plan: BrandBudgetPlan }) {
       {error ? <p className="text-sm text-rose-600">{error}</p> : null}
       {message ? <p className="text-sm text-emerald-700">{message}</p> : null}
     </section>
+  );
+}
+
+function GroupHeader({ label, count }: { label: string; count: number }) {
+  return (
+    <tr className="bg-zinc-50">
+      <td
+        colSpan={9}
+        className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-zinc-500"
+      >
+        {label}
+        <span className="ml-1.5 font-medium normal-case tracking-normal text-zinc-400">
+          {count}
+        </span>
+      </td>
+    </tr>
+  );
+}
+
+function PlannerRow({
+  row,
+  plan,
+  muted,
+  onChange,
+  onRemove,
+}: {
+  row: DraftRow;
+  plan: BrandBudgetPlan;
+  muted: boolean;
+  onChange: (
+    provider: BudgetProvider,
+    campaignId: string,
+    field: "monthly" | "daily" | "label" | "audience" | "location",
+    value: string,
+  ) => void;
+  onRemove: (provider: BudgetProvider, campaignId: string) => void;
+}) {
+  const monthly = parseDraft(row.monthly);
+  const rowPace = budgetPacePct(row.monthSpend, monthly);
+  return (
+    <tr className={muted ? "bg-zinc-50/70 text-zinc-500" : undefined}>
+      <td className="min-w-[14rem] max-w-[20rem] px-3 py-2 align-middle">
+        <input
+          className={nameInputClass}
+          placeholder={row.campaignName}
+          disabled={!plan.canEdit}
+          value={row.label}
+          onChange={(e) =>
+            onChange(row.provider, row.campaignId, "label", e.target.value)
+          }
+        />
+        {isManualCampaignId(row.campaignId) ? (
+          <div className="mt-1 flex flex-wrap items-center gap-2">
+            <span className="rounded bg-zinc-100 px-1.5 py-0.5 text-[10px] font-semibold text-zinc-600">
+              Elle eklendi
+            </span>
+            {plan.canEdit ? (
+              <button
+                type="button"
+                onClick={() => onRemove(row.provider, row.campaignId)}
+                className="text-[10px] font-medium text-rose-600 hover:underline"
+              >
+                Kaldır
+              </button>
+            ) : null}
+          </div>
+        ) : row.label.trim() && row.label.trim() !== row.campaignName ? (
+          <p className="mt-0.5 truncate text-[10px] text-zinc-400">
+            API: {row.campaignName}
+          </p>
+        ) : (
+          <p className="mt-0.5 text-[10px] text-zinc-400">
+            Görünen adı özelleştir
+          </p>
+        )}
+      </td>
+      <td className="px-3 py-2 align-middle">
+        <span
+          className={`rounded-md px-1.5 py-0.5 text-[10px] font-semibold ${
+            row.provider === "meta"
+              ? "bg-blue-50 text-blue-800"
+              : "bg-emerald-50 text-emerald-800"
+          }`}
+        >
+          {row.provider === "meta" ? "Meta" : "Google"}
+        </span>
+      </td>
+      <td className="border-l border-zinc-100 px-3 py-2 align-middle">
+        <input
+          className={nameInputClass}
+          placeholder="ör. 25–34, kadın"
+          disabled={!plan.canEdit}
+          value={row.audience}
+          onChange={(e) =>
+            onChange(row.provider, row.campaignId, "audience", e.target.value)
+          }
+        />
+      </td>
+      <td className="px-3 py-2 align-middle">
+        <input
+          className={nameInputClass}
+          placeholder="ör. İstanbul, Ankara"
+          disabled={!plan.canEdit}
+          value={row.location}
+          onChange={(e) =>
+            onChange(row.provider, row.campaignId, "location", e.target.value)
+          }
+        />
+      </td>
+      <td className="border-l border-zinc-100 px-3 py-2 align-middle">
+        <input
+          className={inputClass}
+          inputMode="decimal"
+          placeholder="—"
+          disabled={!plan.canEdit}
+          value={row.daily}
+          onChange={(e) =>
+            onChange(row.provider, row.campaignId, "daily", e.target.value)
+          }
+        />
+      </td>
+      <td className="px-3 py-2 align-middle">
+        <input
+          className={inputClass}
+          inputMode="decimal"
+          placeholder="—"
+          disabled={!plan.canEdit}
+          value={row.monthly}
+          onChange={(e) =>
+            onChange(row.provider, row.campaignId, "monthly", e.target.value)
+          }
+        />
+      </td>
+      <td className="border-l border-zinc-100 px-3 py-2 text-right align-middle tabular-nums text-zinc-800">
+        {formatTry(row.avgDailySpend, plan.currency)}
+        {plan.isCurrentMonth ? (
+          <p className="mt-0.5 text-[10px] text-zinc-500">
+            Bugün {formatTry(row.todaySpend, plan.currency)}
+          </p>
+        ) : null}
+      </td>
+      <td className="px-3 py-2 text-right align-middle font-medium tabular-nums text-zinc-800">
+        {formatTry(row.monthSpend, plan.currency)}
+      </td>
+      <td
+        className={`border-l border-zinc-100 px-3 py-2 text-right align-middle text-xs font-semibold tabular-nums ${paceTone(rowPace, plan.warnPct)}`}
+      >
+        {rowPace == null ? "—" : `%${rowPace}`}
+      </td>
+    </tr>
   );
 }
 
