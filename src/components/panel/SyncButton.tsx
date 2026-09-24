@@ -45,7 +45,7 @@ function buildResult(
   tenantSlug?: string,
 ): SyncResultView {
   const label = provider === "meta" ? "Meta" : "Google";
-  const scope = tenantSlug ? `Firma: ${tenantSlug}` : "Tüm markalar";
+  const scope = tenantSlug ? `Firma: ${tenantSlug}` : "Tüm aktif markalar";
 
   if (!httpOk) {
     return {
@@ -592,12 +592,12 @@ export function BulkSyncToolbar() {
       <SyncButton
         provider="meta"
         appearance="meta"
-        caption="Tüm markalar"
+        caption="Tüm aktif markalar"
       />
       <SyncButton
         provider="google"
         appearance="google"
-        caption="Tüm markalar"
+        caption="Tüm aktif markalar"
       />
     </div>
   );

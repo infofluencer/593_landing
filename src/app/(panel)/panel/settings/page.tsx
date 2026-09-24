@@ -32,7 +32,7 @@ export default async function SettingsPage({
 
   const allTenants = await prisma.tenant.findMany({
     orderBy: { name: "asc" },
-    select: { slug: true, name: true },
+    select: { slug: true, name: true, visible: true },
   });
 
   return (
@@ -56,7 +56,18 @@ export default async function SettingsPage({
               className="flex items-center justify-between px-4 py-3 text-sm hover:bg-zinc-50"
             >
               <span className="font-medium text-zinc-900">{t.name}</span>
-              <span className="font-mono text-xs text-zinc-400">{t.slug}</span>
+              <span className="flex items-center gap-2">
+                <span
+                  className={`rounded-md px-1.5 py-0.5 text-[10px] font-semibold ${
+                    t.visible
+                      ? "bg-emerald-50 text-emerald-800"
+                      : "bg-zinc-100 text-zinc-600"
+                  }`}
+                >
+                  {t.visible ? "Aktif" : "Devre dışı"}
+                </span>
+                <span className="font-mono text-xs text-zinc-400">{t.slug}</span>
+              </span>
             </Link>
           </li>
         ))}

@@ -39,6 +39,18 @@ function normalizeKey(value: string): string {
     .replace(/^-|-$/g, "");
 }
 
+export function resolveBrandCover(opts: {
+  slug: string;
+  name?: string | null;
+  coverUrl?: string | null;
+}): { src: string; fit: "cover" | "contain" } | null {
+  const cover = opts.coverUrl?.trim();
+  if (cover) return { src: cover, fit: "cover" };
+  const logo = resolveBrandLogo(opts.slug, opts.name);
+  if (logo) return { src: logo, fit: "contain" };
+  return null;
+}
+
 export function resolveBrandLogo(
   slug: string,
   name?: string | null,

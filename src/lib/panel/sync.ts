@@ -103,6 +103,17 @@ async function ensureMetaConnection() {
  */
 export type SyncProvider = "meta" | "google";
 
+export async function missingOrInactiveTenantMessage(slug: string): Promise<string> {
+  const existing = await prisma.tenant.findUnique({
+    where: { slug },
+    select: { visible: true },
+  });
+  if (existing && !existing.visible) {
+    return `Marka devre dışı: ${slug}. Devre dışı firmalardan veri çekilmez.`;
+  }
+  return `Marka bulunamadı: ${slug} (slug değişmiş olabilir — sayfayı yenile).`;
+}
+
 export async function runAgencySync(opts?: {
   tenantSlug?: string;
   siteVerify?: boolean;
@@ -145,9 +156,7 @@ export async function runAgencySync(opts?: {
   });
 
   if (opts?.tenantSlug && tenants.length === 0) {
-    throw new Error(
-      `Marka bulunamadı: ${opts.tenantSlug} (slug değişmiş olabilir — sayfayı yenile).`,
-    );
+    throw new Error(await missingOrInactiveTenantMessage(opts.tenantSlug));
   }
 
   const envVerify = process.env.SITE_VERIFY_ON_SYNC === "true";

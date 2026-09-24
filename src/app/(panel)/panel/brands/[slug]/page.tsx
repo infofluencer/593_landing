@@ -3,6 +3,7 @@ import { headers } from "next/headers";
 import { notFound, redirect } from "next/navigation";
 import { auth } from "@/auth";
 import AlertActions from "@/components/panel/AlertActions";
+import BrandBudgetPlanner from "@/components/panel/BrandBudgetPlanner";
 import BrandDetailHeaderActions from "@/components/panel/BrandDetailHeaderActions";
 import BrandPanelLinkActions from "@/components/panel/BrandPanelLinkActions";
 import { StatusBadge } from "@/components/panel/StatusBadge";
@@ -12,12 +13,14 @@ import { PanelTable } from "@/components/panel/ui";
 import { prisma } from "@/lib/db";
 import {
   brandInitials,
-  resolveBrandLogo,
+  resolveBrandCover,
 } from "@/lib/panel/brand-logos";
+import { loadBrandBudgetPlan, tenantHasBudgetPlan } from "@/lib/panel/brand-budget";
 import { getBrandMissingIntegrations } from "@/lib/panel/brand-onboarding";
 import { getTenantBundle } from "@/lib/panel/data";
 import { formatDateTime, formatNumber, formatTry } from "@/lib/panel/format";
 import { isStaffRole, rootDomain } from "@/lib/panel/host";
+import { resolvePanelDateRange } from "@/lib/panel/period";
 import { loadTenantSettingsInitial } from "@/lib/panel/tenant-settings";
 import { useMockPanelData } from "@/lib/integrations/tokens";
 import type { MockSyncJob } from "@/lib/panel/mock-data";
@@ -161,9 +164,15 @@ function IconSync({ className }: { className?: string }) {
 
 type Props = {
   params: Promise<{ slug: string }>;
+  searchParams: Promise<{
+    month?: string;
+    period?: string;
+    start?: string;
+    end?: string;
+  }>;
 };
 
-export default async function BrandDetailPage({ params }: Props) {
+export default async function BrandDetailPage({ params, searchParams }: Props) {
   const session = await auth();
   if (!session?.user) redirect("/login");
   if (!isStaffRole(session.user.role)) {
@@ -203,28 +212,47 @@ export default async function BrandDetailPage({ params }: Props) {
     clientOk = count > 0;
   }
 
-  const missing = getBrandMissingIntegrations({
-    tenant: bundle.tenant,
-    clientOk,
-  });
   const isUnknown = bundle.health === "unknown";
-  const logo = resolveBrandLogo(bundle.tenant.slug, bundle.tenant.name);
+  const cover = resolveBrandCover({
+    slug: bundle.tenant.slug,
+    name: bundle.tenant.name,
+    coverUrl: bundle.tenant.coverUrl,
+  });
 
   const openAlerts = bundle.alerts.filter((a) => !a.resolved);
   const { thresholds, syncJobs } = bundle;
   const { initial: settingsInitial, existsInDb } =
     await loadTenantSettingsInitial(slug, bundle);
+  const range = await resolvePanelDateRange(await searchParams);
+  const [budgetOk, budgetPlan] = existsInDb
+    ? await Promise.all([
+        tenantHasBudgetPlan(bundle.tenant.id),
+        loadBrandBudgetPlan(slug, {
+          from: range.startDate,
+          to: range.endDate,
+        }),
+      ])
+    : ([true, null] as const);
+  const missing = getBrandMissingIntegrations({
+    tenant: bundle.tenant,
+    clientOk,
+    budgetOk,
+  });
 
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-start gap-4">
         <div className="size-24 shrink-0 overflow-hidden rounded-[1.1rem] border border-zinc-200 bg-[#f4f1ea] sm:size-28">
-          {logo ? (
+          {cover ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
-              src={logo}
+              src={cover.src}
               alt=""
-              className="h-full w-full object-contain p-3"
+              className={
+                cover.fit === "cover"
+                  ? "h-full w-full object-cover"
+                  : "h-full w-full object-contain p-3"
+              }
             />
           ) : (
             <div className="flex h-full w-full items-center justify-center text-2xl font-semibold text-zinc-400">
@@ -241,7 +269,13 @@ export default async function BrandDetailPage({ params }: Props) {
             {bundle.tenant.name}
           </h2>
           <div className="mt-2 flex flex-wrap items-center gap-2">
-            <StatusBadge status={bundle.health} />
+            {bundle.tenant.visible ? (
+              <StatusBadge status={bundle.health} />
+            ) : (
+              <span className="rounded-md border border-zinc-200 bg-zinc-100 px-2 py-1 text-[11px] font-semibold text-zinc-600">
+                Devre dışı
+              </span>
+            )}
             <span className="rounded-md bg-zinc-100 px-2 py-1 text-[11px] font-medium text-zinc-600">
               {bundle.tenant.type === "ecommerce" ? "E-ticaret" : "Lead"}
             </span>
@@ -258,8 +292,16 @@ export default async function BrandDetailPage({ params }: Props) {
           tenantSlug={bundle.tenant.slug}
           metaLastSynced={latestProviderSync(syncJobs, "meta")}
           googleLastSynced={latestProviderSync(syncJobs, "google")}
+          active={bundle.tenant.visible}
         />
       </div>
+
+      {!bundle.tenant.visible ? (
+        <p className="rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-600">
+          Bu marka devre dışı. Meta ve Google’dan yeni veri çekilmez. Ayarlardan
+          tekrar aktif edebilirsiniz.
+        </p>
+      ) : null}
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
         <div className="min-w-0 rounded-xl border border-zinc-200 bg-white px-4 py-3">
@@ -337,6 +379,8 @@ export default async function BrandDetailPage({ params }: Props) {
           </div>
         </div>
       </div>
+
+      <BrandBudgetPlanner plan={budgetPlan} existsInDb={existsInDb} />
 
       <section className="space-y-4 rounded-xl border border-zinc-200 bg-white p-4 sm:p-5">
         <div className="flex flex-wrap items-end justify-between gap-3">

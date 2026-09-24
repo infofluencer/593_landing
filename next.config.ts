@@ -47,7 +47,7 @@ const permanentRedirects: Array<{
 ];
 
 const nextConfig: NextConfig = {
-  serverExternalPackages: ["nodemailer"],
+  serverExternalPackages: ["nodemailer", "sharp"],
   async redirects() {
     return permanentRedirects.map((rule) => ({
       ...rule,

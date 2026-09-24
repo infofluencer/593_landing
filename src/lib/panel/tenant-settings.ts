@@ -48,6 +48,8 @@ export async function loadTenantSettingsInitial(
         website: db.website ?? "",
         timezone: db.timezone,
         currency: db.currency,
+        visible: db.visible,
+        coverUrl: db.coverUrl,
         mapping: {
           adsCustomerId: db.mapping?.adsCustomerId ?? "",
           ga4PropertyId: db.mapping?.ga4PropertyId ?? "",
@@ -79,6 +81,8 @@ export async function loadTenantSettingsInitial(
       website: bundle.tenant.website ?? "",
       timezone: bundle.tenant.timezone,
       currency: bundle.tenant.currency,
+      visible: bundle.tenant.visible,
+      coverUrl: bundle.tenant.coverUrl,
       mapping: {
         adsCustomerId: bundle.tenant.mapping.adsCustomerId ?? "",
         ga4PropertyId: bundle.tenant.mapping.ga4PropertyId ?? "",

@@ -3,6 +3,7 @@ import { headers } from "next/headers";
 import type { TenantType } from "@prisma/client";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/db";
+import { deleteBrandCoverFile } from "@/lib/panel/brand-cover";
 import { RESERVED_SLUGS } from "@/lib/panel/host";
 import { sanitizeMappingForDb } from "@/lib/panel/mapping-placeholders";
 
@@ -19,6 +20,7 @@ type PatchBody = {
   website?: string | null;
   timezone?: string;
   currency?: string;
+  visible?: boolean;
   mapping?: {
     adsCustomerId?: string | null;
     ga4PropertyId?: string | null;
@@ -155,6 +157,7 @@ export async function PATCH(request: Request) {
             : {}),
           ...(body.timezone ? { timezone: body.timezone } : {}),
           ...(body.currency ? { currency: body.currency } : {}),
+          ...(typeof body.visible === "boolean" ? { visible: body.visible } : {}),
         },
       });
 
@@ -302,6 +305,7 @@ export async function DELETE(request: Request) {
     ).map((m) => m.userId);
 
     await prisma.tenant.delete({ where: { id: tenant.id } });
+    await deleteBrandCoverFile(tenant.id);
 
     // Yalnızca bu markaya bağlı kalan client kullanıcıları temizle
     if (memberUserIds.length) {

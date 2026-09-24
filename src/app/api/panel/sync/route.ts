@@ -2,7 +2,11 @@ import { after } from "next/server";
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/db";
-import { runAgencySync, type SyncProvider } from "@/lib/panel/sync";
+import {
+  missingOrInactiveTenantMessage,
+  runAgencySync,
+  type SyncProvider,
+} from "@/lib/panel/sync";
 import { upsertSyncJob } from "@/lib/panel/sync-job";
 
 export const runtime = "nodejs";
@@ -65,11 +69,11 @@ export async function POST(request: Request) {
   });
 
   if (tenantSlug && tenants.length === 0) {
+    const message = await missingOrInactiveTenantMessage(tenantSlug);
+    const inactive = message.startsWith("Marka devre dışı");
     return NextResponse.json(
-      {
-        error: `Marka bulunamadı: ${tenantSlug} (slug değişmiş olabilir — sayfayı yenile).`,
-      },
-      { status: 404 },
+      { error: message },
+      { status: inactive ? 409 : 404 },
     );
   }
 

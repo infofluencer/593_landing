@@ -91,6 +91,8 @@ model Tenant {
   timezone      String     @default("Europe/Istanbul")
   currency      String     @default("TRY")
   visible       Boolean    @default(true)
+  /// Kare kapak — `/uploads/brands/{id}.webp`
+  coverUrl      String?
   createdAt     DateTime   @default(now())
   updatedAt     DateTime   @updatedAt
 
@@ -110,6 +112,63 @@ model Tenant {
   alerts          Alert[]
   syncJobs        SyncJob[]
   boardCards      BoardCard[]
+  budgets         TenantBudget[]
+  campaignBudgets CampaignBudget[]
+  campaignAliases CampaignAlias[]
+}
+
+/// Marka aylık / günlük plan (İstanbul takvim ayı). Kampanya satırları ayrı.
+model TenantBudget {
+  id            String   @id @default(cuid())
+  tenantId      String
+  /// YYYY-MM
+  month         String
+  monthlyBudget Decimal? @db.Decimal(14, 2)
+  dailyBudget   Decimal? @db.Decimal(14, 2)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, month])
+  @@index([tenantId])
+}
+
+/// API'den gelen kampanyaya özel günlük / aylık plan.
+model CampaignBudget {
+  id            String   @id @default(cuid())
+  tenantId      String
+  /// YYYY-MM
+  month         String
+  provider      Provider
+  campaignId    String
+  campaignName  String   @default("")
+  monthlyBudget Decimal? @db.Decimal(14, 2)
+  dailyBudget   Decimal? @db.Decimal(14, 2)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, month, provider, campaignId])
+  @@index([tenantId, month])
+}
+
+/// Kampanya görünen adı — API isminden bağımsız, tüm aylarda geçerli.
+model CampaignAlias {
+  id         String   @id @default(cuid())
+  tenantId   String
+  provider   Provider
+  campaignId String
+  label      String
+  sourceName String   @default("")
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, provider, campaignId])
+  @@index([tenantId])
 }
 
 model TenantThreshold {

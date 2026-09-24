@@ -102,7 +102,6 @@ export async function provisionTenantsFromMeta(): Promise<ProvisionResult> {
           currency: account.currency || existing?.currency || "TRY",
           timezone:
             account.timezone_name || existing?.timezone || "Europe/Istanbul",
-          visible: true,
         },
         create: {
           slug,

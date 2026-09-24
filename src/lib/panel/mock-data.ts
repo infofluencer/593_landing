@@ -17,6 +17,7 @@ export type MockTenant = {
   timezone: string;
   currency: string;
   visible: boolean;
+  coverUrl: string | null;
   mapping: {
     adsCustomerId: string | null;
     ga4PropertyId: string | null;
@@ -330,6 +331,7 @@ export const MOCK_TENANTS: MockTenantBundle[] = [
       timezone: "Europe/Istanbul",
       currency: "TRY",
       visible: true,
+      coverUrl: null,
       mapping: {
         adsCustomerId: "444-555-6666",
         ga4PropertyId: "properties/987654321",
@@ -659,6 +661,7 @@ export const MOCK_TENANTS: MockTenantBundle[] = [
       timezone: "Europe/Istanbul",
       currency: "TRY",
       visible: true,
+      coverUrl: null,
       mapping: {
         adsCustomerId: "111-222-3333",
         ga4PropertyId: "properties/123456789",
@@ -945,4 +948,21 @@ export function getMockBundleBySlug(slug: string): MockTenantBundle | undefined 
 
 export function listVisibleMockBundles(): MockTenantBundle[] {
   return MOCK_TENANTS.filter((t) => t.tenant.visible);
+}
+
+export function listMockBundlesByVisible(visible: boolean): MockTenantBundle[] {
+  return MOCK_TENANTS.filter((t) => t.tenant.visible === visible);
+}
+
+export function countMockBundlesByVisible(): {
+  active: number;
+  inactive: number;
+} {
+  let active = 0;
+  let inactive = 0;
+  for (const t of MOCK_TENANTS) {
+    if (t.tenant.visible) active += 1;
+    else inactive += 1;
+  }
+  return { active, inactive };
 }

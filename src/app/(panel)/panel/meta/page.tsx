@@ -4,10 +4,12 @@ import {
   CampaignBarChart,
   MetaDailyChart,
 } from "@/components/panel/charts";
+import BudgetPlanVsActual from "@/components/panel/BudgetPlanVsActual";
 import PeriodFilterBar from "@/components/panel/PeriodFilterBar";
 import { StatusBadge } from "@/components/panel/StatusBadge";
 import { KPICard, DataTable } from "@/components/panel/ds";
 import { Delta } from "@/components/panel/ui";
+import { loadBrandBudgetPlan } from "@/lib/panel/brand-budget";
 import { requireBundle } from "@/lib/panel/data";
 import { resolvePanelDateRange } from "@/lib/panel/period";
 import {
@@ -402,6 +404,10 @@ export default async function MetaPage({
     to: range.endDate,
   });
   const model = buildPresentation(bundle, range.label);
+  const budgetPlan = await loadBrandBudgetPlan(slug, {
+    from: range.startDate,
+    to: range.endDate,
+  });
   const ch = model.meta;
   const ecommerce = model.tenantType === "ecommerce";
   const metaAds = bundle.metaAds;
@@ -512,6 +518,10 @@ export default async function MetaPage({
       <Suspense fallback={null}>
         <PeriodFilterBar label={range.label} />
       </Suspense>
+
+      {budgetPlan ? (
+        <BudgetPlanVsActual plan={budgetPlan} provider="meta" />
+      ) : null}
 
       {ch.status === "unknown" ? (
         <div className="rounded-lg border border-zinc-200 bg-zinc-100 px-4 py-3 text-sm text-zinc-700">

@@ -3,7 +3,10 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { TenantType } from "@prisma/client";
+import BrandCoverUpload from "@/components/panel/BrandCoverUpload";
+import BrandVisibilityToggle from "@/components/panel/BrandVisibilityToggle";
 import { TenantSyncActions } from "@/components/panel/SyncButton";
+import { resolveBrandLogo } from "@/lib/panel/brand-logos";
 import {
   brandMapHintsFor,
   draftMetaAccountId,
@@ -18,6 +21,8 @@ export type TenantSettingsInitial = {
   website: string;
   timezone: string;
   currency: string;
+  visible: boolean;
+  coverUrl: string | null;
   mapping: {
     adsCustomerId: string;
     ga4PropertyId: string;
@@ -115,6 +120,7 @@ export default function TenantSettingsForm({
           website: form.website || null,
           timezone: form.timezone,
           currency: form.currency,
+          visible: form.visible,
           mapping: {
             adsCustomerId: form.mapping.adsCustomerId || null,
             ga4PropertyId: form.mapping.ga4PropertyId || null,
@@ -273,6 +279,13 @@ export default function TenantSettingsForm({
 
   return (
     <div className="space-y-8">
+      <BrandCoverUpload
+        tenantSlug={tenantSlug}
+        brandName={form.name}
+        coverUrl={form.coverUrl}
+        fallbackSrc={resolveBrandLogo(form.slug || tenantSlug, form.name)}
+        onChanged={(next) => setField("coverUrl", next)}
+      />
       <form onSubmit={onSubmit} className="space-y-8">
         <section className="space-y-4">
           <h3 className="text-sm font-semibold text-zinc-800">Kimlik</h3>
@@ -341,6 +354,12 @@ export default function TenantSettingsForm({
               />
             </Field>
           </div>
+          <BrandVisibilityToggle
+            tenantSlug={tenantSlug}
+            visible={form.visible}
+            variant="settings"
+            onChanged={(next) => setField("visible", next)}
+          />
         </section>
 
         <section className="space-y-4">
@@ -549,11 +568,20 @@ export default function TenantSettingsForm({
 
       <section className="space-y-3 border-t border-zinc-100 pt-8">
         <h3 className="text-sm font-semibold text-zinc-800">Veri çek</h3>
-        <p className="text-xs text-zinc-500">
-          Bu marka için Meta ve Google’ı ayrı ayrı yenileyin. Meta: kampanya +
-          kreatif (720 gün). Google: Ads / GA4 / GTM / GSC.
-        </p>
-        <TenantSyncActions tenantSlug={tenantSlug} />
+        {form.visible ? (
+          <>
+            <p className="text-xs text-zinc-500">
+              Bu marka için Meta ve Google’ı ayrı ayrı yenileyin. Meta: kampanya +
+              kreatif (720 gün). Google: Ads / GA4 / GTM / GSC.
+            </p>
+            <TenantSyncActions tenantSlug={tenantSlug} />
+          </>
+        ) : (
+          <p className="text-xs text-zinc-500">
+            Marka devre dışı — Meta / Google verisi çekilmez. Aktif etmek için
+            yukarıdaki durumdan değiştirin.
+          </p>
+        )}
       </section>
 
       <form

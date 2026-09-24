@@ -13,6 +13,8 @@ import {
   EMPTY_META_FUNNEL,
   EMPTY_META_VIDEO,
   getMockBundleBySlug,
+  countMockBundlesByVisible,
+  listMockBundlesByVisible,
   listVisibleMockBundles,
   type HealthStatus,
   type MockCampaignMetric,
@@ -542,6 +544,7 @@ async function bundleFromDb(
       timezone: tenant.timezone,
       currency: tenant.currency,
       visible: tenant.visible,
+      coverUrl: tenant.coverUrl,
       mapping: {
         adsCustomerId: tenant.mapping?.adsCustomerId ?? null,
         ga4PropertyId:
@@ -723,6 +726,122 @@ export async function getAgencyOverview(opts: {
     if (b) bundles.push(b);
   }
   return bundles;
+}
+
+export type AgencyBrandCard = {
+  slug: string;
+  name: string;
+  visible: boolean;
+  coverUrl: string | null;
+  health: HealthStatus | null;
+};
+
+async function filterSlugsForRole(
+  slugs: string[],
+  opts: { role: Role; tenantIds: string[]; hostSlug: string },
+): Promise<string[]> {
+  if (opts.role !== "client") return slugs;
+  const allowed = new Set<string>([opts.hostSlug]);
+  if (opts.tenantIds.length) {
+    const memberships = await prisma.tenant.findMany({
+      where: { id: { in: opts.tenantIds } },
+      select: { slug: true },
+    });
+    for (const m of memberships) allowed.add(m.slug);
+  }
+  return slugs.filter((s) => allowed.has(s));
+}
+
+/** Ajans marka kartları. Devre dışılarda metrik bundle yüklenmez. */
+export async function listAgencyBrands(opts: {
+  role: Role;
+  tenantIds: string[];
+  hostSlug: string;
+  visible: boolean;
+  range?: BundleRangeOpts;
+}): Promise<AgencyBrandCard[]> {
+  if (useMockPanelData()) {
+    const rows = listMockBundlesByVisible(opts.visible);
+    const slugs = await filterSlugsForRole(
+      rows.map((r) => r.tenant.slug),
+      opts,
+    );
+    const allowed = new Set(slugs);
+    return rows
+      .filter((r) => allowed.has(r.tenant.slug))
+      .map((r) => ({
+        slug: r.tenant.slug,
+        name: r.tenant.name,
+        visible: r.tenant.visible,
+        coverUrl: r.tenant.coverUrl,
+        health: opts.visible ? r.health : null,
+      }));
+  }
+
+  const dbTenants = await prisma.tenant.findMany({
+    where: { visible: opts.visible },
+    select: { slug: true, name: true, visible: true, coverUrl: true },
+    orderBy: { name: "asc" },
+  });
+  const slugs = await filterSlugsForRole(
+    dbTenants.map((t) => t.slug),
+    opts,
+  );
+  const allowed = new Set(slugs);
+  const tenants = dbTenants.filter((t) => allowed.has(t.slug));
+
+  if (!opts.visible) {
+    return tenants.map((t) => ({
+      slug: t.slug,
+      name: t.name,
+      visible: t.visible,
+      coverUrl: t.coverUrl,
+      health: null,
+    }));
+  }
+
+  const cards: AgencyBrandCard[] = [];
+  for (const t of tenants) {
+    const b = await getTenantBundle(t.slug, opts.range);
+    cards.push({
+      slug: t.slug,
+      name: t.name,
+      visible: t.visible,
+      coverUrl: t.coverUrl,
+      health: b?.health ?? "unknown",
+    });
+  }
+  return cards;
+}
+
+export async function countAgencyBrands(opts: {
+  role: Role;
+  tenantIds: string[];
+  hostSlug: string;
+}): Promise<{ active: number; inactive: number }> {
+  if (useMockPanelData()) {
+    const counts = countMockBundlesByVisible();
+    if (opts.role !== "client") return counts;
+    const [active, inactive] = await Promise.all([
+      listAgencyBrands({ ...opts, visible: true }),
+      listAgencyBrands({ ...opts, visible: false }),
+    ]);
+    return { active: active.length, inactive: inactive.length };
+  }
+
+  if (opts.role === "client") {
+    const [active, inactive] = await Promise.all([
+      listAgencyBrands({ ...opts, visible: true }),
+      listAgencyBrands({ ...opts, visible: false }),
+    ]);
+    return { active: active.length, inactive: inactive.length };
+  }
+
+  const [active, inactive] = await Promise.all([
+    prisma.tenant.count({ where: { visible: true } }),
+    prisma.tenant.count({ where: { visible: false } }),
+  ]);
+  return { active, inactive };
 }
 
 export function requireBundle(

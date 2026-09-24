@@ -7,25 +7,35 @@ export default function BrandDetailHeaderActions({
   tenantSlug,
   metaLastSynced,
   googleLastSynced,
+  active = true,
 }: {
   tenantSlug: string;
   metaLastSynced: string;
   googleLastSynced: string;
+  active?: boolean;
 }) {
   return (
     <div className="flex flex-wrap items-end justify-end gap-2.5 sm:gap-3">
-      <SyncButton
-        provider="meta"
-        tenantSlug={tenantSlug}
-        appearance="meta"
-        caption={metaLastSynced}
-      />
-      <SyncButton
-        provider="google"
-        tenantSlug={tenantSlug}
-        appearance="google"
-        caption={googleLastSynced}
-      />
+      {active ? (
+        <>
+          <SyncButton
+            provider="meta"
+            tenantSlug={tenantSlug}
+            appearance="meta"
+            caption={metaLastSynced}
+          />
+          <SyncButton
+            provider="google"
+            tenantSlug={tenantSlug}
+            appearance="google"
+            caption={googleLastSynced}
+          />
+        </>
+      ) : (
+        <p className="max-w-[14rem] text-right text-[11px] leading-snug text-zinc-500">
+          Devre dışı — veri çekilmez.
+        </p>
+      )}
       <div className="flex flex-col items-stretch gap-1">
         <p className="text-center text-[10px] leading-tight text-transparent select-none">
           .

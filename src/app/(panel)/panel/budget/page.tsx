@@ -1,9 +1,11 @@
 import { headers } from "next/headers";
 import { Suspense } from "react";
+import BudgetPlanVsActual from "@/components/panel/BudgetPlanVsActual";
 import PeriodFilterBar from "@/components/panel/PeriodFilterBar";
 import { StatusBadge } from "@/components/panel/StatusBadge";
 import { KPICard } from "@/components/panel/ds";
 import { PanelTable } from "@/components/panel/ui";
+import { loadBrandBudgetPlan } from "@/lib/panel/brand-budget";
 import { requireBundle } from "@/lib/panel/data";
 import { formatDate, formatTry } from "@/lib/panel/format";
 import { resolvePanelDateRange } from "@/lib/panel/period";
@@ -25,6 +27,10 @@ export default async function BudgetPage({
     bundle;
   const googleSpend = current.account.spend;
   const metaSpend = metaCurrent.account.spend;
+  const budgetPlan = await loadBrandBudgetPlan(slug, {
+    from: range.startDate,
+    to: range.endDate,
+  });
 
   // Harcama varsa göster — Meta/GTM hatası bütçeyi kilitlemez.
   const spent =
@@ -35,10 +41,11 @@ export default async function BudgetPage({
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h2 className="text-lg font-semibold tracking-tight">
-            Bütçe ve yayın temposu
+            Bütçe incelemesi
           </h2>
           <p className="mt-1 text-sm text-zinc-500">
-            Gerçekleşen harcama · kanal kırılımı
+            Planlanan bütçe ajans tarafından belirlenir · burada yalnızca
+            izlenir
           </p>
         </div>
         <StatusBadge status={spent === null ? "unknown" : health} />
@@ -55,51 +62,55 @@ export default async function BudgetPage({
         </div>
       ) : null}
 
-      {/* Tier 1 — dönem özeti */}
-      <div className="max-w-md">
-        <KPICard
-          tier={1}
-          metricKey="spend"
-          kind="money"
-          label="Gerçekleşen"
-          accent="var(--panel-accent)"
-          value={
-            spent === null ? null : formatTry(spent, tenant.currency)
-          }
-          hint={
-            spent !== null ? (
-              <span className="text-[11px] text-panel-fg-secondary">
-                {range.label}
-              </span>
-            ) : null
-          }
-          goodDirection="neutral"
-        />
-      </div>
+      {budgetPlan ? (
+        <BudgetPlanVsActual plan={budgetPlan} />
+      ) : (
+        <div className="max-w-md">
+          <KPICard
+            tier={1}
+            metricKey="spend"
+            kind="money"
+            label="Gerçekleşen"
+            accent="var(--panel-accent)"
+            value={
+              spent === null ? null : formatTry(spent, tenant.currency)
+            }
+            hint={
+              spent !== null ? (
+                <span className="text-[11px] text-panel-fg-secondary">
+                  {range.label}
+                </span>
+              ) : null
+            }
+            goodDirection="neutral"
+          />
+        </div>
+      )}
 
       {spent !== null ? (
         <>
-          {/* Tier 2 — kanal kırılımı */}
-          <div className="grid gap-3 sm:grid-cols-2">
-            <KPICard
-              tier={2}
-              metricKey="spend"
-              kind="money"
-              label="Google Ads"
-              accent="var(--panel-google-blue)"
-              value={formatTry(googleSpend, tenant.currency)}
-              goodDirection="neutral"
-            />
-            <KPICard
-              tier={2}
-              metricKey="spend"
-              kind="money"
-              label="Meta Ads"
-              accent="var(--panel-meta)"
-              value={formatTry(metaSpend, tenant.currency)}
-              goodDirection="neutral"
-            />
-          </div>
+          {!budgetPlan ? (
+            <div className="grid gap-3 sm:grid-cols-2">
+              <KPICard
+                tier={2}
+                metricKey="spend"
+                kind="money"
+                label="Google Ads"
+                accent="var(--panel-google-blue)"
+                value={formatTry(googleSpend, tenant.currency)}
+                goodDirection="neutral"
+              />
+              <KPICard
+                tier={2}
+                metricKey="spend"
+                kind="money"
+                label="Meta Ads"
+                accent="var(--panel-meta)"
+                value={formatTry(metaSpend, tenant.currency)}
+                goodDirection="neutral"
+              />
+            </div>
+          ) : null}
 
           <div>
             <div className="mb-2 flex flex-wrap items-end justify-between gap-2">

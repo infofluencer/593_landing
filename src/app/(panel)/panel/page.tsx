@@ -2,8 +2,10 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { Suspense } from "react";
 import { auth } from "@/auth";
+import BudgetPlanVsActual from "@/components/panel/BudgetPlanVsActual";
 import PresentationDashboard from "@/components/panel/PresentationDashboard";
 import { DateRangePicker } from "@/components/panel/ds";
+import { loadBrandBudgetPlan } from "@/lib/panel/brand-budget";
 import { requireBundle } from "@/lib/panel/data";
 import { resolvePanelDateRange } from "@/lib/panel/period";
 import { buildPresentation } from "@/lib/panel/presentation";
@@ -31,6 +33,10 @@ export default async function PanelHomePage({
     to: range.endDate,
   });
   const model = buildPresentation(bundle, range.label);
+  const budgetPlan = await loadBrandBudgetPlan(hostSlug, {
+    from: range.startDate,
+    to: range.endDate,
+  });
 
   return (
     <div className="space-y-6">
@@ -42,6 +48,10 @@ export default async function PanelHomePage({
       <Suspense fallback={null}>
         <DateRangePicker label={range.label} showCompare={false} />
       </Suspense>
+
+      {budgetPlan ? (
+        <BudgetPlanVsActual plan={budgetPlan} variant="compact" />
+      ) : null}
 
       <PresentationDashboard model={model} />
     </div>

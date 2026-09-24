@@ -5,6 +5,7 @@ import { resolveMetaAccountId } from "@/lib/panel/meta-ad-account-map";
 export function getBrandMissingIntegrations(opts: {
   tenant: MockTenant;
   clientOk: boolean;
+  budgetOk?: boolean;
 }): string[] {
   const { tenant, clientOk } = opts;
   const adsOk = Boolean(
@@ -32,5 +33,6 @@ export function getBrandMissingIntegrations(opts: {
   if (!gtmOk) missing.push("GTM");
   if (!gscOk) missing.push("GSC");
   if (!clientOk) missing.push("müşteri");
+  if (opts.budgetOk === false) missing.push("bütçe");
   return missing;
 }

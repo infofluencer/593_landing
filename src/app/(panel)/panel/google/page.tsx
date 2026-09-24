@@ -1,10 +1,12 @@
 import { headers } from "next/headers";
 import { Suspense, type ReactNode } from "react";
+import BudgetPlanVsActual from "@/components/panel/BudgetPlanVsActual";
 import { ChannelCard } from "@/components/panel/ChannelCard";
 import { CampaignBarChart } from "@/components/panel/charts";
 import PeriodFilterBar from "@/components/panel/PeriodFilterBar";
 import { StatusBadge } from "@/components/panel/StatusBadge";
 import { Delta, PanelStat, PanelTable } from "@/components/panel/ui";
+import { loadBrandBudgetPlan } from "@/lib/panel/brand-budget";
 import {
   fetchAdsAdGroups,
   fetchAdsCampaignLostShare,
@@ -162,6 +164,10 @@ export default async function GooglePage({
     to: range.endDate,
   });
   const model = buildPresentation(bundle, range.label);
+  const budgetPlan = await loadBrandBudgetPlan(slug, {
+    from: range.startDate,
+    to: range.endDate,
+  });
   const ch = model.google;
   const ecommerce = model.tenantType === "ecommerce";
   const { current, previous } = bundle;
@@ -211,6 +217,10 @@ export default async function GooglePage({
       <Suspense fallback={null}>
         <PeriodFilterBar label={range.label} />
       </Suspense>
+
+      {budgetPlan ? (
+        <BudgetPlanVsActual plan={budgetPlan} provider="google" />
+      ) : null}
 
       <ChannelCard channel={ch} currency={model.currency} />
 

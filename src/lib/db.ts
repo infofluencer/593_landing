@@ -6,9 +6,17 @@ import {
   type TenantType,
 } from "@prisma/client";
 
+const PRISMA_GEN = 3;
+
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;
+  prismaGen: number | undefined;
 };
+
+if (globalForPrisma.prismaGen !== PRISMA_GEN) {
+  globalForPrisma.prisma = undefined;
+  globalForPrisma.prismaGen = PRISMA_GEN;
+}
 
 export const prisma =
   globalForPrisma.prisma ??

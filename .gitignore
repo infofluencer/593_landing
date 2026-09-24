@@ -17,6 +17,10 @@
 /.next/
 /out/
 
+# uploaded brand covers
+/public/uploads/brands/*
+!/public/uploads/brands/.gitkeep
+
 # production
 /build
 

@@ -44,10 +44,12 @@ export function BudgetBar({
   return (
     <section className="rounded-panel-lg border border-panel-border bg-panel-surface p-6 shadow-panel">
       <header className="mb-5">
-        <h3 className="text-sm font-semibold text-panel-fg">Bütçe temposu</h3>
+        <h3 className="text-sm font-semibold text-panel-fg">
+          Planlanan ve gerçekleşen
+        </h3>
         <p className="mt-0.5 text-xs text-panel-fg-secondary">
           Gerçekleşen harcama
-          {hasTarget ? " · hedef" : ""}
+          {hasTarget ? " · planlanan bütçe" : ""}
         </p>
       </header>
 
@@ -63,7 +65,7 @@ export function BudgetBar({
               value={formatTry(realized!, currency)}
             />
             <Stat
-              label="Hedef"
+              label="Planlanan"
               value={hasTarget ? formatTry(target!, currency) : "—"}
               muted={!hasTarget}
               extra={
@@ -86,7 +88,7 @@ export function BudgetBar({
               <div
                 className="absolute top-0 bottom-0 w-0.5 bg-panel-accent"
                 style={{ left: `${targetPct}%` }}
-                title="Hedef"
+                title="Planlanan"
               />
             ) : null}
           </div>
@@ -98,7 +100,7 @@ export function BudgetBar({
             {hasTarget ? (
               <span className="inline-flex items-center gap-1.5">
                 <span className="h-2 w-0.5 bg-panel-accent" />
-                Hedef
+                Planlanan
               </span>
             ) : null}
           </div>

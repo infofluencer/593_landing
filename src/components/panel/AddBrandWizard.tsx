@@ -28,6 +28,8 @@ type FormState = {
   clientEmail: string;
   clientPassword: string;
   clientName: string;
+  monthlyBudget: string;
+  dailyBudget: string;
 };
 
 const STEPS = [
@@ -36,6 +38,7 @@ const STEPS = [
   "Google",
   "Müşteri",
   "Veri çek",
+  "Bütçe",
 ] as const;
 
 const empty: FormState = {
@@ -54,6 +57,8 @@ const empty: FormState = {
   clientEmail: "",
   clientPassword: "",
   clientName: "",
+  monthlyBudget: "",
+  dailyBudget: "",
 };
 
 function slugifyDraft(name: string): string {
@@ -256,12 +261,65 @@ export default function AddBrandWizard() {
       if (!ok) return;
       setStep(4);
       router.refresh();
+      return;
+    }
+    if (step === 4) {
+      setStep(5);
     }
   }
 
   function onBack() {
     setError(null);
-    if (step > 0 && step < 4) setStep(step - 1);
+    if (step > 0) setStep(step - 1);
+  }
+
+  function currentIstanbulMonth(): string {
+    return new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Europe/Istanbul",
+      year: "numeric",
+      month: "2-digit",
+    }).format(new Date());
+  }
+
+  async function saveWizardBudget(slug: string): Promise<boolean> {
+    if (!form.monthlyBudget.trim() && !form.dailyBudget.trim()) return true;
+    setPending(true);
+    setError(null);
+    try {
+      const res = await fetch(
+        `/api/panel/tenants/${encodeURIComponent(slug)}/budget`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            month: currentIstanbulMonth(),
+            monthlyBudget: form.monthlyBudget,
+            dailyBudget: form.dailyBudget,
+            campaigns: [],
+          }),
+        },
+      );
+      const json = (await res.json()) as { error?: string };
+      if (!res.ok) {
+        setError(json.error || "Bütçe kaydedilemedi");
+        return false;
+      }
+      return true;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Network error");
+      return false;
+    } finally {
+      setPending(false);
+    }
+  }
+
+  async function onFinish() {
+    if (createdSlug) {
+      const ok = await saveWizardBudget(createdSlug);
+      if (!ok) return;
+    }
+    close();
+    router.refresh();
   }
 
   function fillFromMap(field: "meta" | "ads" | "ga4" | "gtm") {
@@ -588,6 +646,43 @@ export default function AddBrandWizard() {
                 </>
               ) : null}
 
+              {step === 5 ? (
+                <>
+                  <p className="text-xs text-zinc-500">
+                    Bu ay için planlanan bütçe. Kampanya satırları sync sonrası
+                    marka detayından girilir. Atlamak için boş bırakın.
+                  </p>
+                  <Field label="Marka aylık bütçe">
+                    <input
+                      className={inputClass}
+                      inputMode="decimal"
+                      placeholder="ör. 120000"
+                      value={form.monthlyBudget}
+                      onChange={(e) =>
+                        setField("monthlyBudget", e.target.value)
+                      }
+                    />
+                  </Field>
+                  <Field label="Marka günlük bütçe">
+                    <input
+                      className={inputClass}
+                      inputMode="decimal"
+                      placeholder="ör. 4000"
+                      value={form.dailyBudget}
+                      onChange={(e) => setField("dailyBudget", e.target.value)}
+                    />
+                  </Field>
+                  {createdSlug ? (
+                    <a
+                      href={`/brands/${encodeURIComponent(createdSlug)}#butce`}
+                      className="inline-block text-xs font-medium text-[#e91825] hover:underline"
+                    >
+                      Kampanya bütçeleri için marka detayı →
+                    </a>
+                  ) : null}
+                </>
+              ) : null}
+
               {step === 4 && createdSlug ? (
                 <div className="space-y-3">
                   <p className="text-sm text-zinc-700">
@@ -609,7 +704,7 @@ export default function AddBrandWizard() {
                       </strong>{" "}
                       — Ads / GA4 / GTM / GSC
                     </li>
-                    <li>Marka subdomain’den müşteri girişini deneyin</li>
+                    <li>Sonra bu ayın planlanan bütçesini yazın</li>
                   </ol>
                   <TenantSyncActions tenantSlug={createdSlug} />
                   <a
@@ -631,13 +726,13 @@ export default function AddBrandWizard() {
             <div className="mt-6 flex flex-wrap items-center justify-between gap-2">
               <button
                 type="button"
-                onClick={step === 4 ? close : onBack}
+                onClick={onBack}
                 disabled={pending || step === 0}
                 className="rounded-md border border-zinc-200 px-3 py-1.5 text-sm text-zinc-600 hover:bg-zinc-50 disabled:opacity-40"
               >
-                {step === 4 ? "Listeye dön" : "Geri"}
+                Geri
               </button>
-              {step < 4 ? (
+              {step < 5 ? (
                 <button
                   type="button"
                   onClick={onNext}
@@ -653,10 +748,11 @@ export default function AddBrandWizard() {
               ) : (
                 <button
                   type="button"
-                  onClick={close}
-                  className="rounded-md bg-zinc-900 px-3.5 py-1.5 text-sm font-medium text-white hover:bg-zinc-800"
+                  onClick={onFinish}
+                  disabled={pending}
+                  className="rounded-md bg-zinc-900 px-3.5 py-1.5 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-50"
                 >
-                  Tamam
+                  {pending ? "Kaydediliyor…" : "Tamam"}
                 </button>
               )}
             </div>
