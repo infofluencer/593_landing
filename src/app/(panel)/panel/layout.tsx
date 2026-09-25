@@ -44,6 +44,9 @@ function staffPageTitle(browserPath: string): string {
   if (browserPath === "/design" || browserPath.startsWith("/design/")) {
     return "Tasarım sistemi";
   }
+  if (browserPath === "/brands/sync" || browserPath.startsWith("/brands/sync/")) {
+    return "Veri çekimi";
+  }
   if (browserPath.startsWith("/brands/")) {
     return "Marka detayı";
   }

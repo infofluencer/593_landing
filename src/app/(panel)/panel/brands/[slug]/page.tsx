@@ -449,7 +449,10 @@ export default async function BrandDetailPage({ params, searchParams }: Props) {
             SyncJob durumu
           </h3>
           <p className="mt-1 text-xs text-zinc-500">
-            Son başarılı güncelleme · hata (0 sonuç yazılmaz)
+            Son başarılı güncelleme · hata (0 sonuç yazılmaz) ·{" "}
+            <Link href="/brands/sync" className="text-[#e91825] hover:underline">
+              Tüm markalar
+            </Link>
           </p>
         </div>
 

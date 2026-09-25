@@ -71,6 +71,12 @@ export default async function BrandsPage({
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap gap-1.5">
           <Link
+            href="/brands/sync"
+            className="rounded-md border border-zinc-200 bg-white px-2.5 py-1 text-xs font-medium text-zinc-600 transition hover:border-zinc-300 hover:text-zinc-900"
+          >
+            Veri çekimi
+          </Link>
+          <Link
             href="/brands"
             className={`rounded-md border px-2.5 py-1 text-xs font-medium transition ${
               !showInactive
