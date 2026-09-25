@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, useTransition } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { brandInitials } from "@/lib/panel/brand-logos";
 
@@ -21,52 +21,90 @@ export default function BrandCoverUpload({
 }) {
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
-  const [pending, startTransition] = useTransition();
+  const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const preview = coverUrl || fallbackSrc || null;
+  const [localCover, setLocalCover] = useState(coverUrl ?? null);
+  const [objectPreview, setObjectPreview] = useState<string | null>(null);
+
+  useEffect(() => {
+    setLocalCover(coverUrl ?? null);
+  }, [coverUrl]);
+
+  useEffect(() => {
+    return () => {
+      if (objectPreview) URL.revokeObjectURL(objectPreview);
+    };
+  }, [objectPreview]);
+
+  const preview = objectPreview || localCover || fallbackSrc || null;
+
+  async function readJson(res: Response): Promise<{
+    error?: string;
+    coverUrl?: string | null;
+  }> {
+    const text = await res.text();
+    if (!text) return {};
+    try {
+      return JSON.parse(text) as { error?: string; coverUrl?: string | null };
+    } catch {
+      return { error: res.ok ? undefined : "Yüklenemedi" };
+    }
+  }
 
   async function upload(file: File) {
     setError(null);
-    const body = new FormData();
-    body.set("file", file);
+    setBusy(true);
+    const objectUrl = URL.createObjectURL(file);
+    setObjectPreview((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return objectUrl;
+    });
     try {
+      const body = new FormData();
+      body.set("file", file);
       const res = await fetch(
         `/api/panel/tenants/${encodeURIComponent(tenantSlug)}/cover`,
         { method: "POST", body },
       );
-      const json = (await res.json()) as { error?: string; coverUrl?: string | null };
+      const json = await readJson(res);
       if (!res.ok) {
         setError(json.error || "Yüklenemedi");
         return;
       }
-      onChanged?.(json.coverUrl ?? null);
-      startTransition(() => {
-        router.refresh();
-      });
+      const next = json.coverUrl ?? null;
+      setLocalCover(next);
+      onChanged?.(next);
+      router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Network error");
+    } finally {
+      setBusy(false);
+      URL.revokeObjectURL(objectUrl);
+      setObjectPreview(null);
     }
   }
 
   async function removeCover() {
-    if (!coverUrl || pending) return;
+    if (!localCover || busy) return;
     setError(null);
+    setBusy(true);
     try {
       const res = await fetch(
         `/api/panel/tenants/${encodeURIComponent(tenantSlug)}/cover`,
         { method: "DELETE" },
       );
-      const json = (await res.json()) as { error?: string };
+      const json = await readJson(res);
       if (!res.ok) {
         setError(json.error || "Silinemedi");
         return;
       }
+      setLocalCover(null);
       onChanged?.(null);
-      startTransition(() => {
-        router.refresh();
-      });
+      router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Network error");
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -74,9 +112,9 @@ export default function BrandCoverUpload({
     <input
       ref={inputRef}
       type="file"
-      accept="image/jpeg,image/png,image/webp,image/gif"
+      accept="image/jpeg,image/png,image/webp,image/gif,image/*"
       className="sr-only"
-      disabled={pending}
+      disabled={busy}
       onChange={(e) => {
         const file = e.target.files?.[0];
         e.target.value = "";
@@ -91,11 +129,11 @@ export default function BrandCoverUpload({
         {fileInput}
         <button
           type="button"
-          disabled={pending}
+          disabled={busy}
           onClick={() => inputRef.current?.click()}
           className="rounded-md border border-zinc-200 bg-white px-2 py-1 text-[10px] font-medium text-zinc-600 transition hover:border-zinc-300 hover:text-zinc-900 disabled:opacity-60"
         >
-          {pending ? "Yükleniyor…" : coverUrl ? "Kapağı değiştir" : "Kapak ekle"}
+          {busy ? "Yükleniyor…" : localCover ? "Kapağı değiştir" : "Kapak ekle"}
         </button>
         {error ? <p className="text-[10px] text-red-600">{error}</p> : null}
       </div>
@@ -119,7 +157,7 @@ export default function BrandCoverUpload({
               src={preview}
               alt=""
               className={
-                coverUrl
+                localCover || objectPreview
                   ? "h-full w-full object-cover"
                   : "h-full w-full object-contain p-3"
               }
@@ -134,16 +172,20 @@ export default function BrandCoverUpload({
           {fileInput}
           <button
             type="button"
-            disabled={pending}
+            disabled={busy}
             onClick={() => inputRef.current?.click()}
             className="rounded-md border border-zinc-200 bg-white px-3 py-1.5 text-xs font-medium text-zinc-800 hover:bg-zinc-50 disabled:opacity-50"
           >
-            {pending ? "Yükleniyor…" : coverUrl ? "Fotoğrafı değiştir" : "Fotoğraf seç"}
+            {busy
+              ? "Yükleniyor…"
+              : localCover
+                ? "Fotoğrafı değiştir"
+                : "Fotoğraf seç"}
           </button>
-          {coverUrl ? (
+          {localCover ? (
             <button
               type="button"
-              disabled={pending}
+              disabled={busy}
               onClick={() => void removeCover()}
               className="rounded-md px-3 py-1.5 text-xs font-medium text-zinc-500 hover:text-zinc-800 disabled:opacity-50"
             >

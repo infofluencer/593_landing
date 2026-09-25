@@ -752,7 +752,7 @@ async function filterSlugsForRole(
   return slugs.filter((s) => allowed.has(s));
 }
 
-/** Ajans marka kartları. Devre dışılarda metrik bundle yüklenmez. */
+/** Ajans marka kartları. Sağlık sync job + açık alert’ten gelir; metrik bundle yüklenmez. */
 export async function listAgencyBrands(opts: {
   role: Role;
   tenantIds: string[];
@@ -780,7 +780,19 @@ export async function listAgencyBrands(opts: {
 
   const dbTenants = await prisma.tenant.findMany({
     where: { visible: opts.visible },
-    select: { slug: true, name: true, visible: true, coverUrl: true },
+    select: {
+      slug: true,
+      name: true,
+      visible: true,
+      coverUrl: true,
+      syncJobs: {
+        select: { service: true, status: true, error: true },
+      },
+      alerts: {
+        where: { resolved: false },
+        select: { severity: true },
+      },
+    },
     orderBy: { name: "asc" },
   });
   const slugs = await filterSlugsForRole(
@@ -790,28 +802,13 @@ export async function listAgencyBrands(opts: {
   const allowed = new Set(slugs);
   const tenants = dbTenants.filter((t) => allowed.has(t.slug));
 
-  if (!opts.visible) {
-    return tenants.map((t) => ({
-      slug: t.slug,
-      name: t.name,
-      visible: t.visible,
-      coverUrl: t.coverUrl,
-      health: null,
-    }));
-  }
-
-  const cards: AgencyBrandCard[] = [];
-  for (const t of tenants) {
-    const b = await getTenantBundle(t.slug, opts.range);
-    cards.push({
-      slug: t.slug,
-      name: t.name,
-      visible: t.visible,
-      coverUrl: t.coverUrl,
-      health: b?.health ?? "unknown",
-    });
-  }
-  return cards;
+  return tenants.map((t) => ({
+    slug: t.slug,
+    name: t.name,
+    visible: t.visible,
+    coverUrl: t.coverUrl,
+    health: opts.visible ? healthFromJobs(t.syncJobs, t.alerts) : null,
+  }));
 }
 
 export async function countAgencyBrands(opts: {

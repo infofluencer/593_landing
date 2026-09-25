@@ -20,6 +20,8 @@
 # uploaded brand covers
 /public/uploads/brands/*
 !/public/uploads/brands/.gitkeep
+/uploads/brands/*
+!/uploads/brands/.gitkeep
 
 # production
 /build

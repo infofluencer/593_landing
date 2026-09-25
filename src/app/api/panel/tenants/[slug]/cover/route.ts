@@ -9,6 +9,18 @@ import {
 } from "@/lib/panel/brand-cover";
 
 export const runtime = "nodejs";
+export const maxDuration = 60;
+
+function isUploadBlob(
+  value: FormDataEntryValue | null,
+): value is File {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as File).arrayBuffer === "function" &&
+    typeof (value as File).size === "number"
+  );
+}
 
 async function requireStaffTenant(slug: string) {
   const session = await auth();
@@ -46,7 +58,7 @@ export async function POST(
   }
 
   const file = form.get("file");
-  if (!(file instanceof File) || file.size === 0) {
+  if (!isUploadBlob(file) || file.size === 0) {
     return NextResponse.json({ error: "Fotoğraf seçin" }, { status: 400 });
   }
   if (file.size > BRAND_COVER_MAX_BYTES) {

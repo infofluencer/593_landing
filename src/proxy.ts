@@ -13,6 +13,7 @@ const PANEL_PREFIX = "/panel";
 function shouldBypass(pathname: string): boolean {
   return (
     pathname.startsWith("/api/") ||
+    pathname.startsWith("/uploads/") ||
     pathname.startsWith("/_next/") ||
     pathname.startsWith("/login") ||
     pathname.includes(".")
@@ -67,6 +68,17 @@ function rewriteToPanel(request: NextRequest, requestHeaders: Headers) {
 }
 
 export function proxy(request: NextRequest) {
+  const pathname = request.nextUrl.pathname;
+  // Don't clone multipart cover uploads — Next 16 proxy buffers the body
+  // and the request can hang or arrive truncated.
+  if (
+    request.method !== "GET" &&
+    pathname.includes("/api/panel/tenants/") &&
+    pathname.endsWith("/cover")
+  ) {
+    return NextResponse.next();
+  }
+
   const host = resolvePanelHost(request.headers.get("host"));
   const requestHeaders = new Headers(request.headers);
   applyForwardHeaders(request, requestHeaders, host);
@@ -82,7 +94,7 @@ export function proxy(request: NextRequest) {
 
 export const config = {
   matcher: [
-    "/((?!_next/static|_next/image|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
+    "/((?!_next/static|_next/image|api/panel/tenants/.+/cover|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
   ],
 };
 

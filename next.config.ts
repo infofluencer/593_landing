@@ -48,6 +48,10 @@ const permanentRedirects: Array<{
 
 const nextConfig: NextConfig = {
   serverExternalPackages: ["nodemailer", "sharp"],
+  // Cover uploads are 8 MB; proxy default can truncate/hang the body.
+  experimental: {
+    proxyClientMaxBodySize: "12mb",
+  },
   async redirects() {
     return permanentRedirects.map((rule) => ({
       ...rule,
