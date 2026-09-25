@@ -502,11 +502,11 @@ export default function SyncButton({
   const branded = appearance === "meta" || appearance === "google";
   const buttonClass = branded
     ? appearance === "meta"
-      ? "inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-[#1877F2] px-3.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#166fe5] disabled:opacity-60"
-      : "inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-zinc-200 bg-white px-3.5 text-sm font-semibold text-zinc-800 shadow-sm transition hover:bg-zinc-50 disabled:opacity-60"
+      ? "inline-flex h-11 cursor-pointer items-center justify-center gap-2 rounded-xl bg-[#1877F2] px-3.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#166fe5] disabled:cursor-not-allowed disabled:opacity-60"
+      : "inline-flex h-11 cursor-pointer items-center justify-center gap-2 rounded-xl border border-zinc-200 bg-white px-3.5 text-sm font-semibold text-zinc-800 shadow-sm transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-60"
     : compact
-      ? "rounded border border-zinc-200 bg-white px-2 py-1 text-[11px] font-medium text-zinc-700 transition hover:bg-zinc-50 disabled:opacity-50"
-      : "rounded-md border border-zinc-200 bg-white px-3 py-1.5 text-xs font-medium text-zinc-800 transition hover:bg-zinc-50 disabled:opacity-50";
+      ? "cursor-pointer rounded border border-zinc-200 bg-white px-2 py-1 text-[11px] font-medium text-zinc-700 transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50"
+      : "cursor-pointer rounded-md border border-zinc-200 bg-white px-3 py-1.5 text-xs font-medium text-zinc-800 transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50";
 
   return (
     <>

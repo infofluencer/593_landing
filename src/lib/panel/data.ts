@@ -793,7 +793,7 @@ export async function listAgencyBrands(opts: {
         select: { severity: true },
       },
     },
-    orderBy: { name: "asc" },
+    orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
   });
   const slugs = await filterSlugsForRole(
     dbTenants.map((t) => t.slug),

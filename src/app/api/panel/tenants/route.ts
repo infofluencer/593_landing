@@ -94,6 +94,9 @@ export async function POST(request: Request) {
   }
 
   const m = sanitizeMappingForDb(body.mapping ?? {});
+  const maxOrder = await prisma.tenant.aggregate({
+    _max: { sortOrder: true },
+  });
 
   try {
     const tenant = await prisma.tenant.create({
@@ -106,6 +109,7 @@ export async function POST(request: Request) {
         timezone: body.timezone?.trim() || "Europe/Istanbul",
         currency: body.currency?.trim() || "TRY",
         visible: true,
+        sortOrder: (maxOrder._max.sortOrder ?? -1) + 1,
         mapping: {
           create: {
             adsCustomerId: m.adsCustomerId ?? null,

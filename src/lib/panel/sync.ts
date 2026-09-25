@@ -26,6 +26,7 @@ import {
   getMetaSystemUserToken,
 } from "@/lib/integrations/tokens";
 import { evaluateTenantAlerts } from "@/lib/panel/alerts-engine";
+import { hasBrandLogo } from "@/lib/panel/brand-logos";
 import { resolveAdsCustomerId, adsCustomerIdFromCodeMap } from "@/lib/panel/google-ads-customer-map";
 import {
   metaAccountIdFromCodeMap,
@@ -38,7 +39,11 @@ import {
 } from "@/lib/panel/mapping-placeholders";
 import { resolveGa4PropertyId } from "@/lib/panel/ga4-property-map";
 import { resolveGtmApiRef } from "@/lib/panel/gtm-container-map";
-import { syncAdLevelLookbackRange, syncLookbackRange } from "@/lib/panel/period";
+import {
+  syncAdLevelLookbackRange,
+  syncDailyLookbackRange,
+  syncLookbackRange,
+} from "@/lib/panel/period";
 import { runSynced } from "@/lib/panel/sync-job";
 import { verifyTenantSite } from "@/lib/panel/verify-tenant-site";
 import { classifyConversion } from "@/lib/panel/classify-conversion";
@@ -103,6 +108,9 @@ async function ensureMetaConnection() {
  */
 export type SyncProvider = "meta" | "google";
 
+/** full = 720g + kreatif/fatura/GA4; daily = son 3 gün kampanya metrikleri. */
+export type SyncMode = "full" | "daily";
+
 export async function missingOrInactiveTenantMessage(slug: string): Promise<string> {
   const existing = await prisma.tenant.findUnique({
     where: { slug },
@@ -118,27 +126,32 @@ export async function runAgencySync(opts?: {
   tenantSlug?: string;
   siteVerify?: boolean;
   providers?: SyncProvider[];
+  mode?: SyncMode;
+  logoOnly?: boolean;
 }): Promise<SyncSummary> {
   const providers = new Set<SyncProvider>(
     opts?.providers?.length ? opts.providers : ["meta", "google"],
   );
   const doMeta = providers.has("meta");
   const doGoogle = providers.has("google");
+  const isDaily = opts?.mode === "daily";
 
   if (doGoogle) await ensureGoogleConnection();
   if (doMeta) await ensureMetaConnection();
 
-  // Tek marka sync’te tüm BM’yi yeniden taramaya gerek yok — sadece o firmanın insights’ı.
-  // Ajans geneli Meta sync’te tenant listesini taze tutmak için provision çalışır.
+  // Tek marka / günlük sync’te tüm BM’yi yeniden taramaya gerek yok.
+  // Ajans geneli tam Meta sync’te tenant listesini taze tutmak için provision çalışır.
   const provision: ProvisionResult =
-    doMeta && !opts?.tenantSlug
+    doMeta && !opts?.tenantSlug && !isDaily
       ? await provisionTenantsFromMeta()
       : doMeta
         ? {
             upserted: 0,
             accounts: [],
             skipped: true,
-            reason: "Tek marka sync — BM provision atlandı",
+            reason: isDaily
+              ? "Günlük sync — BM provision atlandı"
+              : "Tek marka sync — BM provision atlandı",
           }
         : {
             upserted: 0,
@@ -147,7 +160,7 @@ export async function runAgencySync(opts?: {
             reason: "Meta sync seçilmedi",
           };
 
-  const tenants = await prisma.tenant.findMany({
+  let tenants = await prisma.tenant.findMany({
     where: {
       visible: true,
       ...(opts?.tenantSlug ? { slug: opts.tenantSlug } : {}),
@@ -155,15 +168,25 @@ export async function runAgencySync(opts?: {
     include: { mapping: true },
   });
 
+  if (opts?.logoOnly) {
+    tenants = tenants.filter((t) =>
+      hasBrandLogo({ slug: t.slug, name: t.name, coverUrl: t.coverUrl }),
+    );
+  }
+
   if (opts?.tenantSlug && tenants.length === 0) {
     throw new Error(await missingOrInactiveTenantMessage(opts.tenantSlug));
   }
 
   const envVerify = process.env.SITE_VERIFY_ON_SYNC === "true";
-  const doSiteVerify = opts?.siteVerify === true || envVerify;
+  const doSiteVerify = !isDaily && (opts?.siteVerify === true || envVerify);
 
-  const { from, to } = await syncLookbackRange();
-  const adLevel = await syncAdLevelLookbackRange();
+  const { from, to } = isDaily
+    ? syncDailyLookbackRange()
+    : await syncLookbackRange();
+  const adLevel = isDaily
+    ? { from, to }
+    : await syncAdLevelLookbackRange();
   const summary: SyncSummary["tenants"] = [];
 
   for (const tenant of tenants) {
@@ -203,7 +226,7 @@ export async function runAgencySync(opts?: {
     }
 
     // --- Meta creatives (thumbnail / link) — önce (hızlı; timeout’tan önce kalsın) ---
-    if (doMeta) {
+    if (doMeta && !isDaily) {
       // Eski birleşik ads/ad_daily job’ı UI’da “reduce data” hatası olarak kalıyordu
       await prisma.syncJob.deleteMany({
         where: {
@@ -355,6 +378,9 @@ export async function runAgencySync(opts?: {
             });
           }
 
+          // Dönem toplamı — kısa pencereli günlük sync bunu 3 güne düşürmesin.
+          if (isDaily) return rows.length;
+
           // Aggregate Meta conversion kinds for conversions table
           await prisma.conversion.deleteMany({
             where: {
@@ -442,6 +468,7 @@ export async function runAgencySync(opts?: {
       );
       services.meta = meta.ok ? { ok: true } : { ok: false, error: meta.error };
 
+      if (!isDaily) {
       const metaAdPerf = await runSynced(
         {
           tenantId: tenant.id,
@@ -673,6 +700,7 @@ export async function runAgencySync(opts?: {
       services.metaBilling = metaBilling.ok
         ? { ok: true }
         : { ok: false, error: metaBilling.error };
+      }
     }
 
     if (doGoogle) {
@@ -752,46 +780,48 @@ export async function runAgencySync(opts?: {
                 });
               }
 
-              const actions = await fetchGoogleAdsConversionActions({
-                customerId,
-                from,
-                to,
-                purchaseOnly,
-              });
+              if (!isDaily) {
+                const actions = await fetchGoogleAdsConversionActions({
+                  customerId,
+                  from,
+                  to,
+                  purchaseOnly,
+                });
 
-              await prisma.conversion.deleteMany({
-                where: {
-                  tenantId: tenant.id,
-                  date: { gte: new Date(from), lte: new Date(to) },
-                  source: "Google Ads",
-                },
-              });
-
-              const nameCounts = new Map<string, number>();
-              for (const a of actions) {
-                nameCounts.set(
-                  a.name.toLowerCase(),
-                  (nameCounts.get(a.name.toLowerCase()) ?? 0) + 1,
-                );
-              }
-
-              for (const a of actions) {
-                const kind = classifyConversion(a.name);
-                const dupeFlag =
-                  (nameCounts.get(a.name.toLowerCase()) ?? 0) > 1 ||
-                  /ga4|import/i.test(a.name);
-                await prisma.conversion.create({
-                  data: {
+                await prisma.conversion.deleteMany({
+                  where: {
                     tenantId: tenant.id,
-                    date: new Date(to),
-                    name: a.name,
-                    source: a.source,
-                    primary: a.primary,
-                    count: Math.round(a.count),
-                    kind,
-                    dupeFlag,
+                    date: { gte: new Date(from), lte: new Date(to) },
+                    source: "Google Ads",
                   },
                 });
+
+                const nameCounts = new Map<string, number>();
+                for (const a of actions) {
+                  nameCounts.set(
+                    a.name.toLowerCase(),
+                    (nameCounts.get(a.name.toLowerCase()) ?? 0) + 1,
+                  );
+                }
+
+                for (const a of actions) {
+                  const kind = classifyConversion(a.name);
+                  const dupeFlag =
+                    (nameCounts.get(a.name.toLowerCase()) ?? 0) > 1 ||
+                    /ga4|import/i.test(a.name);
+                  await prisma.conversion.create({
+                    data: {
+                      tenantId: tenant.id,
+                      date: new Date(to),
+                      name: a.name,
+                      source: a.source,
+                      primary: a.primary,
+                      count: Math.round(a.count),
+                      kind,
+                      dupeFlag,
+                    },
+                  });
+                }
               }
 
               return rows.length;
@@ -821,6 +851,7 @@ export async function runAgencySync(opts?: {
         );
         services.ads = ads.ok ? { ok: true } : { ok: false, error: ads.error };
 
+        if (!isDaily) {
         const googleBilling = await runSynced(
           {
             tenantId: tenant.id,
@@ -887,8 +918,10 @@ export async function runAgencySync(opts?: {
         services.googleBilling = googleBilling.ok
           ? { ok: true }
           : { ok: false, error: googleBilling.error };
+        }
       }
 
+      if (!isDaily) {
       // --- GA4 (persist) ---
       const ga4PropertyId = resolveGa4PropertyId(tenant);
       if (!ga4PropertyId) {
@@ -1068,6 +1101,7 @@ export async function runAgencySync(opts?: {
             ? { ok: true }
             : { ok: false, error: merch.error };
         }
+      }
       }
     }
 

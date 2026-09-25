@@ -3,7 +3,10 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import AddBrandWizard from "@/components/panel/AddBrandWizard";
-import AgencyBrandCard from "@/components/panel/AgencyBrandCard";
+import AgencyBrandGrid, {
+  AgencyBrandArrangeProvider,
+  AgencyBrandEditButton,
+} from "@/components/panel/AgencyBrandGrid";
 import { BulkSyncToolbar } from "@/components/panel/SyncButton";
 import { countAgencyBrands, listAgencyBrands } from "@/lib/panel/data";
 import { isStaffRole, rootDomain } from "@/lib/panel/host";
@@ -47,7 +50,8 @@ export default async function BrandsPage({
   ]);
 
   return (
-    <div className="space-y-5">
+    <AgencyBrandArrangeProvider enabled={brands.length > 0}>
+      <div className="space-y-5">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h2 className="text-lg font-semibold tracking-tight">
@@ -64,27 +68,30 @@ export default async function BrandsPage({
         </div>
       </div>
 
-      <div className="flex flex-wrap gap-1.5">
-        <Link
-          href="/brands"
-          className={`rounded-md border px-2.5 py-1 text-xs font-medium transition ${
-            !showInactive
-              ? "border-[#e91825]/40 bg-[#e91825]/10 text-[#e91825]"
-              : "border-zinc-200 bg-white text-zinc-600 hover:border-zinc-300 hover:text-zinc-900"
-          }`}
-        >
-          Aktif ({counts.active})
-        </Link>
-        <Link
-          href="/brands?status=inactive"
-          className={`rounded-md border px-2.5 py-1 text-xs font-medium transition ${
-            showInactive
-              ? "border-[#e91825]/40 bg-[#e91825]/10 text-[#e91825]"
-              : "border-zinc-200 bg-white text-zinc-600 hover:border-zinc-300 hover:text-zinc-900"
-          }`}
-        >
-          Devre dışı ({counts.inactive})
-        </Link>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap gap-1.5">
+          <Link
+            href="/brands"
+            className={`rounded-md border px-2.5 py-1 text-xs font-medium transition ${
+              !showInactive
+                ? "border-[#e91825]/40 bg-[#e91825]/10 text-[#e91825]"
+                : "border-zinc-200 bg-white text-zinc-600 hover:border-zinc-300 hover:text-zinc-900"
+            }`}
+          >
+            Aktif ({counts.active})
+          </Link>
+          <Link
+            href="/brands?status=inactive"
+            className={`rounded-md border px-2.5 py-1 text-xs font-medium transition ${
+              showInactive
+                ? "border-[#e91825]/40 bg-[#e91825]/10 text-[#e91825]"
+                : "border-zinc-200 bg-white text-zinc-600 hover:border-zinc-300 hover:text-zinc-900"
+            }`}
+          >
+            Devre dışı ({counts.inactive})
+          </Link>
+        </div>
+        <AgencyBrandEditButton />
       </div>
 
       <ol className="rounded-lg border border-zinc-200 bg-zinc-50/80 px-4 py-3 text-xs leading-relaxed text-zinc-600">
@@ -122,21 +129,16 @@ export default async function BrandsPage({
             : "Henüz aktif marka yok. Yeni marka ekleyin."}
         </p>
       ) : (
-        <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
-          {brands.map((row) => (
-            <li key={row.slug}>
-              <AgencyBrandCard
-                slug={row.slug}
-                name={row.name}
-                visible={row.visible}
-                coverUrl={row.coverUrl}
-                health={row.health}
-                inactive={showInactive}
-              />
-            </li>
-          ))}
-        </ul>
+        <AgencyBrandGrid
+          key={`${showInactive ? "inactive" : "active"}:${[...brands]
+            .map((row) => row.slug)
+            .sort()
+            .join(",")}`}
+          brands={brands}
+          inactive={showInactive}
+        />
       )}
-    </div>
+      </div>
+    </AgencyBrandArrangeProvider>
   );
 }

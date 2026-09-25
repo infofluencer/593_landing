@@ -358,7 +358,7 @@ export default function AddBrandWizard() {
             reset();
             setOpen(true);
           }}
-          className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-[#e91825] px-3.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#d01420]"
+          className="inline-flex h-11 cursor-pointer items-center justify-center gap-2 rounded-xl bg-[#e91825] px-3.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#d01420]"
         >
           <Plus className="size-4 shrink-0" aria-hidden strokeWidth={2.25} />
           Yeni marka

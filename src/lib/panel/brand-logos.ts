@@ -51,6 +51,15 @@ export function resolveBrandCover(opts: {
   return null;
 }
 
+/** Statik `/brands` logosu veya yüklenen kapak — “logolu marka”. */
+export function hasBrandLogo(opts: {
+  slug: string;
+  name?: string | null;
+  coverUrl?: string | null;
+}): boolean {
+  return resolveBrandCover(opts) != null;
+}
+
 export function resolveBrandLogo(
   slug: string,
   name?: string | null,

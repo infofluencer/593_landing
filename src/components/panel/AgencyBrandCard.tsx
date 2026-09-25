@@ -18,6 +18,8 @@ export default function AgencyBrandCard({
   coverUrl,
   health,
   inactive,
+  grabbing = false,
+  settled = true,
 }: {
   slug: string;
   name: string;
@@ -25,6 +27,8 @@ export default function AgencyBrandCard({
   coverUrl: string | null;
   health: HealthStatus | null;
   inactive: boolean;
+  grabbing?: boolean;
+  settled?: boolean;
 }) {
   const [cover, setCover] = useState(coverUrl);
   useEffect(() => {
@@ -37,12 +41,16 @@ export default function AgencyBrandCard({
   return (
     <div
       className={`flex flex-col overflow-hidden rounded-[1.15rem] border bg-white ${
-        inactive ? "border-zinc-200/80" : "border-zinc-200/90"
-      }`}
+        grabbing ? "cursor-grab active:cursor-grabbing" : ""
+      } ${inactive ? "border-zinc-200/80" : "border-zinc-200/90"}`}
     >
       <Link
         href={href}
-        className="group flex flex-col transition duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] hover:-translate-y-0.5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#e91825]"
+        className={`group flex flex-col focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#e91825] ${
+          settled
+            ? "transition duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] hover:-translate-y-0.5"
+            : "pointer-events-none"
+        }`}
       >
         <div className="aspect-square w-full p-2 sm:p-2.5">
           <div
@@ -84,7 +92,11 @@ export default function AgencyBrandCard({
           )}
         </div>
       </Link>
-      <div className="flex flex-col items-center gap-1.5 px-2 pb-3 pt-0.5 sm:px-3 sm:pb-3.5">
+      <div
+        className="flex flex-col items-center gap-1.5 px-2 pb-3 pt-0.5 sm:px-3 sm:pb-3.5"
+        data-no-dnd
+        onPointerDown={(event) => event.stopPropagation()}
+      >
         <BrandVisibilityToggle tenantSlug={slug} visible={visible} />
         <BrandCoverUpload
           tenantSlug={slug}

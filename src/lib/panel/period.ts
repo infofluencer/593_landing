@@ -2,6 +2,7 @@ import { getIstanbulTodayYmd } from "@/lib/date/now";
 import {
   addDaysYmd,
   formatYmdTr,
+  istanbulYmd,
   isValidYmd,
   startOfIstanbulMonthYmd,
   subMonthsYmd,
@@ -9,6 +10,12 @@ import {
 
 /** Days of ad metrics ingested on each “Veriyi yenile” (Istanbul calendar). */
 export const SYNC_HISTORY_DAYS = 720;
+
+/**
+ * Scheduled daily sync window (inclusive).
+ * today + 2 previous days covers in-day spend and Meta/Google attribution lag.
+ */
+export const SYNC_DAILY_DAYS = 2;
 
 /**
  * Ad / adset / breakdown insights lookback.
@@ -171,6 +178,14 @@ export async function syncLookbackRange(): Promise<{
 }> {
   const today = await getIstanbulTodayYmd();
   return { from: syncFloorYmd(today), to: today };
+}
+
+/** Short window for twice-daily logo-brand campaign metrics. */
+export function syncDailyLookbackRange(today = istanbulYmd(new Date())): {
+  from: string;
+  to: string;
+} {
+  return { from: addDaysYmd(today, -SYNC_DAILY_DAYS), to: today };
 }
 
 /** Shorter window for ad / adset / breakdown Meta pulls. */

@@ -225,6 +225,38 @@ html.panel-drawer-open body {
   }
 }
 
+@keyframes brand-jiggle {
+  0% {
+    transform: rotate(-1.35deg) translate3d(-0.45px, 0.35px, 0);
+  }
+  25% {
+    transform: rotate(1.2deg) translate3d(0.4px, -0.3px, 0);
+  }
+  50% {
+    transform: rotate(-1.05deg) translate3d(-0.3px, 0.2px, 0);
+  }
+  75% {
+    transform: rotate(1.3deg) translate3d(0.35px, 0.25px, 0);
+  }
+  100% {
+    transform: rotate(-1.35deg) translate3d(-0.45px, 0.35px, 0);
+  }
+}
+
+.brand-jiggle {
+  animation: brand-jiggle 0.28s linear infinite;
+  transform-origin: 50% 42%;
+  will-change: transform;
+}
+
+.brand-jiggle-b {
+  animation-duration: 0.33s;
+}
+
+.brand-jiggle-c {
+  animation-duration: 0.24s;
+}
+
 /*
  * Phone reveals. Desktop drives the same elements from its rAF rig, so these
  * only exist below the `md` breakpoint.
