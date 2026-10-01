@@ -224,12 +224,15 @@ export async function resolvePanelDateRange(
   };
 }
 
-/** Sync ingest window: today − SYNC_HISTORY_DAYS → today (Istanbul). */
+/**
+ * Sync ingest window: today − SYNC_HISTORY_DAYS → today (Istanbul).
+ * Sync istek dışında da çalışır (cron / backfill betiği) — connection() yok.
+ */
 export async function syncLookbackRange(): Promise<{
   from: string;
   to: string;
 }> {
-  const today = await getIstanbulTodayYmd();
+  const today = istanbulYmd(new Date());
   return { from: syncFloorYmd(today), to: today };
 }
 
@@ -249,7 +252,7 @@ export async function syncAdLevelLookbackRange(): Promise<{
   from: string;
   to: string;
 }> {
-  const today = await getIstanbulTodayYmd();
+  const today = istanbulYmd(new Date());
   return { from: addDaysYmd(today, -SYNC_AD_LEVEL_DAYS), to: today };
 }
 
