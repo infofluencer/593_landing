@@ -9,8 +9,15 @@ export function resolveSecretRef(ref: string | null | undefined): string | null 
 
   if (trimmed.startsWith("env:")) {
     const key = trimmed.slice(4);
-    const value = process.env[key];
-    return value && value.trim() ? value.trim() : null;
+    let value = (process.env[key] ?? "").trim();
+    // Dokploy vb. panellere tırnakla yapıştırılmış değerler
+    if (
+      (value.startsWith('"') && value.endsWith('"')) ||
+      (value.startsWith("'") && value.endsWith("'"))
+    ) {
+      value = value.slice(1, -1).trim();
+    }
+    return value || null;
   }
 
   // Future: vault:/path, aws-sm:name, etc.

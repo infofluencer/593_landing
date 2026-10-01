@@ -2,6 +2,7 @@ import { prisma } from "@/lib/db";
 import { hasBrandLogo } from "@/lib/panel/brand-logos";
 import { runAgencySync, type SyncSummary } from "@/lib/panel/sync";
 import { upsertSyncJob } from "@/lib/panel/sync-job";
+import { syncEnvProblems } from "@/lib/integrations/tokens";
 
 const LOCK_SERVICE = "cron";
 const LOCK_OBJECTIVE = "daily_sync";
@@ -61,13 +62,19 @@ export async function runScheduledDailySync(): Promise<DailySyncResult> {
     return { skipped: true, reason: "Bu slot zaten çekildi." };
   }
 
+  // Otomatik çekim manuel ile aynı env'i görüyor mu? (yalnızca adlar kaydedilir)
+  const envProblems = syncEnvProblems();
+  if (envProblems.length) {
+    console.warn("[daily sync] env:", envProblems.join(", "));
+  }
+
   await upsertSyncJob({
     tenantId: lockTenantId,
     provider: "meta",
     service: LOCK_SERVICE,
     objective: LOCK_OBJECTIVE,
     status: "running",
-    error: null,
+    error: envProblems.length ? `Env: ${envProblems.join(", ")}` : null,
   });
 
   for (const t of tenants) {
@@ -112,13 +119,28 @@ export async function runScheduledDailySync(): Promise<DailySyncResult> {
       }
     }
 
+    const failedSlugs = tenants
+      .filter((t) => {
+        const ts = summary.tenants.find((x) => x.slug === t.slug);
+        return ts
+          ? Object.values(ts.services).some((sv) => sv && !sv.ok)
+          : false;
+      })
+      .map((t) => t.slug);
     await upsertSyncJob({
       tenantId: lockTenantId,
       provider: "meta",
       service: LOCK_SERVICE,
       objective: LOCK_OBJECTIVE,
       status: "success",
-      error: null,
+      // Hangi markada sorun olduğu + env notu Veri çekimi sayfasında görünsün.
+      error:
+        [
+          envProblems.length ? `Env: ${envProblems.join(", ")}` : null,
+          failedSlugs.length ? `Kısmi hata: ${failedSlugs.join(", ")}` : null,
+        ]
+          .filter(Boolean)
+          .join(" · ") || null,
       markSuccess: true,
     });
 
@@ -126,6 +148,9 @@ export async function runScheduledDailySync(): Promise<DailySyncResult> {
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error("[daily sync]", message);
+    const withEnv = envProblems.length
+      ? `${message} (Env: ${envProblems.join(", ")})`
+      : message;
     for (const t of tenants) {
       for (const provider of ["meta", "google"] as const) {
         await upsertSyncJob({
@@ -134,7 +159,7 @@ export async function runScheduledDailySync(): Promise<DailySyncResult> {
           service: "panel_sync",
           objective: "run",
           status: "error",
-          error: message,
+          error: withEnv,
         });
       }
     }
@@ -144,7 +169,7 @@ export async function runScheduledDailySync(): Promise<DailySyncResult> {
       service: LOCK_SERVICE,
       objective: LOCK_OBJECTIVE,
       status: "error",
-      error: message,
+      error: withEnv,
     });
     throw err;
   }

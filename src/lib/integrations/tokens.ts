@@ -148,3 +148,32 @@ export function useMockPanelData(): boolean {
     process.env.GOOGLE_REFRESH_TOKEN
   );
 }
+
+/**
+ * Sync için gerekli env'lerin durumu (değer DEĞİL, yalnızca ad + sorun).
+ * Otomatik çekim (instrumentation zamanlayıcı / cron) ile manuel çekimin
+ * aynı env'i gördüğünü doğrulamak için.
+ */
+export function syncEnvProblems(): string[] {
+  const keys = [
+    "DATABASE_URL",
+    "META_SYSTEM_USER_TOKEN",
+    "GOOGLE_CLIENT_ID",
+    "GOOGLE_CLIENT_SECRET",
+    "GOOGLE_REFRESH_TOKEN",
+    "GOOGLE_ADS_DEVELOPER_TOKEN",
+    "GOOGLE_ADS_LOGIN_CUSTOMER_ID",
+  ];
+  const problems: string[] = [];
+  for (const key of keys) {
+    const raw = process.env[key];
+    if (!raw || !raw.trim()) {
+      problems.push(`${key} yok`);
+    } else if (/^["'].*["']$/.test(raw.trim())) {
+      problems.push(`${key} tırnaklı`);
+    } else if (raw !== raw.trim()) {
+      problems.push(`${key} boşluklu`);
+    }
+  }
+  return problems;
+}
