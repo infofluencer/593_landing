@@ -1,16 +1,35 @@
 import { prisma } from "@/lib/db";
+import { ymdToUtcDate } from "@/lib/date/tr";
 
-/** Marka bazlı CSV — Google Ads + Meta + GA4 + conversions + uyarı + sync. */
-export async function buildTenantReportCsv(tenantId: string): Promise<string> {
+/**
+ * Marka bazlı CSV — Google Ads + Meta + GA4 + conversions + uyarı + sync.
+ * `range` verilirse günlük tablolar o döneme süzülür (yoksa tüm geçmiş).
+ */
+export async function buildTenantReportCsv(
+  tenantId: string,
+  range?: { from: string; to: string },
+): Promise<string> {
+  const date = range
+    ? { gte: ymdToUtcDate(range.from), lte: ymdToUtcDate(range.to) }
+    : undefined;
   const tenant = await prisma.tenant.findUniqueOrThrow({
     where: { id: tenantId },
     include: {
-      googleAdsMetrics: { orderBy: [{ date: "asc" }, { campaignName: "asc" }] },
-      metaInsights: { orderBy: [{ date: "asc" }, { campaignName: "asc" }] },
+      googleAdsMetrics: {
+        where: { date },
+        orderBy: [{ date: "asc" }, { campaignName: "asc" }],
+      },
+      metaInsights: {
+        where: { date },
+        orderBy: [{ date: "asc" }, { campaignName: "asc" }],
+      },
       ga4Metrics: {
         orderBy: [{ date: "asc" }, { dimensionType: "asc" }, { dimensionValue: "asc" }],
       },
-      conversions: { orderBy: [{ date: "asc" }, { name: "asc" }] },
+      conversions: {
+        where: { date },
+        orderBy: [{ date: "asc" }, { name: "asc" }],
+      },
       alerts: {
         where: { resolved: false },
         include: { assignee: { select: { email: true } } },
@@ -24,6 +43,7 @@ export async function buildTenantReportCsv(tenantId: string): Promise<string> {
     `# 593 Panel Report — ${tenant.name} (${tenant.slug}) type=${tenant.type}`,
   );
   lines.push(`# generated,${new Date().toISOString()}`);
+  if (range) lines.push(`# range,${range.from},${range.to}`);
   lines.push("");
   lines.push(
     "section,date,campaign,cost,impressions,clicks,conversions,conv_value,roas",
@@ -87,7 +107,9 @@ export async function buildTenantReportCsv(tenantId: string): Promise<string> {
   }
 
   lines.push("");
-  lines.push("section,date,name,source,kind,primary,count,dupe_flag");
+  lines.push(
+    "section,date,name,source,category,kind,counted,count,value,dupe_flag",
+  );
   for (const c of tenant.conversions) {
     lines.push(
       [
@@ -95,9 +117,11 @@ export async function buildTenantReportCsv(tenantId: string): Promise<string> {
         c.date.toISOString().slice(0, 10),
         csvEscape(c.name),
         csvEscape(c.source),
+        c.category ?? "",
         c.kind,
         c.primary ? "1" : "0",
-        c.count,
+        Number(c.count),
+        Number(c.value),
         c.dupeFlag ? "1" : "0",
       ].join(","),
     );

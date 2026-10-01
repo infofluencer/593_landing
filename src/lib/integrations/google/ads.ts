@@ -3,10 +3,13 @@ import {
   getGoogleAdsDeveloperToken,
   getGoogleAdsLoginCustomerId,
 } from "@/lib/integrations/tokens";
-import {
-  isEcommerceSaleConversion,
-  isPurchaseCategory,
-} from "@/lib/panel/classify-conversion";
+import { iterateYmdRanges } from "@/lib/date/tr";
+import { countsAsPanelConversion } from "@/lib/panel/classify-conversion";
+
+export type AdsTenantType = "ecommerce" | "lead";
+
+/** Uzun geçmişi parçala — tek GAQL isteği küçük kalsın. */
+const ADS_CHUNK_DAYS = 90;
 
 const ADS_API = "https://googleads.googleapis.com/v25";
 
@@ -19,6 +22,8 @@ export type AdsCampaignRow = {
   clicks: number;
   conv: number;
   convValue: number;
+  /** metrics.all_conversions — ikincil aksiyonlar dahil (yalnızca teşhis). */
+  allConv: number;
 };
 
 function microsToCurrency(micros: string | number): number {
@@ -79,127 +84,185 @@ function formatAdsHttpError(
 async function adsSearch(opts: {
   customerId: string;
   query: string;
-}): Promise<{ res: Response; json: AdsErrorJson & { results?: unknown[] } }> {
+}): Promise<{ json: AdsErrorJson & { results?: unknown[] } }> {
   const accessToken = await getGoogleAccessToken();
   const developerToken = getGoogleAdsDeveloperToken();
   const loginCustomerId = getGoogleAdsLoginCustomerId();
   const customerId = opts.customerId.replace(/-/g, "");
 
-  const res = await fetch(
-    `${ADS_API}/customers/${customerId}/googleAds:search`,
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        "developer-token": developerToken,
-        "login-customer-id": loginCustomerId,
-        "Content-Type": "application/json",
+  // googleAds:search sayfa başına 10k satır döner — nextPageToken bitene kadar çek.
+  const results: unknown[] = [];
+  let pageToken: string | undefined;
+  do {
+    const res = await fetch(
+      `${ADS_API}/customers/${customerId}/googleAds:search`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "developer-token": developerToken,
+          "login-customer-id": loginCustomerId,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(
+          pageToken ? { query: opts.query, pageToken } : { query: opts.query },
+        ),
       },
-      body: JSON.stringify({ query: opts.query }),
-    },
-  );
+    );
 
-  const json = (await res.json()) as AdsErrorJson & { results?: unknown[] };
-  if (!res.ok) {
-    const hint = await adsAuthHint(accessToken);
-    throw formatAdsHttpError(res, json, customerId, hint);
-  }
-  return { res, json };
+    const json = (await res.json()) as AdsErrorJson & {
+      results?: unknown[];
+      nextPageToken?: string;
+    };
+    if (!res.ok) {
+      const hint = await adsAuthHint(accessToken);
+      throw formatAdsHttpError(res, json, customerId, hint);
+    }
+    results.push(...(json.results ?? []));
+    pageToken = json.nextPageToken || undefined;
+  } while (pageToken);
+
+  return { json: { results } };
 }
+
+/** customer.time_zone — segments.date bu saat dilimindedir. */
+export async function fetchAdsCustomerTimeZone(
+  customerId: string,
+): Promise<string | null> {
+  const { json } = await adsSearch({
+    customerId,
+    query: "SELECT customer.time_zone FROM customer LIMIT 1",
+  });
+  const row = (json.results ?? [])[0] as
+    | { customer?: { timeZone?: string } }
+    | undefined;
+  return row?.customer?.timeZone || null;
+}
+
+/** Kampanya × gün × dönüşüm aksiyonu (yalnızca birincil `metrics.conversions`). */
+export type AdsConversionDayRow = {
+  campaignId: string;
+  date: string;
+  name: string;
+  category: string | null;
+  conv: number;
+  convValue: number;
+  /** Bu marka tipinde panel dönüşümü sayılıyor mu (countsAsPanelConversion). */
+  counted: boolean;
+};
 
 /**
  * GAQL read via Google Ads API search (login-customer-id = MCC).
  * Never invents zeros on auth/API failure — caller must record SyncJob.error.
  *
- * purchaseOnly (e-ticaret): dönüşüm = yalnızca PURCHASE / Satın alım ücreti.
- * Harcama·gösterim·tıklama tüm kampanyadan; conv/convValue PURCHASE segmentinden.
+ * Harcama·gösterim·tıklama tüm kampanyadan. conv/convValue aksiyon segmentinden,
+ * marka tipine göre süzülür (countsAsPanelConversion):
+ * - ecommerce: yalnızca satın alım (PURCHASE / STORE_SALE / satın alım adı)
+ * - lead: sayfa görüntüleme / sepete ekleme gibi mikro adımlar hariç birincil aksiyonlar
+ * Kaldırılmış (REMOVED) kampanyalar da çekilir — geçmiş harcama eksilmesin.
  */
 export async function fetchGoogleAdsCampaignMetrics(opts: {
   customerId: string;
   from: string; // YYYY-MM-DD
   to: string;
-  /** E-ticaret: sadece Satın alım (PURCHASE) dönüşümü say */
-  purchaseOnly?: boolean;
-}): Promise<AdsCampaignRow[]> {
+  tenantType: AdsTenantType;
+}): Promise<{ campaigns: AdsCampaignRow[]; conversions: AdsConversionDayRow[] }> {
   const customerId = opts.customerId.replace(/-/g, "");
-  const query = `
-    SELECT
-      campaign.id,
-      campaign.name,
-      segments.date,
-      metrics.cost_micros,
-      metrics.impressions,
-      metrics.clicks,
-      metrics.conversions,
-      metrics.conversions_value
-    FROM campaign
-    WHERE segments.date BETWEEN '${opts.from}' AND '${opts.to}'
-      AND campaign.status != 'REMOVED'
-  `;
+  const campaigns: AdsCampaignRow[] = [];
+  const conversions: AdsConversionDayRow[] = [];
 
-  const { json } = await adsSearch({ customerId, query });
+  for (const range of iterateYmdRanges(opts.from, opts.to, ADS_CHUNK_DAYS)) {
+    const query = `
+      SELECT
+        campaign.id,
+        campaign.name,
+        segments.date,
+        metrics.cost_micros,
+        metrics.impressions,
+        metrics.clicks,
+        metrics.conversions,
+        metrics.conversions_value,
+        metrics.all_conversions
+      FROM campaign
+      WHERE segments.date BETWEEN '${range.from}' AND '${range.to}'
+    `;
+    const { json } = await adsSearch({ customerId, query });
 
-  const rows = ((json.results ?? []) as Array<{
-    campaign?: { id?: string; name?: string };
-    segments?: { date?: string };
-    metrics?: {
-      costMicros?: string;
-      impressions?: string;
-      clicks?: string;
-      conversions?: number;
-      conversionsValue?: number;
-    };
-  }>).map((row) => {
-    const spend = microsToCurrency(row.metrics?.costMicros ?? 0);
-    const convValue = Number(row.metrics?.conversionsValue ?? 0);
-    const name = row.campaign?.name || "(unnamed)";
-    return {
-      campaignId: row.campaign?.id || name,
-      campaign: name,
-      date: row.segments?.date || opts.from,
-      spend,
-      impr: Number(row.metrics?.impressions ?? 0),
-      clicks: Number(row.metrics?.clicks ?? 0),
-      conv: Number(row.metrics?.conversions ?? 0),
-      convValue,
-    };
-  });
+    const rows = ((json.results ?? []) as Array<{
+      campaign?: { id?: string; name?: string };
+      segments?: { date?: string };
+      metrics?: {
+        costMicros?: string;
+        impressions?: string;
+        clicks?: string;
+        conversions?: number;
+        conversionsValue?: number;
+        allConversions?: number;
+      };
+    }>).map((row) => {
+      const name = row.campaign?.name || "(unnamed)";
+      return {
+        campaignId: row.campaign?.id || name,
+        campaign: name,
+        date: row.segments?.date || range.from,
+        spend: microsToCurrency(row.metrics?.costMicros ?? 0),
+        impr: Number(row.metrics?.impressions ?? 0),
+        clicks: Number(row.metrics?.clicks ?? 0),
+        conv: Number(row.metrics?.conversions ?? 0),
+        convValue: Number(row.metrics?.conversionsValue ?? 0),
+        allConv: Number(row.metrics?.allConversions ?? 0),
+      };
+    });
 
-  if (!opts.purchaseOnly) return rows;
+    const convRows = await fetchConversionsByCampaignDay({
+      customerId,
+      from: range.from,
+      to: range.to,
+      tenantType: opts.tenantType,
+    });
+    conversions.push(...convRows);
 
-  const purchaseByKey = await fetchPurchaseConversionsByCampaignDay({
-    customerId,
-    from: opts.from,
-    to: opts.to,
-  });
+    const countedByKey = new Map<string, { conv: number; convValue: number }>();
+    for (const c of convRows) {
+      if (!c.counted) continue;
+      const key = `${c.campaignId}|${c.date}`;
+      const prev = countedByKey.get(key) ?? { conv: 0, convValue: 0 };
+      prev.conv += c.conv;
+      prev.convValue += c.convValue;
+      countedByKey.set(key, prev);
+    }
 
-  return rows.map((row) => {
-    const hit = purchaseByKey.get(`${row.campaignId}|${row.date}`);
-    return {
-      ...row,
-      conv: hit?.conv ?? 0,
-      convValue: hit?.convValue ?? 0,
-    };
-  });
+    for (const row of rows) {
+      const hit = countedByKey.get(`${row.campaignId}|${row.date}`);
+      campaigns.push({
+        ...row,
+        conv: hit?.conv ?? 0,
+        convValue: hit?.convValue ?? 0,
+      });
+    }
+  }
+
+  return { campaigns, conversions };
 }
 
-/** Campaign+day → PURCHASE category conversions only. */
-async function fetchPurchaseConversionsByCampaignDay(opts: {
+/** Campaign × day × conversion action (name + category). */
+async function fetchConversionsByCampaignDay(opts: {
   customerId: string;
   from: string;
   to: string;
-}): Promise<Map<string, { conv: number; convValue: number }>> {
+  tenantType: AdsTenantType;
+}): Promise<AdsConversionDayRow[]> {
   const query = `
     SELECT
       campaign.id,
       segments.date,
+      segments.conversion_action_name,
       segments.conversion_action_category,
       metrics.conversions,
       metrics.conversions_value
     FROM campaign
     WHERE segments.date BETWEEN '${opts.from}' AND '${opts.to}'
-      AND campaign.status != 'REMOVED'
-      AND segments.conversion_action_category = 'PURCHASE'
+      AND metrics.conversions > 0
   `;
 
   const { json } = await adsSearch({
@@ -207,88 +270,106 @@ async function fetchPurchaseConversionsByCampaignDay(opts: {
     query,
   });
 
-  const map = new Map<string, { conv: number; convValue: number }>();
+  const out: AdsConversionDayRow[] = [];
   for (const row of (json.results ?? []) as Array<{
     campaign?: { id?: string };
-    segments?: { date?: string };
-    metrics?: { conversions?: number; conversionsValue?: number };
-  }>) {
-    const id = row.campaign?.id;
-    const date = row.segments?.date;
-    if (!id || !date) continue;
-    const key = `${id}|${date}`;
-    const prev = map.get(key) ?? { conv: 0, convValue: 0 };
-    prev.conv += Number(row.metrics?.conversions ?? 0);
-    prev.convValue += Number(row.metrics?.conversionsValue ?? 0);
-    map.set(key, prev);
-  }
-  return map;
-}
-
-export type AdsConversionAction = {
-  name: string;
-  source: string;
-  primary: boolean;
-  count: number;
-  category: string | null;
-};
-
-export async function fetchGoogleAdsConversionActions(opts: {
-  customerId: string;
-  from: string;
-  to: string;
-  /** E-ticaret: yalnızca PURCHASE / Satın alım ücreti aksiyonları */
-  purchaseOnly?: boolean;
-}): Promise<AdsConversionAction[]> {
-  const customerId = opts.customerId.replace(/-/g, "");
-  const query = `
-    SELECT
-      segments.conversion_action_name,
-      segments.conversion_action_category,
-      metrics.conversions,
-      metrics.all_conversions
-    FROM customer
-    WHERE segments.date BETWEEN '${opts.from}' AND '${opts.to}'
-  `;
-
-  const { json } = await adsSearch({ customerId, query });
-
-  const byName = new Map<string, AdsConversionAction>();
-  for (const row of (json.results ?? []) as Array<{
     segments?: {
+      date?: string;
       conversionActionName?: string;
       conversionActionCategory?: string;
     };
-    metrics?: { conversions?: number; allConversions?: number };
+    metrics?: { conversions?: number; conversionsValue?: number };
   }>) {
+    const campaignId = row.campaign?.id;
+    const date = row.segments?.date;
+    if (!campaignId || !date) continue;
     const name = row.segments?.conversionActionName || "Unknown";
     const category = row.segments?.conversionActionCategory ?? null;
-    const count = Number(row.metrics?.conversions ?? 0);
-    const prev = byName.get(name);
-    if (prev) {
-      prev.count += count;
-    } else {
-      byName.set(name, {
-        name,
-        source: "Google Ads",
-        primary: true,
-        count,
-        category,
-      });
-    }
+    out.push({
+      campaignId,
+      date,
+      name,
+      category,
+      conv: Number(row.metrics?.conversions ?? 0),
+      convValue: Number(row.metrics?.conversionsValue ?? 0),
+      counted: countsAsPanelConversion(opts.tenantType, category, name),
+    });
   }
+  return out;
+}
 
-  const all = [...byName.values()];
-  if (!opts.purchaseOnly) return all;
-
-  return all.filter((a) => {
-    if (isPurchaseCategory(a.category)) return true;
-    // Kategori yok / belirsizse isimden Satın alım ücreti
-    const cat = (a.category ?? "").toUpperCase();
-    if (!cat || cat === "UNKNOWN" || cat === "DEFAULT" || cat === "UNSPECIFIED") {
-      return isEcommerceSaleConversion(a.name);
+/**
+ * Detay tabloları (reklam grubu / kelime / arama terimi) için aynı dönüşüm
+ * kuralı: aksiyon segmentli ikinci sorgu → anahtar başına sayılan conv/value.
+ * Segment desteklenmezse null döner (çağıran ham metrics.conversions'ı korur).
+ */
+async function countedConversionsByKey(opts: {
+  customerId: string;
+  from: string;
+  to: string;
+  tenantType: AdsTenantType;
+  resource: string;
+  selectKeys: string[];
+  extraWhere: string;
+  keyOf: (row: Record<string, unknown>) => string | null;
+}): Promise<Map<string, { conv: number; convValue: number }> | null> {
+  const query = `
+    SELECT
+      ${opts.selectKeys.join(",\n      ")},
+      segments.conversion_action_name,
+      segments.conversion_action_category,
+      metrics.conversions,
+      metrics.conversions_value
+    FROM ${opts.resource}
+    WHERE segments.date BETWEEN '${opts.from}' AND '${opts.to}'
+      AND metrics.conversions > 0
+      ${opts.extraWhere}
+  `;
+  try {
+    const { json } = await adsSearch({ customerId: opts.customerId, query });
+    const map = new Map<string, { conv: number; convValue: number }>();
+    for (const raw of (json.results ?? []) as Array<Record<string, unknown>>) {
+      const seg = raw.segments as
+        | { conversionActionName?: string; conversionActionCategory?: string }
+        | undefined;
+      const m = raw.metrics as
+        | { conversions?: number; conversionsValue?: number }
+        | undefined;
+      if (
+        !countsAsPanelConversion(
+          opts.tenantType,
+          seg?.conversionActionCategory,
+          seg?.conversionActionName || "",
+        )
+      ) {
+        continue;
+      }
+      const key = opts.keyOf(raw);
+      if (!key) continue;
+      const prev = map.get(key) ?? { conv: 0, convValue: 0 };
+      prev.conv += Number(m?.conversions ?? 0);
+      prev.convValue += Number(m?.conversionsValue ?? 0);
+      map.set(key, prev);
     }
-    return false;
+    return map;
+  } catch (err) {
+    console.warn(
+      `[ads] ${opts.resource} dönüşüm segmenti alınamadı:`,
+      err instanceof Error ? err.message : err,
+    );
+    return null;
+  }
+}
+
+function applyCounted<T extends { conv: number; convValue: number }>(
+  rows: T[],
+  counted: Map<string, { conv: number; convValue: number }> | null,
+  keyOf: (row: T) => string,
+): T[] {
+  if (!counted) return rows;
+  return rows.map((row) => {
+    const hit = counted.get(keyOf(row));
+    return { ...row, conv: hit?.conv ?? 0, convValue: hit?.convValue ?? 0 };
   });
 }
 
@@ -362,6 +443,7 @@ export async function fetchAdsAdGroups(opts: {
   customerId: string;
   from: string;
   to: string;
+  tenantType: AdsTenantType;
   limit?: number;
 }): Promise<AdsAdGroupRow[]> {
   const customerId = opts.customerId.replace(/-/g, "");
@@ -383,7 +465,7 @@ export async function fetchAdsAdGroups(opts: {
 
   const { json } = await adsSearch({ customerId, query });
 
-  return ((json.results ?? []) as Array<{
+  const rows = ((json.results ?? []) as Array<{
     campaign?: { id?: string; name?: string };
     adGroup?: { id?: string; name?: string };
     metrics?: MetricsFields;
@@ -398,6 +480,20 @@ export async function fetchAdsAdGroups(opts: {
       ...metricsFromRow(row.metrics),
     };
   });
+
+  const ids = rows.map((r) => r.adGroupId).filter((id) => /^\d+$/.test(id));
+  if (ids.length === 0) return rows;
+  const counted = await countedConversionsByKey({
+    customerId,
+    from: opts.from,
+    to: opts.to,
+    tenantType: opts.tenantType,
+    resource: "ad_group",
+    selectKeys: ["ad_group.id"],
+    extraWhere: `AND ad_group.id IN (${ids.join(",")})`,
+    keyOf: (raw) => (raw.adGroup as { id?: string } | undefined)?.id ?? null,
+  });
+  return applyCounted(rows, counted, (r) => r.adGroupId);
 }
 
 /** Active-campaign keywords (keyword_view), top 50 by spend. */
@@ -405,6 +501,7 @@ export async function fetchAdsKeywords(opts: {
   customerId: string;
   from: string;
   to: string;
+  tenantType: AdsTenantType;
   limit?: number;
 }): Promise<AdsKeywordRow[]> {
   const customerId = opts.customerId.replace(/-/g, "");
@@ -415,6 +512,7 @@ export async function fetchAdsKeywords(opts: {
       campaign.name,
       ad_group.id,
       ad_group.name,
+      ad_group_criterion.criterion_id,
       ad_group_criterion.keyword.text,
       ad_group_criterion.keyword.match_type,
       ${METRIC_SELECT}
@@ -428,10 +526,12 @@ export async function fetchAdsKeywords(opts: {
 
   const { json } = await adsSearch({ customerId, query });
 
-  return ((json.results ?? []) as Array<{
+  const criterionKeys: string[] = [];
+  const rows = ((json.results ?? []) as Array<{
     campaign?: { id?: string; name?: string };
     adGroup?: { id?: string; name?: string };
     adGroupCriterion?: {
+      criterionId?: string;
       keyword?: { text?: string; matchType?: string };
     };
     metrics?: MetricsFields;
@@ -439,6 +539,9 @@ export async function fetchAdsKeywords(opts: {
     const campaign = row.campaign?.name || "(kampanya)";
     const adGroup = row.adGroup?.name || "(grup)";
     const keyword = row.adGroupCriterion?.keyword?.text || "(kelime)";
+    criterionKeys.push(
+      `${row.adGroup?.id ?? ""}~${row.adGroupCriterion?.criterionId ?? ""}`,
+    );
     return {
       campaignId: row.campaign?.id || campaign,
       campaign,
@@ -449,6 +552,31 @@ export async function fetchAdsKeywords(opts: {
       ...metricsFromRow(row.metrics),
     };
   });
+
+  const adGroupIds = [
+    ...new Set(rows.map((r) => r.adGroupId).filter((id) => /^\d+$/.test(id))),
+  ];
+  if (adGroupIds.length === 0) return rows;
+  const counted = await countedConversionsByKey({
+    customerId,
+    from: opts.from,
+    to: opts.to,
+    tenantType: opts.tenantType,
+    resource: "keyword_view",
+    selectKeys: ["ad_group.id", "ad_group_criterion.criterion_id"],
+    extraWhere: `AND ad_group.id IN (${adGroupIds.join(",")})`,
+    keyOf: (raw) => {
+      const ag = (raw.adGroup as { id?: string } | undefined)?.id;
+      const cr = (raw.adGroupCriterion as { criterionId?: string } | undefined)
+        ?.criterionId;
+      return ag && cr ? `${ag}~${cr}` : null;
+    },
+  });
+  if (!counted) return rows;
+  return rows.map((row, i) => {
+    const hit = counted.get(criterionKeys[i]!);
+    return { ...row, conv: hit?.conv ?? 0, convValue: hit?.convValue ?? 0 };
+  });
 }
 
 /** Active-campaign search terms, top 50 by spend. Search campaigns only. */
@@ -456,6 +584,7 @@ export async function fetchAdsSearchTerms(opts: {
   customerId: string;
   from: string;
   to: string;
+  tenantType: AdsTenantType;
   limit?: number;
 }): Promise<AdsSearchTermRow[]> {
   const customerId = opts.customerId.replace(/-/g, "");
@@ -477,7 +606,7 @@ export async function fetchAdsSearchTerms(opts: {
 
   const { json } = await adsSearch({ customerId, query });
 
-  return ((json.results ?? []) as Array<{
+  const rows = ((json.results ?? []) as Array<{
     searchTermView?: { searchTerm?: string };
     campaign?: { id?: string; name?: string };
     adGroup?: { id?: string; name?: string };
@@ -494,6 +623,27 @@ export async function fetchAdsSearchTerms(opts: {
       ...metricsFromRow(row.metrics),
     };
   });
+
+  const adGroupIds = [
+    ...new Set(rows.map((r) => r.adGroupId).filter((id) => /^\d+$/.test(id))),
+  ];
+  if (adGroupIds.length === 0) return rows;
+  const counted = await countedConversionsByKey({
+    customerId,
+    from: opts.from,
+    to: opts.to,
+    tenantType: opts.tenantType,
+    resource: "search_term_view",
+    selectKeys: ["ad_group.id", "search_term_view.search_term"],
+    extraWhere: `AND ad_group.id IN (${adGroupIds.join(",")})`,
+    keyOf: (raw) => {
+      const ag = (raw.adGroup as { id?: string } | undefined)?.id;
+      const term = (raw.searchTermView as { searchTerm?: string } | undefined)
+        ?.searchTerm;
+      return ag && term ? `${ag}~${term}` : null;
+    },
+  });
+  return applyCounted(rows, counted, (r) => `${r.adGroupId}~${r.searchTerm}`);
 }
 
 /** Period-level search lost impression share (rank + budget). Not date-summable. */
@@ -536,7 +686,8 @@ export async function fetchAdsCampaignLostShare(opts: {
       metrics.search_rank_lost_absolute_top_impression_share,
       metrics.search_budget_lost_impression_share,
       metrics.search_budget_lost_top_impression_share,
-      metrics.search_budget_lost_absolute_top_impression_share
+      metrics.search_budget_lost_absolute_top_impression_share,
+      metrics.cost_micros
     FROM campaign
     WHERE segments.date BETWEEN '${opts.from}' AND '${opts.to}'
       AND campaign.status != 'REMOVED'

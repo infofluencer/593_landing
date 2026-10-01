@@ -6,7 +6,10 @@ import { KPICard, DataTable } from "@/components/panel/ds";
 import { requireBundle } from "@/lib/panel/data";
 import { resolveGa4PropertyId } from "@/lib/panel/ga4-property-map";
 import { resolvePanelDateRange } from "@/lib/panel/period";
-import { fetchGa4Snapshot } from "@/lib/integrations/google/ga4";
+import {
+  fetchGa4Snapshot,
+  type Ga4KeyEventRow,
+} from "@/lib/integrations/google/ga4";
 import { useMockPanelData } from "@/lib/integrations/tokens";
 import { formatNumber, formatTry } from "@/lib/panel/format";
 import type { MockGa4Overview, MockGa4Row } from "@/lib/panel/mock-data";
@@ -32,10 +35,12 @@ function Ga4DimTable({
   title,
   dimHeader,
   rows,
+  totalLabel = "Toplam",
 }: {
   title: string;
   dimHeader: string;
   rows: MockGa4Row[];
+  totalLabel?: string;
 }) {
   const totals = sumGa4Rows(rows);
   return (
@@ -48,7 +53,7 @@ function Ga4DimTable({
           { key: "users", label: "Kullanıcı", metricKey: "users" },
           {
             key: "conversions",
-            label: "Dönüşüm",
+            label: "Anahtar etkinlik",
             metricKey: "conversions",
           },
         ]}
@@ -56,7 +61,7 @@ function Ga4DimTable({
       >
         {rows.length > 0 ? (
           <tr data-total>
-            <td>Toplam</td>
+            <td>{totalLabel}</td>
             <td className="num">{formatNumber(totals.sessions)}</td>
             <td className="num">{formatNumber(totals.users)}</td>
             <td className="num">{formatNumber(totals.conversions)}</td>
@@ -105,6 +110,7 @@ export default async function Ga4Page({
   let ga4: MockGa4Overview = bundle.ga4;
   let ga4Channels: MockGa4Row[] = bundle.ga4Channels;
   let ga4Landings: MockGa4Row[] = bundle.ga4Landings;
+  let keyEventsByName: Ga4KeyEventRow[] = [];
   let liveError: string | null = null;
   let mode: "mock" | "live" | "db" | "empty" = useMockPanelData()
     ? "mock"
@@ -140,13 +146,12 @@ export default async function Ga4Page({
         users: r.users,
         conversions: r.conversions,
       }));
+      keyEventsByName = snap.keyEventsByName;
       mode = "live";
     } catch (err) {
       liveError = err instanceof Error ? err.message : String(err);
       const hasDb =
-        bundle.ga4.sessions > 0 ||
-        bundle.ga4Channels.length > 0 ||
-        bundle.ga4Landings.length > 0;
+        bundle.ga4.sessions > 0 || bundle.ga4Channels.length > 0;
       if (hasDb) {
         ga4 = bundle.ga4;
         ga4Channels = bundle.ga4Channels;
@@ -215,8 +220,9 @@ export default async function Ga4Page({
         <div className="rounded-lg border border-zinc-200 bg-zinc-100 px-4 py-3 text-sm text-zinc-700">
           {mode === "db" ? (
             <>
-              Canlı GA4 çekilemedi — son sync verisi gösteriliyor (seçilen
-              dönemle birebir olmayabilir).
+              Canlı GA4 çekilemedi — seçilen dönem, sync edilmiş günlük
+              verilerden toplandı. Kullanıcı sayısı günlük toplamdır (tekil
+              değil); açılış sayfaları yalnızca canlı veride gösterilir.
               <span className="mt-1 block text-xs text-zinc-500">
                 {liveError}
               </span>
@@ -345,8 +351,38 @@ export default async function Ga4Page({
               title="Açılış sayfaları"
               dimHeader="Sayfa"
               rows={ga4Landings}
+              totalLabel={`İlk ${ga4Landings.length} sayfa toplamı`}
             />
           </div>
+
+          {keyEventsByName.length > 0 ? (
+            <div className="space-y-3">
+              <h3 className="text-sm font-semibold text-zinc-800">
+                Anahtar etkinlikler (GA4 dönüşümleri)
+              </h3>
+              <p className="text-xs text-zinc-500">
+                GA4&apos;te &quot;anahtar etkinlik&quot; işaretli olaylar · Google
+                Ads / Meta dönüşümlerinden bağımsız sayım (tekilleştirilmiş site
+                verisi).
+              </p>
+              <DataTable
+                headers={[
+                  "Olay",
+                  { key: "keyEvents", label: "Adet", metricKey: "conversions" },
+                ]}
+                numericCols={[1]}
+              >
+                {keyEventsByName.map((r) => (
+                  <tr key={r.eventName}>
+                    <td className="font-mono text-xs text-panel-fg">
+                      {r.eventName}
+                    </td>
+                    <td className="num">{formatNumber(r.keyEvents, 1)}</td>
+                  </tr>
+                ))}
+              </DataTable>
+            </div>
+          ) : null}
         </>
       ) : null}
     </div>

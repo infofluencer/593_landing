@@ -240,11 +240,13 @@ export default function StatusBoard({
   staff,
   teams,
   tenants,
+  canDeleteCards,
 }: {
   initialBoard: Board;
   staff: StaffUser[];
   teams: TeamRef[];
   tenants: TenantRef[];
+  canDeleteCards: boolean;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -1176,13 +1178,15 @@ export default function StatusBoard({
               >
                 Kapat
               </button>
-              <button
-                type="button"
-                onClick={() => void deleteCard(editing.id)}
-                className="ml-auto rounded-md px-3 py-2 text-sm text-rose-600 hover:bg-rose-50"
-              >
-                Sil
-              </button>
+              {canDeleteCards ? (
+                <button
+                  type="button"
+                  onClick={() => void deleteCard(editing.id)}
+                  className="ml-auto rounded-md px-3 py-2 text-sm text-rose-600 hover:bg-rose-50"
+                >
+                  Sil
+                </button>
+              ) : null}
             </div>
           </div>
         </div>

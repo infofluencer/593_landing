@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import {
   parseBudgetAmount,
   saveBrandBudgetPlan,
+  saveBrandBudgetYear,
   type BudgetProvider,
 } from "@/lib/panel/brand-budget";
 import { requireStaffApi } from "@/lib/panel/staff-auth";
@@ -24,9 +25,30 @@ type PatchBody = {
   month?: string;
   monthlyBudget?: unknown;
   dailyBudget?: unknown;
+  googleBudget?: unknown;
+  metaBudget?: unknown;
+  note?: unknown;
   campaigns?: CampaignBody[];
   removeCampaigns?: Array<{ provider?: string; campaignId?: string }>;
 };
+
+type PutBody = {
+  months?: Array<{
+    month?: string;
+    monthlyBudget?: unknown;
+    googleBudget?: unknown;
+    metaBudget?: unknown;
+  }>;
+};
+
+async function findTenant(ctx: { params: Promise<{ slug: string }> }) {
+  const { slug: raw } = await ctx.params;
+  const slug = raw.trim().toLowerCase();
+  return prisma.tenant.findUnique({
+    where: { slug },
+    select: { id: true },
+  });
+}
 
 /** Admin/team — marka + kampanya bütçe planı (İstanbul ayı). */
 export async function PATCH(
@@ -36,12 +58,7 @@ export async function PATCH(
   const { error } = await requireStaffApi();
   if (error) return error;
 
-  const { slug: raw } = await ctx.params;
-  const slug = raw.trim().toLowerCase();
-  const tenant = await prisma.tenant.findUnique({
-    where: { slug },
-    select: { id: true },
-  });
+  const tenant = await findTenant(ctx);
   if (!tenant) {
     return NextResponse.json({ error: "Marka bulunamadı" }, { status: 404 });
   }
@@ -64,6 +81,9 @@ export async function PATCH(
       month,
       monthlyBudget: parseBudgetAmount(body.monthlyBudget),
       dailyBudget: parseBudgetAmount(body.dailyBudget),
+      googleBudget: parseBudgetAmount(body.googleBudget),
+      metaBudget: parseBudgetAmount(body.metaBudget),
+      note: typeof body.note === "string" ? body.note : "",
       campaigns: campaigns.map((row) => ({
         provider: row.provider as BudgetProvider,
         campaignId: row.campaignId ?? "",
@@ -81,6 +101,50 @@ export async function PATCH(
           }))
         : [],
     });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Kaydedilemedi";
+    return NextResponse.json({ error: message }, { status: 400 });
+  }
+
+  return NextResponse.json({ ok: true });
+}
+
+/** Admin/team — yıllık plan: birden fazla ayın toplam + kanal payı. */
+export async function PUT(
+  request: Request,
+  ctx: { params: Promise<{ slug: string }> },
+) {
+  const { error } = await requireStaffApi();
+  if (error) return error;
+
+  const tenant = await findTenant(ctx);
+  if (!tenant) {
+    return NextResponse.json({ error: "Marka bulunamadı" }, { status: 404 });
+  }
+
+  let body: PutBody;
+  try {
+    body = (await request.json()) as PutBody;
+  } catch {
+    return NextResponse.json({ error: "JSON gerekli" }, { status: 400 });
+  }
+  if (!Array.isArray(body.months) || body.months.length === 0) {
+    return NextResponse.json({ error: "Ay listesi gerekli" }, { status: 400 });
+  }
+  if (body.months.length > 24) {
+    return NextResponse.json({ error: "En fazla 24 ay" }, { status: 400 });
+  }
+
+  try {
+    await saveBrandBudgetYear(
+      tenant.id,
+      body.months.map((row) => ({
+        month: row.month?.trim() ?? "",
+        monthlyBudget: parseBudgetAmount(row.monthlyBudget),
+        googleBudget: parseBudgetAmount(row.googleBudget),
+        metaBudget: parseBudgetAmount(row.metaBudget),
+      })),
+    );
   } catch (err) {
     const message = err instanceof Error ? err.message : "Kaydedilemedi";
     return NextResponse.json({ error: message }, { status: 400 });

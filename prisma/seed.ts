@@ -1,6 +1,7 @@
 import { PrismaClient, type TenantType } from "@prisma/client";
 import bcrypt from "bcryptjs";
 import { GOOGLE_ADS_CUSTOMER_BY_SLUG } from "../src/lib/panel/google-ads-customer-map";
+import { FIXED_TEAMS } from "../src/lib/panel/teams";
 
 const prisma = new PrismaClient();
 
@@ -179,85 +180,30 @@ async function main() {
     },
   });
 
-  const teamHash = await bcrypt.hash("team1234", 10);
-  const teamUser = await prisma.user.upsert({
-    where: { email: "team@593emarketing.com" },
-    update: {
-      passwordHash: teamHash,
-      role: "team",
-      name: "593 Team",
-      passwordPlain: "team1234",
-    },
-    create: {
-      email: "team@593emarketing.com",
-      passwordHash: teamHash,
-      passwordPlain: "team1234",
-      name: "593 Team",
-      role: "team",
-    },
-  });
-
-  const DEFAULT_TEAMS: Array<{
-    name: string;
-    description: string;
-    color: string;
-  }> = [
-    { name: "Meta", description: "Meta reklam operasyonları", color: "#0866FF" },
-    { name: "Google", description: "Google Ads & Search", color: "#4285F4" },
-    { name: "Analytics", description: "GA4, GTM, ölçümleme", color: "#E37400" },
-    { name: "Kreatif", description: "Kreatif ve içerik üretimi", color: "#7C3AED" },
-    {
-      name: "Hesap yönetimi",
-      description: "Müşteri ilişkileri ve hesap yönetimi",
-      color: "#0D9488",
-    },
-  ];
-
-  const staffIds = [admin.id, teamUser.id];
-  for (const def of DEFAULT_TEAMS) {
-    const slug = def.name
-      .toLocaleLowerCase("tr")
-      .normalize("NFD")
-      .replace(/[\u0300-\u036f]/g, "")
-      .replace(/ğ/g, "g")
-      .replace(/ü/g, "u")
-      .replace(/ş/g, "s")
-      .replace(/ı/g, "i")
-      .replace(/ö/g, "o")
-      .replace(/ç/g, "c")
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-+|-+$/g, "");
-
-    const team =
-      (await prisma.team.findFirst({
-        where: { OR: [{ name: def.name }, { slug }] },
-      })) ??
-      (await prisma.team.create({
-        data: {
-          name: def.name,
-          slug,
-          color: def.color,
-          description: def.description,
-        },
-      }));
-
-    await prisma.team.update({
-      where: { id: team.id },
-      data: {
+  // Sabit ekipler (src/lib/panel/teams.ts) — admin hepsine üye.
+  for (const [sortOrder, def] of FIXED_TEAMS.entries()) {
+    const team = await prisma.team.upsert({
+      where: { slug: def.slug },
+      update: {
+        name: def.name,
         description: def.description,
         color: def.color,
-        slug: team.slug || slug,
+        sortOrder,
+      },
+      create: {
         name: def.name,
+        slug: def.slug,
+        description: def.description,
+        color: def.color,
+        sortOrder,
       },
     });
 
-    for (const userId of staffIds) {
-      await prisma.teamMember.upsert({
-        where: { teamId_userId: { teamId: team.id, userId } },
-        update: {},
-        create: { teamId: team.id, userId },
-      });
-    }
+    await prisma.teamMember.upsert({
+      where: { teamId_userId: { teamId: team.id, userId: admin.id } },
+      update: {},
+      create: { teamId: team.id, userId: admin.id },
+    });
   }
 
   const boardCount = await prisma.board.count();
@@ -342,7 +288,6 @@ async function main() {
     `mareen(${mareen.type})`,
     `demo(${demo.type})`,
     "admin@593emarketing.com / demo1234 → admin.localhost:3006",
-    "team@593emarketing.com / team1234 → admin.localhost:3006",
     "mareen@593emarketing.com / client1234 → mareen.localhost:3006",
     "demo@593emarketing.com / lead1234 → demo.localhost:3006",
   );

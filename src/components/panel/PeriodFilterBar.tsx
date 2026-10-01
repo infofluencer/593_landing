@@ -1,21 +1,16 @@
 "use client";
 
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useTransition } from "react";
+import { usePathname, useSearchParams } from "next/navigation";
+import { PeriodNavStatusLine, PeriodSpinner } from "@/components/panel/period-nav/PeriodNavUi";
+import { usePeriodNavigation } from "@/components/panel/period-nav/usePeriodNavigation";
 import {
   buildPeriodHref,
+  PANEL_PERIOD_PRESETS,
   parsePanelPeriod,
   type PanelPeriod,
 } from "@/lib/panel/period";
 
-const PRESETS: { period: PanelPeriod; label: string }[] = [
-  { period: "mtd", label: "Bu ay" },
-  { period: "1", label: "1 ay" },
-  { period: "3", label: "3 ay" },
-  { period: "6", label: "6 ay" },
-  { period: "12", label: "12 ay" },
-  { period: "24", label: "720 gün" },
-];
+const PRESETS = PANEL_PERIOD_PRESETS;
 
 export default function PeriodFilterBar({
   label,
@@ -23,42 +18,49 @@ export default function PeriodFilterBar({
   /** Resolved range label from server */
   label?: string;
 }) {
-  const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const [pending, startTransition] = useTransition();
+  const { navigate, busy, status, activeKey, label: navLabel } =
+    usePeriodNavigation();
   const active = parsePanelPeriod(searchParams.get("period"));
   const start = searchParams.get("start") ?? "";
   const end = searchParams.get("end") ?? "";
 
-  function go(period: PanelPeriod, custom?: { start: string; end: string }) {
+  function go(
+    period: PanelPeriod,
+    navLabelText: string,
+    custom?: { start: string; end: string },
+  ) {
     const href = buildPeriodHref(pathname || "/", {
       period,
       start: custom?.start,
       end: custom?.end,
     });
-    startTransition(() => {
-      router.push(href);
-    });
+    navigate(href, { key: period, label: navLabelText });
   }
 
   return (
-    <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+    <div
+      className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between"
+      aria-busy={busy}
+    >
       <div className="flex flex-wrap gap-1.5">
         {PRESETS.map((p) => {
           const selected = active === p.period;
+          const loadingThis = busy && activeKey === p.period;
           return (
             <button
               key={p.period}
               type="button"
-              disabled={pending}
-              onClick={() => go(p.period)}
-              className={`rounded-md border px-2.5 py-1 text-xs font-medium transition ${
-                selected
+              disabled={busy}
+              onClick={() => go(p.period, p.label)}
+              className={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs font-medium transition ${
+                selected || loadingThis
                   ? "border-[#e91825]/40 bg-[#e91825]/10 text-[#e91825]"
                   : "border-zinc-200 bg-white text-zinc-600 hover:border-zinc-300 hover:text-zinc-900"
-              } disabled:opacity-60`}
+              } ${loadingThis ? "disabled:opacity-100" : "disabled:opacity-60"}`}
             >
+              {loadingThis ? <PeriodSpinner /> : null}
               {p.label}
             </button>
           );
@@ -73,7 +75,7 @@ export default function PeriodFilterBar({
           const s = String(fd.get("start") || "");
           const en = String(fd.get("end") || "");
           if (!s || !en) return;
-          go("custom", { start: s, end: en });
+          go("custom", "Özel aralık", { start: s, end: en });
         }}
       >
         <label className="text-[10px] font-medium uppercase tracking-wide text-zinc-500">
@@ -96,20 +98,22 @@ export default function PeriodFilterBar({
         </label>
         <button
           type="submit"
-          disabled={pending}
-          className={`rounded-md border px-2.5 py-1 text-xs font-medium ${
-            active === "custom"
+          disabled={busy}
+          className={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs font-medium ${
+            active === "custom" || (busy && activeKey === "custom")
               ? "border-[#e91825]/40 bg-[#e91825]/10 text-[#e91825]"
               : "border-zinc-200 bg-white text-zinc-600 hover:border-zinc-300"
-          } disabled:opacity-60`}
+          } ${busy && activeKey === "custom" ? "disabled:opacity-100" : "disabled:opacity-60"}`}
         >
+          {busy && activeKey === "custom" ? <PeriodSpinner /> : null}
           Uygula
         </button>
       </form>
 
-      {label ? (
+      {status === "idle" && label ? (
         <p className="w-full text-xs text-zinc-500 sm:w-auto">{label}</p>
       ) : null}
+      <PeriodNavStatusLine status={status} label={navLabel} />
     </div>
   );
 }

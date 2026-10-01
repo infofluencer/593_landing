@@ -1,10 +1,11 @@
 import {
-  Brush,
   CheckCircle2,
   Circle,
   Eye,
   Handshake,
   Loader,
+  Megaphone,
+  Palette,
   type LucideIcon,
 } from "lucide-react";
 import { Ga4Mark, GoogleAdsMark, MetaMark } from "@/components/panel/ds/BrandMarks";
@@ -23,6 +24,9 @@ export function TeamPlatformIcon({
 }) {
   const key = `${slug ?? ""} ${name ?? ""}`.toLocaleLowerCase("tr");
 
+  if (key.includes("sosyal") || key.includes("social")) {
+    return <Megaphone className={className} aria-hidden strokeWidth={2} />;
+  }
   if (key.includes("meta")) {
     return <MetaMark className={className} />;
   }
@@ -32,8 +36,13 @@ export function TeamPlatformIcon({
   if (key.includes("analytic") || key.includes("ga4")) {
     return <Ga4Mark className={className} />;
   }
-  if (key.includes("kreatif") || key.includes("creative")) {
-    return <Brush className={className} aria-hidden strokeWidth={2} />;
+  if (
+    key.includes("grafik") ||
+    key.includes("tasarim") ||
+    key.includes("kreatif") ||
+    key.includes("creative")
+  ) {
+    return <Palette className={className} aria-hidden strokeWidth={2} />;
   }
   if (
     key.includes("hesap") ||

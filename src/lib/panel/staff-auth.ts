@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/db";
 import { isStaffRole } from "@/lib/panel/host";
+import { can, type Permission } from "@/lib/panel/permissions";
 
 /** Staff-only API guard (admin/team on agency portal). */
 export async function requireStaffApi() {
@@ -19,6 +20,22 @@ export async function requireStaffApi() {
     };
   }
   return { session, error: null };
+}
+
+/** Staff + belirli yetki (bkz. permissions.ts). */
+export async function requirePermissionApi(permission: Permission) {
+  const result = await requireStaffApi();
+  if (result.error || !result.session) return result;
+  if (!can(result.session.user.role, permission)) {
+    return {
+      session: null,
+      error: NextResponse.json(
+        { error: "Bu işlem için yetkiniz yok" },
+        { status: 403 },
+      ),
+    };
+  }
+  return result;
 }
 
 /**

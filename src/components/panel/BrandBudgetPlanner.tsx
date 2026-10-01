@@ -2,6 +2,8 @@
 
 import { Suspense, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import BudgetPacingCard from "@/components/panel/BudgetPacingCard";
+import BudgetYearTable from "@/components/panel/BudgetYearTable";
 import PeriodFilterBar from "@/components/panel/PeriodFilterBar";
 import { formatTry } from "@/lib/panel/format";
 import {
@@ -84,7 +86,25 @@ export default function BrandBudgetPlanner({
     );
   }
 
-  return <PlannerForm key={`${plan.rangeFrom}-${plan.rangeTo}`} plan={plan} />;
+  const todayRow = plan.pace.daily.find((d) => d.date === plan.today);
+  return (
+    <>
+      <PlannerForm
+        key={`${plan.rangeFrom}-${plan.rangeTo}-${JSON.stringify(plan.brand)}`}
+        plan={plan}
+      />
+      <BudgetYearTable
+        key={`${plan.year.year}-${JSON.stringify(plan.year.months)}`}
+        slug={plan.slug}
+        currency={plan.currency}
+        year={plan.year}
+        today={plan.today}
+        todaySpend={todayRow ? todayRow.google + todayRow.meta : 0}
+        focusMonth={plan.month}
+        editable
+      />
+    </>
+  );
 }
 
 function PlannerForm({ plan }: { plan: BrandBudgetPlan }) {
@@ -98,6 +118,13 @@ function PlannerForm({ plan }: { plan: BrandBudgetPlan }) {
   const [brandDaily, setBrandDaily] = useState(
     moneyToInput(plan.brand.dailyBudget),
   );
+  const [brandGoogle, setBrandGoogle] = useState(
+    moneyToInput(plan.brand.googleBudget),
+  );
+  const [brandMeta, setBrandMeta] = useState(
+    moneyToInput(plan.brand.metaBudget),
+  );
+  const [brandNote, setBrandNote] = useState(plan.brand.note);
   const [rows, setRows] = useState<DraftRow[]>(() =>
     plan.campaigns.map((c) => ({
       provider: c.provider,
@@ -139,6 +166,8 @@ function PlannerForm({ plan }: { plan: BrandBudgetPlan }) {
           ? {
               monthlyBudget: parseDraft(brandMonthly),
               dailyBudget: parseDraft(brandDaily),
+              googleBudget: parseDraft(brandGoogle),
+              metaBudget: parseDraft(brandMeta),
             }
           : plan.rangeBrand,
         rows.map((row) => ({
@@ -149,8 +178,25 @@ function PlannerForm({ plan }: { plan: BrandBudgetPlan }) {
           todaySpend: row.todaySpend,
         })),
       ),
-    [brandDaily, brandMonthly, plan.canEdit, plan.rangeBrand, rows],
+    [
+      brandDaily,
+      brandGoogle,
+      brandMeta,
+      brandMonthly,
+      plan.canEdit,
+      plan.rangeBrand,
+      rows,
+    ],
   );
+
+  const channelSum =
+    parseDraft(brandGoogle) != null || parseDraft(brandMeta) != null
+      ? (parseDraft(brandGoogle) ?? 0) + (parseDraft(brandMeta) ?? 0)
+      : null;
+  const suggestedDaily =
+    summary.plannedMonthly != null && summary.plannedMonthly > 0
+      ? summary.plannedMonthly / plan.daysInMonth
+      : null;
 
   function setRow(
     provider: BudgetProvider,
@@ -219,6 +265,9 @@ function PlannerForm({ plan }: { plan: BrandBudgetPlan }) {
             month: plan.month,
             monthlyBudget: brandMonthly,
             dailyBudget: brandDaily,
+            googleBudget: brandGoogle,
+            metaBudget: brandMeta,
+            note: brandNote,
             campaigns: rows.map((row) => ({
               provider: row.provider,
               campaignId: row.campaignId,
@@ -283,36 +332,72 @@ function PlannerForm({ plan }: { plan: BrandBudgetPlan }) {
             Planlanan
           </p>
           <p className="mt-0.5 text-xs text-zinc-500">
-            Sizin girdiğiniz hedef bütçe
+            {plan.canEdit
+              ? `${plan.monthLabel} için hedef bütçe`
+              : "Seçili ayların plan toplamı"}
           </p>
           <div className="mt-3 grid gap-3 sm:grid-cols-2">
-            <label className="block space-y-1.5">
-              <span className="text-[11px] font-medium uppercase tracking-[0.1em] text-zinc-500">
-                Aylık
-              </span>
-              <input
-                className={inputClass}
-                inputMode="decimal"
-                placeholder="ör. 120000"
-                disabled={!plan.canEdit}
-                value={brandMonthly}
-                onChange={(e) => setBrandMonthly(e.target.value)}
-              />
-            </label>
-            <label className="block space-y-1.5">
-              <span className="text-[11px] font-medium uppercase tracking-[0.1em] text-zinc-500">
-                Günlük
-              </span>
-              <input
-                className={inputClass}
-                inputMode="decimal"
-                placeholder="ör. 4000"
-                disabled={!plan.canEdit}
-                value={brandDaily}
-                onChange={(e) => setBrandDaily(e.target.value)}
-              />
-            </label>
+            <MoneyField
+              label="Aylık"
+              placeholder={
+                channelSum != null ? String(channelSum) : "ör. 120000"
+              }
+              disabled={!plan.canEdit}
+              value={plan.canEdit ? brandMonthly : moneyToInput(plan.rangeBrand.monthlyBudget)}
+              onChange={setBrandMonthly}
+            />
+            <MoneyField
+              label="Günlük"
+              placeholder={
+                suggestedDaily != null
+                  ? `öneri ${Math.round(suggestedDaily)}`
+                  : "ör. 4000"
+              }
+              disabled={!plan.canEdit}
+              value={plan.canEdit ? brandDaily : moneyToInput(plan.rangeBrand.dailyBudget)}
+              onChange={setBrandDaily}
+            />
+            <MoneyField
+              label="Google Ads payı"
+              placeholder="—"
+              disabled={!plan.canEdit}
+              value={plan.canEdit ? brandGoogle : moneyToInput(plan.rangeBrand.googleBudget)}
+              onChange={setBrandGoogle}
+            />
+            <MoneyField
+              label="Meta Ads payı"
+              placeholder="—"
+              disabled={!plan.canEdit}
+              value={plan.canEdit ? brandMeta : moneyToInput(plan.rangeBrand.metaBudget)}
+              onChange={setBrandMeta}
+            />
           </div>
+
+          {summary.plannedMonthly != null && summary.plannedMonthly > 0 ? (
+            <ChannelSplitBar
+              total={summary.plannedMonthly}
+              google={parseDraft(brandGoogle) ?? 0}
+              meta={parseDraft(brandMeta) ?? 0}
+              currency={plan.currency}
+              show={plan.canEdit && channelSum != null}
+            />
+          ) : null}
+
+          {plan.canEdit ? (
+            <label className="mt-3 block space-y-1.5">
+              <span className="text-[11px] font-medium uppercase tracking-[0.1em] text-zinc-500">
+                Not
+              </span>
+              <input
+                className={nameInputClass}
+                maxLength={500}
+                placeholder="ör. Kampanya dönemi — 15’inden sonra Meta ağırlıklı"
+                value={brandNote}
+                onChange={(e) => setBrandNote(e.target.value)}
+              />
+            </label>
+          ) : null}
+
           {summary.campaignMonthly > 0 ? (
             <p className="mt-3 text-xs text-zinc-500">
               Kampanya toplamı{" "}
@@ -327,6 +412,20 @@ function PlannerForm({ plan }: { plan: BrandBudgetPlan }) {
                     {formatTry(summary.campaignDaily, plan.currency)}
                   </span>
                 </>
+              ) : null}
+              {summary.plannedMonthly != null &&
+              Math.abs(summary.campaignMonthly - summary.plannedMonthly) >= 1 ? (
+                <span className="text-amber-700">
+                  {" "}
+                  · marka planından{" "}
+                  {formatTry(
+                    Math.abs(summary.campaignMonthly - summary.plannedMonthly),
+                    plan.currency,
+                  )}{" "}
+                  {summary.campaignMonthly > summary.plannedMonthly
+                    ? "fazla"
+                    : "eksik"}
+                </span>
               ) : null}
             </p>
           ) : null}
@@ -373,20 +472,19 @@ function PlannerForm({ plan }: { plan: BrandBudgetPlan }) {
         </div>
       </div>
 
-      {summary.plannedMonthly != null && summary.plannedMonthly > 0 ? (
-        <div className="h-2 overflow-hidden rounded-full bg-zinc-100">
-          <div
-            className={`h-full rounded-full ${
-              summary.pacePct != null && summary.pacePct >= 100
-                ? "bg-rose-500"
-                : summary.pacePct != null && summary.pacePct >= plan.warnPct
-                  ? "bg-amber-400"
-                  : "bg-zinc-800"
-            }`}
-            style={{ width: `${Math.min(100, summary.pacePct ?? 0)}%` }}
-          />
-        </div>
-      ) : null}
+      <BudgetPacingCard
+        title={
+          plan.months.length > 1
+            ? `Bütçe temposu · ${plan.months.length} ay`
+            : `Bütçe temposu · ${plan.monthLabel}`
+        }
+        planned={summary.plannedMonthly}
+        from={plan.pace.from}
+        to={plan.pace.to}
+        today={plan.today}
+        daily={plan.pace.daily}
+        currency={plan.currency}
+      />
 
       <div className="grid gap-3 sm:grid-cols-2">
         <ChannelCompare
@@ -789,6 +887,85 @@ function ChannelCompare({
       </div>
       <p className={`mt-2 text-xs font-semibold tabular-nums ${paceTone(pace, warnPct)}`}>
         {pace == null ? "Kampanya planı yok" : `%${pace} tempo`}
+      </p>
+    </div>
+  );
+}
+
+function MoneyField({
+  label,
+  value,
+  placeholder,
+  disabled,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  placeholder: string;
+  disabled: boolean;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <label className="block space-y-1.5">
+      <span className="text-[11px] font-medium uppercase tracking-[0.1em] text-zinc-500">
+        {label}
+      </span>
+      <input
+        className={inputClass}
+        inputMode="decimal"
+        placeholder={placeholder}
+        disabled={disabled}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+      />
+    </label>
+  );
+}
+
+/** Aylık planın kanal dağılımı — Google / Meta / dağıtılmamış. */
+function ChannelSplitBar({
+  total,
+  google,
+  meta,
+  currency,
+  show,
+}: {
+  total: number;
+  google: number;
+  meta: number;
+  currency: string;
+  show: boolean;
+}) {
+  if (!show) return null;
+  const rest = total - google - meta;
+  const max = Math.max(total, google + meta);
+  const pct = (n: number) => `${(Math.max(0, n) / max) * 100}%`;
+  return (
+    <div className="mt-3">
+      <div className="flex h-2 gap-0.5 overflow-hidden rounded-full bg-zinc-100">
+        {google > 0 ? (
+          <div className="h-full bg-emerald-600" style={{ width: pct(google) }} />
+        ) : null}
+        {meta > 0 ? (
+          <div className="h-full bg-blue-600" style={{ width: pct(meta) }} />
+        ) : null}
+      </div>
+      <p className="mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-zinc-500">
+        <span className="inline-flex items-center gap-1">
+          <span className="size-2 rounded-full bg-emerald-600" />
+          Google %{Math.round((google / total) * 100)}
+        </span>
+        <span className="inline-flex items-center gap-1">
+          <span className="size-2 rounded-full bg-blue-600" />
+          Meta %{Math.round((meta / total) * 100)}
+        </span>
+        {Math.abs(rest) >= 1 ? (
+          <span className="font-medium text-amber-700">
+            {rest > 0
+              ? `${formatTry(rest, currency)} dağıtılmadı`
+              : `Kanallar plandan ${formatTry(-rest, currency)} fazla`}
+          </span>
+        ) : null}
       </p>
     </div>
   );

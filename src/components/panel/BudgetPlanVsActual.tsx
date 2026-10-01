@@ -1,4 +1,8 @@
 import Link from "next/link";
+import BudgetPacingCard, {
+  PaceStatusBadge,
+} from "@/components/panel/BudgetPacingCard";
+import BudgetYearTable from "@/components/panel/BudgetYearTable";
 import { BudgetBar, KPICard } from "@/components/panel/ds";
 import { PanelTable } from "@/components/panel/ui";
 import {
@@ -9,6 +13,7 @@ import {
   type BrandBudgetPlan,
   type BudgetProvider,
 } from "@/lib/panel/brand-budget";
+import { computeBudgetPacing } from "@/lib/panel/budget-pacing";
 import { formatTry } from "@/lib/panel/format";
 
 function paceClass(pct: number | null, warnPct: number): string {
@@ -31,14 +36,37 @@ export default function BudgetPlanVsActual({
   const campaigns = provider
     ? plan.campaigns.filter((c) => c.provider === provider)
     : plan.campaigns;
+  const brandBase = plan.canEdit ? plan.brand : plan.rangeBrand;
   const summary = summarizeBudgetPlan(
     provider
-      ? { monthlyBudget: null, dailyBudget: null }
-      : plan.canEdit
-        ? plan.brand
-        : plan.rangeBrand,
+      ? {
+          monthlyBudget:
+            provider === "google"
+              ? brandBase.googleBudget
+              : brandBase.metaBudget,
+          dailyBudget: null,
+        }
+      : brandBase,
     campaigns,
   );
+  const paceDaily = provider
+    ? plan.pace.daily.map((d) => ({
+        date: d.date,
+        google: provider === "google" ? d.google : 0,
+        meta: provider === "meta" ? d.meta : 0,
+      }))
+    : plan.pace.daily;
+  const todayRow = paceDaily.find((d) => d.date === plan.today);
+  const todaySpend = todayRow ? todayRow.google + todayRow.meta : 0;
+  const pacing = computeBudgetPacing({
+    planned: summary.plannedMonthly,
+    spent: paceDaily.reduce((sum, d) => sum + d.google + d.meta, 0),
+    from: plan.pace.from,
+    to: plan.pace.to,
+    today: plan.today,
+    todaySpend,
+  });
+  const note = plan.canEdit ? plan.brand.note.trim() : "";
   const currency = plan.currency;
   const channelLabel =
     provider === "meta" ? "Meta" : provider === "google" ? "Google Ads" : null;
@@ -55,6 +83,7 @@ export default function BudgetPlanVsActual({
             <span className="rounded-md border border-zinc-200 bg-zinc-50 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-zinc-500">
               İnceleme
             </span>
+            <PaceStatusBadge status={pacing.status} />
           </div>
           <p className="mt-0.5 text-xs text-panel-fg-secondary">
             Plan ajans tarafından belirlenir · burada yalnızca izlenir ·{" "}
@@ -71,11 +100,34 @@ export default function BudgetPlanVsActual({
         ) : null}
       </div>
 
-      <BudgetBar
-        realized={summary.monthSpend}
-        target={summary.plannedMonthly}
-        currency={currency}
-      />
+      {note ? (
+        <p className="rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs text-zinc-600">
+          <span className="font-semibold text-zinc-700">Ajans notu · </span>
+          {note}
+        </p>
+      ) : null}
+
+      {variant === "compact" ? (
+        <BudgetBar
+          realized={summary.monthSpend}
+          target={summary.plannedMonthly}
+          currency={currency}
+        />
+      ) : (
+        <BudgetPacingCard
+          title={
+            plan.months.length > 1
+              ? `Bütçe temposu · ${plan.months.length} ay`
+              : `Bütçe temposu · ${plan.monthLabel}`
+          }
+          planned={summary.plannedMonthly}
+          from={plan.pace.from}
+          to={plan.pace.to}
+          today={plan.today}
+          daily={paceDaily}
+          currency={currency}
+        />
+      )}
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <KPICard
@@ -283,6 +335,18 @@ export default function BudgetPlanVsActual({
           )}
         </div>
       )}
+
+      {variant === "full" && !provider ? (
+        <BudgetYearTable
+          slug={plan.slug}
+          currency={currency}
+          year={plan.year}
+          today={plan.today}
+          todaySpend={todaySpend}
+          focusMonth={plan.month}
+          editable={false}
+        />
+      ) : null}
     </section>
   );
 }

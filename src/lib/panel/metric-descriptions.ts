@@ -26,13 +26,13 @@ export const METRIC_DESCRIPTIONS = {
   conversions: {
     title: "Dönüşüm",
     description:
-      "Hedef aksiyon sayısı. E-ticarette satış; lead’de form / WhatsApp vb.",
+      "E-ticaret: yalnızca satın alım (Meta purchase; Google Ads PURCHASE kategorisi). Lead: Meta form lead + başlayan mesajlaşma; Google Ads birincil dönüşümler (sayfa görüntüleme, sepete ekleme gibi mikro adımlar hariç). Meta atıfı reklam setinin kendi ayarıyla; Google tıklama tarihine yazılır, son 30 gün sonradan artabilir.",
     formula: "Platformda sayılan dönüşüm adedi (kanal düz toplamı)",
   },
   conv: {
     title: "Dönüşüm",
     description:
-      "Hedef aksiyon sayısı. E-ticarette satış; lead’de form / WhatsApp vb.",
+      "E-ticaret: yalnızca satın alım (Meta purchase; Google Ads PURCHASE kategorisi). Lead: Meta form lead + başlayan mesajlaşma; Google Ads birincil dönüşümler (sayfa görüntüleme, sepete ekleme gibi mikro adımlar hariç). Meta atıfı reklam setinin kendi ayarıyla; Google tıklama tarihine yazılır, son 30 gün sonradan artabilir.",
     formula: "Platformda sayılan dönüşüm adedi",
   },
   cpl: {
@@ -58,7 +58,8 @@ export const METRIC_DESCRIPTIONS = {
   },
   clicks: {
     title: "Tıklama",
-    description: "Reklama tıklayan etkileşim sayısı.",
+    description:
+      "Google Ads: reklam tıklaması. Meta: bağlantı tıklaması (siteye/WhatsApp'a giden tık; beğeni, profil gibi tıklamalar hariç).",
     formula: "Platform tıklama toplamı",
   },
   impressions: {
@@ -181,11 +182,13 @@ export const METRIC_DESCRIPTIONS = {
   },
   formLeads: {
     title: "Form lead",
-    description: "Form / iletişim dönüşümleri.",
+    description:
+      "Meta lead olayı (piksel + Facebook formu tek toplam). Lead yoksa kayıt / başvuru / iletişim olaylarından ilki.",
   },
   whatsappLeads: {
     title: "WhatsApp",
-    description: "WhatsApp / mesajlaşma dönüşümleri.",
+    description:
+      "Reklamdan başlayan mesajlaşma konuşmaları (7 gün içinde başlayan).",
   },
   budgetUsed: {
     title: "Bütçe kullanımı",

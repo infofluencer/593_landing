@@ -25,6 +25,7 @@ import {
 import { signOut } from "next-auth/react";
 import { BrandNavIcon, isBrandNavHref } from "./BrandMarks";
 import type { PanelNavLink } from "./nav-config";
+import { PeriodNavIndicator } from "../period-nav/PeriodNavUi";
 
 const PERIOD_KEYS = ["period", "start", "end", "compare"] as const;
 
@@ -104,6 +105,8 @@ export default function PanelShell({
           />
         </div>
       </aside>
+
+      <PeriodNavIndicator />
 
       {/* Mobile drawer */}
       {open ? (

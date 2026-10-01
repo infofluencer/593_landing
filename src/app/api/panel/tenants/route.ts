@@ -5,6 +5,7 @@ import { prisma } from "@/lib/db";
 import { slugifyTr } from "@/lib/integrations/slugify";
 import { validatePanelSlug } from "@/lib/panel/client-email";
 import { sanitizeMappingForDb } from "@/lib/panel/mapping-placeholders";
+import { can } from "@/lib/panel/permissions";
 
 export const runtime = "nodejs";
 
@@ -31,17 +32,13 @@ function emptyToNull(v: string | null | undefined): string | null {
   return t === "" ? null : t;
 }
 
-function requireStaff(role: string | undefined) {
-  return role === "admin" || role === "team";
-}
-
-/** Admin/team — create tenant + mapping + thresholds (manual onboarding). */
+/** Admin — create tenant + mapping + thresholds (manual onboarding). */
 export async function POST(request: Request) {
   const session = await auth();
   if (!session?.user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  if (!requireStaff(session.user.role)) {
+  if (!can(session.user.role, "brands.create")) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 

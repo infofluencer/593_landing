@@ -6,6 +6,7 @@ import { prisma } from "@/lib/db";
 import { deleteBrandCoverFile } from "@/lib/panel/brand-cover";
 import { validatePanelSlug } from "@/lib/panel/client-email";
 import { sanitizeMappingForDb } from "@/lib/panel/mapping-placeholders";
+import { can } from "@/lib/panel/permissions";
 
 export const runtime = "nodejs";
 
@@ -55,7 +56,7 @@ export async function PATCH(request: Request) {
   if (!session?.user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  if (session.user.role !== "admin" && session.user.role !== "team") {
+  if (!can(session.user.role, "brands.edit")) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
@@ -85,6 +86,21 @@ export async function PATCH(request: Request) {
       { error: "Tenant DB’de yok — önce seed / Meta provision." },
       { status: 404 },
     );
+  }
+
+  if (!can(session.user.role, "brands.editIdentity")) {
+    const identityChanged =
+      (body.slug !== undefined &&
+        body.slug.trim().toLowerCase() !== tenant.slug) ||
+      (body.name !== undefined &&
+        (body.name.trim() || tenant.name) !== tenant.name) ||
+      (body.type !== undefined && body.type !== tenant.type);
+    if (identityChanged) {
+      return NextResponse.json(
+        { error: "Marka adı, panel adresi ve türünü yalnızca admin değiştirebilir" },
+        { status: 403 },
+      );
+    }
   }
 
   if (body.type && body.type !== "ecommerce" && body.type !== "lead") {
@@ -246,13 +262,13 @@ export async function PATCH(request: Request) {
   }
 }
 
-/** Admin/team — markayı ve ilişkili veriyi kalıcı siler. */
+/** Admin — markayı ve ilişkili veriyi kalıcı siler. */
 export async function DELETE(request: Request) {
   const session = await auth();
   if (!session?.user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  if (session.user.role !== "admin" && session.user.role !== "team") {
+  if (!can(session.user.role, "brands.delete")) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 

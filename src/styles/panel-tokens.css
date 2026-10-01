@@ -81,7 +81,26 @@
   outline-offset: 2px;
 }
 
+/* Zaman filtresi geçişinde üst ilerleme çubuğu (belirsiz süre). */
+@keyframes panel-progress {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(300%);
+  }
+}
+
+.panel-progress-bar {
+  animation: panel-progress 1.1s ease-in-out infinite;
+}
+
 @media (prefers-reduced-motion: reduce) {
+  .panel-progress-bar {
+    width: 100%;
+    animation: none !important;
+  }
+
   .panel-root *,
   .panel-root *::before,
   .panel-root *::after {

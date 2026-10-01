@@ -7,6 +7,7 @@ import {
   deleteBrandCoverFile,
   saveBrandCover,
 } from "@/lib/panel/brand-cover";
+import { can } from "@/lib/panel/permissions";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -27,7 +28,7 @@ async function requireStaffTenant(slug: string) {
   if (!session?.user) {
     return { error: NextResponse.json({ error: "Unauthorized" }, { status: 401 }) };
   }
-  if (session.user.role !== "admin" && session.user.role !== "team") {
+  if (!can(session.user.role, "brands.edit")) {
     return { error: NextResponse.json({ error: "Forbidden" }, { status: 403 }) };
   }
   const tenant = await prisma.tenant.findUnique({

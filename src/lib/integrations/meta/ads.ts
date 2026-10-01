@@ -404,6 +404,8 @@ async function fetchMetaAdInsightsChunk(opts: {
     access_token: token,
     level: "ad",
     time_increment: "1",
+    // Ads Manager ile aynı: reklam setinin kendi atıf ayarı (varsayılan 7g tık / 1g görüntüleme değil)
+    use_unified_attribution_setting: "true",
     time_range: JSON.stringify({ since: opts.from, until: opts.to }),
     fields,
     limit: "500",
@@ -564,6 +566,8 @@ async function fetchMetaAdsetInsightsChunk(opts: {
     access_token: token,
     level: "adset",
     time_increment: "1",
+    // Ads Manager ile aynı: reklam setinin kendi atıf ayarı (varsayılan 7g tık / 1g görüntüleme değil)
+    use_unified_attribution_setting: "true",
     time_range: JSON.stringify({ since: opts.from, until: opts.to }),
     fields,
     limit: "500",
@@ -731,6 +735,8 @@ async function fetchMetaBreakdownChunk(opts: {
     access_token: token,
     level: "account",
     time_increment: "1",
+    // Ads Manager ile aynı: reklam setinin kendi atıf ayarı (varsayılan 7g tık / 1g görüntüleme değil)
+    use_unified_attribution_setting: "true",
     time_range: JSON.stringify({ since: opts.from, until: opts.to }),
     breakdowns: JSON.stringify([BREAKDOWN_PARAM[opts.kind]]),
     fields,

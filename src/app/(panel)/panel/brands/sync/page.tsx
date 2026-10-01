@@ -2,10 +2,16 @@ import Link from "next/link";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
+import { BackfillPanel } from "@/components/panel/BackfillPanel";
 import { PanelTable } from "@/components/panel/ui";
 import { formatDate, formatDateTime, formatNumber } from "@/lib/panel/format";
 import { isStaffRole } from "@/lib/panel/host";
 import { loadSyncAudit } from "@/lib/panel/sync-audit";
+import {
+  BACKFILL_VERSION,
+  isBackfillRunning,
+  listBackfillStatus,
+} from "@/lib/panel/backfill";
 
 export const dynamic = "force-dynamic";
 
@@ -56,6 +62,9 @@ export default async function BrandSyncAuditPage() {
   }
 
   const audit = await loadSyncAudit();
+  const [backfillTenants, backfillRunning] = audit.mock
+    ? [[], false]
+    : await Promise.all([listBackfillStatus(), isBackfillRunning()]);
 
   return (
     <div className="space-y-6">
@@ -112,6 +121,12 @@ export default async function BrandSyncAuditPage() {
               hint="Açık error durumundaki SyncJob"
             />
           </div>
+
+          <BackfillPanel
+            initial={backfillTenants}
+            initialRunning={backfillRunning}
+            version={BACKFILL_VERSION}
+          />
 
           {audit.cron?.error ? (
             <p className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">

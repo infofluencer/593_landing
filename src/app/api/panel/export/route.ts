@@ -4,10 +4,11 @@ import { auth } from "@/auth";
 import { resolvePanelTenant } from "@/lib/panel/data";
 import { buildTenantReportCsv } from "@/lib/panel/export";
 import { prisma } from "@/lib/db";
+import { resolvePanelDateRange } from "@/lib/panel/period";
 
 export const runtime = "nodejs";
 
-export async function GET() {
+export async function GET(request: Request) {
   const session = await auth();
   if (!session?.user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -45,7 +46,19 @@ export async function GET() {
     );
   }
 
-  const csv = await buildTenantReportCsv(db.id);
+  // ?period=…&start=…&end= verilirse panel dönemiyle aynı aralık; yoksa tüm geçmiş.
+  const sp = new URL(request.url).searchParams;
+  const range = sp.has("period")
+    ? await resolvePanelDateRange({
+        period: sp.get("period") ?? undefined,
+        start: sp.get("start") ?? undefined,
+        end: sp.get("end") ?? undefined,
+      })
+    : null;
+  const csv = await buildTenantReportCsv(
+    db.id,
+    range ? { from: range.startDate, to: range.endDate } : undefined,
+  );
   return new NextResponse(csv, {
     status: 200,
     headers: {

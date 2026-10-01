@@ -7,6 +7,7 @@ import PresentationDashboard from "@/components/panel/PresentationDashboard";
 import { DateRangePicker } from "@/components/panel/ds";
 import { loadBrandBudgetPlan } from "@/lib/panel/brand-budget";
 import { requireBundle } from "@/lib/panel/data";
+import { withMetaPeriodReach } from "@/lib/panel/meta-reach";
 import { resolvePanelDateRange } from "@/lib/panel/period";
 import { buildPresentation } from "@/lib/panel/presentation";
 
@@ -28,10 +29,13 @@ export default async function PanelHomePage({
 
   const sp = await searchParams;
   const range = await resolvePanelDateRange(sp);
-  const bundle = await requireBundle(hostSlug, {
-    from: range.startDate,
-    to: range.endDate,
-  });
+  const bundle = await withMetaPeriodReach(
+    await requireBundle(hostSlug, {
+      from: range.startDate,
+      to: range.endDate,
+    }),
+    { from: range.startDate, to: range.endDate },
+  );
   const model = buildPresentation(bundle, range.label);
   const budgetPlan = await loadBrandBudgetPlan(hostSlug, {
     from: range.startDate,

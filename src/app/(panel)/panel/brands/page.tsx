@@ -10,6 +10,7 @@ import AgencyBrandGrid, {
 import { BulkSyncToolbar } from "@/components/panel/SyncButton";
 import { countAgencyBrands, listAgencyBrands } from "@/lib/panel/data";
 import { isStaffRole, rootDomain } from "@/lib/panel/host";
+import { can } from "@/lib/panel/permissions";
 
 /**
  * Sadece admin/team — ajans portalında (admin.*) tüm markalar.
@@ -63,7 +64,9 @@ export default async function BrandsPage({
           </p>
         </div>
         <div className="flex flex-wrap items-end justify-end gap-2.5 sm:gap-3">
-          <AddBrandWizard rootDomain={root} />
+          {can(session.user.role, "brands.create") ? (
+            <AddBrandWizard rootDomain={root} />
+          ) : null}
           <BulkSyncToolbar />
         </div>
       </div>

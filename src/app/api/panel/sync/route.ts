@@ -8,6 +8,7 @@ import {
   type SyncProvider,
 } from "@/lib/panel/sync";
 import { upsertSyncJob } from "@/lib/panel/sync-job";
+import { can } from "@/lib/panel/permissions";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -30,7 +31,7 @@ export async function POST(request: Request) {
   if (!session?.user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  if (session.user.role !== "admin" && session.user.role !== "team") {
+  if (!can(session.user.role, "brands.edit")) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 

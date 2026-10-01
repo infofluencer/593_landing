@@ -1,6 +1,7 @@
 import { Prisma, type Provider } from "@prisma/client";
 import { randomBytes } from "crypto";
 import { prisma } from "@/lib/db";
+import type { BudgetDailySpend } from "@/lib/panel/budget-pacing";
 import { getIstanbulTodayYmd } from "@/lib/date/now";
 import {
   addDaysYmd,
@@ -74,7 +75,12 @@ export type BudgetSummary = {
 };
 
 export function summarizeBudgetPlan(
-  brand: { monthlyBudget: number | null; dailyBudget: number | null },
+  brand: {
+    monthlyBudget: number | null;
+    dailyBudget: number | null;
+    googleBudget?: number | null;
+    metaBudget?: number | null;
+  },
   campaigns: Array<{
     provider: BudgetProvider;
     monthlyBudget: number | null;
@@ -112,7 +118,16 @@ export function summarizeBudgetPlan(
     bucket.todaySpend += row.todaySpend;
   }
 
-  const plannedMonthly = brand.monthlyBudget ?? (campaignMonthly || null);
+  // Marka seviyesinde kanal payı girildiyse kampanya toplamının önüne geçer.
+  if (brand.googleBudget != null) google.plannedMonthly = brand.googleBudget;
+  if (brand.metaBudget != null) meta.plannedMonthly = brand.metaBudget;
+  const channelMonthly =
+    brand.googleBudget != null || brand.metaBudget != null
+      ? (brand.googleBudget ?? 0) + (brand.metaBudget ?? 0)
+      : 0;
+
+  const plannedMonthly =
+    brand.monthlyBudget ?? (channelMonthly || campaignMonthly || null);
   const plannedDaily = brand.dailyBudget ?? (campaignDaily || null);
   const pacePct =
     plannedMonthly && plannedMonthly > 0
@@ -166,17 +181,59 @@ export type BrandBudgetPlan = {
   daysInMonth: number;
   daysElapsed: number;
   warnPct: number;
-  brand: {
-    monthlyBudget: number | null;
-    dailyBudget: number | null;
-  };
+  brand: BrandMonthBudget;
   /** Seçilen dönemdeki ayların plan toplamı (inceleme). */
   rangeBrand: {
     monthlyBudget: number | null;
     dailyBudget: number | null;
+    googleBudget: number | null;
+    metaBudget: number | null;
   };
   campaigns: BudgetCampaignRow[];
+  /** Seçilen dönemde gün gün harcama (bugüne kadar). */
+  daily: BudgetDailySpend[];
+  /** Tempo: seçilen aralığın kapsadığı tam takvim ayları. */
+  pace: {
+    from: string;
+    to: string;
+    daily: BudgetDailySpend[];
+  };
+  /** Odak ayın yılı — ay ay plan ve gerçekleşen. */
+  year: BudgetYear;
 };
+
+export type BrandMonthBudget = {
+  monthlyBudget: number | null;
+  dailyBudget: number | null;
+  googleBudget: number | null;
+  metaBudget: number | null;
+  note: string;
+};
+
+export type BudgetYearMonth = BrandMonthBudget & {
+  month: string;
+  label: string;
+  googleSpend: number;
+  metaSpend: number;
+  /** Ay içinde bugün varsa günceldir; bitmiş / gelecek ay. */
+  phase: "past" | "current" | "future";
+};
+
+export type BudgetYear = {
+  year: number;
+  months: BudgetYearMonth[];
+};
+
+/** Plan toplamı: aylık rakam yoksa kanal payları toplanır. */
+export function monthPlanTotal(row: {
+  monthlyBudget: number | null;
+  googleBudget: number | null;
+  metaBudget: number | null;
+}): number | null {
+  if (row.monthlyBudget != null) return row.monthlyBudget;
+  if (row.googleBudget == null && row.metaBudget == null) return null;
+  return (row.googleBudget ?? 0) + (row.metaBudget ?? 0);
+}
 
 export type LoadBudgetOpts = {
   month?: string | null;
@@ -292,6 +349,15 @@ export async function loadBrandBudgetPlan(
   const liveFrom = addDaysYmd(today, -6);
   const recentDate = ymdToUtcDate(liveFrom);
 
+  const paceFrom = `${months[0] ?? month}-01`;
+  const paceTo = endOfMonthYmd(months[months.length - 1] ?? month);
+
+  const yearNum = Number(month.slice(0, 4));
+  const yearMonths = Array.from(
+    { length: 12 },
+    (_, i) => `${yearNum}-${String(i + 1).padStart(2, "0")}`,
+  );
+
   const [
     googleRows,
     metaRows,
@@ -301,6 +367,9 @@ export async function loadBrandBudgetPlan(
     metaAds,
     recentGoogle,
     recentMeta,
+    yearBudgetRows,
+    yearSpendRows,
+    paceDaily,
   ] = await Promise.all([
     prisma.googleAdsMetric.findMany({
       where: { tenantId: tenant.id, date: { gte: fromDate, lte: toDate } },
@@ -337,6 +406,9 @@ export async function loadBrandBudgetPlan(
       select: { campaignId: true },
       distinct: ["campaignId"],
     }),
+    listTenantBudgets(tenant.id, yearMonths),
+    listMonthlySpend(tenant.id, `${yearNum}-01-01`, `${yearNum}-12-31`),
+    listDailySpend(tenant.id, paceFrom, paceTo < today ? paceTo : today),
   ]);
 
   const metaHasAd = new Set<string>();
@@ -355,6 +427,7 @@ export async function loadBrandBudgetPlan(
   );
 
   const map = new Map<string, BudgetCampaignRow>();
+  const dailyMap = new Map<string, BudgetDailySpend>();
 
   function touch(
     provider: BudgetProvider,
@@ -399,6 +472,10 @@ export async function loadBrandBudgetPlan(
     if (!row || !Number.isFinite(amount)) return;
     if (date >= spendFrom && date <= spendTo) {
       row.monthSpend += amount;
+      const ymd = utcDateYmd(date);
+      const day = dailyMap.get(ymd) ?? { date: ymd, google: 0, meta: 0 };
+      day[provider] += amount;
+      dailyMap.set(ymd, day);
       if (utcDateYmd(date) === today) {
         row.todaySpend += amount;
       }
@@ -476,6 +553,39 @@ export async function loadBrandBudgetPlan(
     (sum, row) => sum + (asMoney(row.dailyBudget) ?? 0),
     0,
   );
+  const rangeGoogle = brandRows.reduce(
+    (sum, row) => sum + (asMoney(row.googleBudget) ?? 0),
+    0,
+  );
+  const rangeMeta = brandRows.reduce(
+    (sum, row) => sum + (asMoney(row.metaBudget) ?? 0),
+    0,
+  );
+  const rangeTotal = brandRows.reduce(
+    (sum, row) => sum + (monthPlanTotal(toMonthBudget(row)) ?? 0),
+    0,
+  );
+
+  const spendByMonth = new Map(
+    yearSpendRows.map((row) => [row.month, row]),
+  );
+  const budgetByMonth = new Map(
+    yearBudgetRows.map((row) => [row.month, toMonthBudget(row)]),
+  );
+  const year: BudgetYear = {
+    year: yearNum,
+    months: yearMonths.map((m) => {
+      const spend = spendByMonth.get(m);
+      return {
+        ...(budgetByMonth.get(m) ?? emptyMonthBudget()),
+        month: m,
+        label: formatBudgetMonthLabel(m),
+        googleSpend: Number(spend?.google ?? 0),
+        metaSpend: Number(spend?.meta ?? 0),
+        phase: m < current ? "past" : m === current ? "current" : "future",
+      };
+    }),
+  };
 
   return {
     tenantId: tenant.id,
@@ -500,15 +610,20 @@ export async function loadBrandBudgetPlan(
     daysInMonth,
     daysElapsed,
     warnPct: tenant.thresholds?.budgetPaceWarnPct ?? 85,
-    brand: {
-      monthlyBudget: asMoney(focusBrand?.monthlyBudget),
-      dailyBudget: asMoney(focusBrand?.dailyBudget),
-    },
+    brand: focusBrand ? toMonthBudget(focusBrand) : emptyMonthBudget(),
     rangeBrand: {
-      monthlyBudget: rangeMonthly > 0 ? rangeMonthly : null,
+      monthlyBudget:
+        rangeTotal > 0 ? rangeTotal : rangeMonthly > 0 ? rangeMonthly : null,
       dailyBudget: rangeDaily > 0 ? rangeDaily : null,
+      googleBudget: rangeGoogle > 0 ? rangeGoogle : null,
+      metaBudget: rangeMeta > 0 ? rangeMeta : null,
     },
     campaigns,
+    daily: [...dailyMap.values()].sort((a, b) =>
+      a.date.localeCompare(b.date),
+    ),
+    year,
+    pace: { from: paceFrom, to: paceTo, daily: paceDaily },
   };
 }
 
@@ -516,6 +631,9 @@ export type SaveBrandBudgetInput = {
   month: string;
   monthlyBudget: number | null;
   dailyBudget: number | null;
+  googleBudget?: number | null;
+  metaBudget?: number | null;
+  note?: string;
   campaigns: Array<{
     provider: BudgetProvider;
     campaignId: string;
@@ -632,8 +750,13 @@ export async function saveBrandBudgetPlan(
     );
 
   await prisma.$transaction(async (tx) => {
+    const note = (input.note ?? "").trim().slice(0, 500);
     const brandEmpty =
-      input.monthlyBudget == null && input.dailyBudget == null;
+      input.monthlyBudget == null &&
+      input.dailyBudget == null &&
+      input.googleBudget == null &&
+      input.metaBudget == null &&
+      !note;
     if (brandEmpty) {
       await tx.$executeRaw`
         DELETE FROM "TenantBudget"
@@ -645,6 +768,9 @@ export async function saveBrandBudgetPlan(
         month: input.month,
         monthlyBudget: input.monthlyBudget,
         dailyBudget: input.dailyBudget,
+        googleBudget: input.googleBudget ?? null,
+        metaBudget: input.metaBudget ?? null,
+        note,
       });
     }
 
@@ -723,7 +849,78 @@ type TenantBudgetRow = {
   month: string;
   monthlyBudget: unknown;
   dailyBudget: unknown;
+  googleBudget: unknown;
+  metaBudget: unknown;
+  note: string;
 };
+
+function toMonthBudget(row: TenantBudgetRow): BrandMonthBudget {
+  return {
+    monthlyBudget: asMoney(row.monthlyBudget),
+    dailyBudget: asMoney(row.dailyBudget),
+    googleBudget: asMoney(row.googleBudget),
+    metaBudget: asMoney(row.metaBudget),
+    note: row.note ?? "",
+  };
+}
+
+function emptyMonthBudget(): BrandMonthBudget {
+  return {
+    monthlyBudget: null,
+    dailyBudget: null,
+    googleBudget: null,
+    metaBudget: null,
+    note: "",
+  };
+}
+
+/** Gün bazında Google + Meta harcaması. */
+async function listDailySpend(
+  tenantId: string,
+  from: string,
+  to: string,
+): Promise<BudgetDailySpend[]> {
+  if (from > to) return [];
+  const fromDate = ymdToUtcDate(from);
+  const toDate = ymdToUtcDate(to);
+  return prisma.$queryRaw<BudgetDailySpend[]>`
+    SELECT date, SUM(google)::float8 AS google, SUM(meta)::float8 AS meta
+    FROM (
+      SELECT to_char(date, 'YYYY-MM-DD') AS date, cost AS google, 0::numeric AS meta
+      FROM "GoogleAdsMetric"
+      WHERE "tenantId" = ${tenantId} AND date >= ${fromDate} AND date <= ${toDate}
+      UNION ALL
+      SELECT to_char(date, 'YYYY-MM-DD') AS date, 0::numeric AS google, spend AS meta
+      FROM "MetaInsight"
+      WHERE "tenantId" = ${tenantId} AND date >= ${fromDate} AND date <= ${toDate}
+    ) t
+    GROUP BY date
+    ORDER BY date
+  `;
+}
+
+/** Ay bazında Google + Meta harcaması (İstanbul tarihli metrik tabloları). */
+async function listMonthlySpend(
+  tenantId: string,
+  from: string,
+  to: string,
+): Promise<Array<{ month: string; google: number; meta: number }>> {
+  const fromDate = ymdToUtcDate(from);
+  const toDate = ymdToUtcDate(to);
+  return prisma.$queryRaw<Array<{ month: string; google: number; meta: number }>>`
+    SELECT month, SUM(google)::float8 AS google, SUM(meta)::float8 AS meta
+    FROM (
+      SELECT to_char(date, 'YYYY-MM') AS month, cost AS google, 0::numeric AS meta
+      FROM "GoogleAdsMetric"
+      WHERE "tenantId" = ${tenantId} AND date >= ${fromDate} AND date <= ${toDate}
+      UNION ALL
+      SELECT to_char(date, 'YYYY-MM') AS month, 0::numeric AS google, spend AS meta
+      FROM "MetaInsight"
+      WHERE "tenantId" = ${tenantId} AND date >= ${fromDate} AND date <= ${toDate}
+    ) t
+    GROUP BY month
+  `;
+}
 
 type CampaignBudgetRow = {
   id: string;
@@ -746,7 +943,8 @@ async function listTenantBudgets(
 ): Promise<TenantBudgetRow[]> {
   if (months.length === 0) return [];
   return prisma.$queryRaw<TenantBudgetRow[]>`
-    SELECT id, "tenantId", month, "monthlyBudget", "dailyBudget"
+    SELECT id, "tenantId", month, "monthlyBudget", "dailyBudget",
+           "googleBudget", "metaBudget", note
     FROM "TenantBudget"
     WHERE "tenantId" = ${tenantId}
       AND month IN (${Prisma.join(months)})
@@ -793,19 +991,77 @@ async function upsertTenantBudget(
     month: string;
     monthlyBudget: number | null;
     dailyBudget: number | null;
+    googleBudget: number | null;
+    metaBudget: number | null;
+    note: string;
   },
 ) {
   await db.$executeRaw`
     INSERT INTO "TenantBudget"
-      (id, "tenantId", month, "monthlyBudget", "dailyBudget", "createdAt", "updatedAt")
+      (id, "tenantId", month, "monthlyBudget", "dailyBudget",
+       "googleBudget", "metaBudget", note, "createdAt", "updatedAt")
     VALUES
-      (${newCuidLike()}, ${row.tenantId}, ${row.month}, ${row.monthlyBudget}, ${row.dailyBudget}, NOW(), NOW())
+      (${newCuidLike()}, ${row.tenantId}, ${row.month}, ${row.monthlyBudget}, ${row.dailyBudget},
+       ${row.googleBudget}, ${row.metaBudget}, ${row.note}, NOW(), NOW())
     ON CONFLICT ("tenantId", month)
     DO UPDATE SET
       "monthlyBudget" = EXCLUDED."monthlyBudget",
       "dailyBudget" = EXCLUDED."dailyBudget",
+      "googleBudget" = EXCLUDED."googleBudget",
+      "metaBudget" = EXCLUDED."metaBudget",
+      note = EXCLUDED.note,
       "updatedAt" = NOW()
   `;
+}
+
+export type SaveBudgetYearRow = {
+  month: string;
+  monthlyBudget: number | null;
+  googleBudget: number | null;
+  metaBudget: number | null;
+};
+
+/**
+ * Yıllık plan — birden fazla ayın toplam + kanal payını yazar.
+ * Günlük plan ve not korunur; satır tamamen boşalırsa silinir.
+ */
+export async function saveBrandBudgetYear(
+  tenantId: string,
+  rows: SaveBudgetYearRow[],
+) {
+  for (const row of rows) {
+    if (!isValidBudgetMonth(row.month)) {
+      throw new Error("Ay YYYY-MM olmalı");
+    }
+  }
+  await prisma.$transaction(async (tx) => {
+    for (const row of rows) {
+      await tx.$executeRaw`
+        INSERT INTO "TenantBudget"
+          (id, "tenantId", month, "monthlyBudget", "googleBudget", "metaBudget",
+           "createdAt", "updatedAt")
+        VALUES
+          (${newCuidLike()}, ${tenantId}, ${row.month}, ${row.monthlyBudget},
+           ${row.googleBudget}, ${row.metaBudget}, NOW(), NOW())
+        ON CONFLICT ("tenantId", month)
+        DO UPDATE SET
+          "monthlyBudget" = EXCLUDED."monthlyBudget",
+          "googleBudget" = EXCLUDED."googleBudget",
+          "metaBudget" = EXCLUDED."metaBudget",
+          "updatedAt" = NOW()
+      `;
+      await tx.$executeRaw`
+        DELETE FROM "TenantBudget"
+        WHERE "tenantId" = ${tenantId}
+          AND month = ${row.month}
+          AND "monthlyBudget" IS NULL
+          AND "dailyBudget" IS NULL
+          AND "googleBudget" IS NULL
+          AND "metaBudget" IS NULL
+          AND note = ''
+      `;
+    }
+  });
 }
 
 async function upsertCampaignBudget(

@@ -23,6 +23,21 @@ export function istanbulYmd(date: Date = new Date()): string {
   }).format(date);
 }
 
+/** Bir IANA saat diliminde bugünün YYYY-MM-DD'si (geçersiz tz → İstanbul). */
+export function ymdInTimeZone(timeZone: string | null | undefined, date: Date = new Date()): string {
+  if (!timeZone) return istanbulYmd(date);
+  try {
+    return new Intl.DateTimeFormat("en-CA", {
+      timeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(date);
+  } catch {
+    return istanbulYmd(date);
+  }
+}
+
 /** Calendar @db.Date bound (UTC midnight of that YMD). */
 export function ymdToUtcDate(ymd: string): Date {
   const [y, m, d] = ymd.split("-").map(Number);
@@ -34,6 +49,25 @@ export function addDaysYmd(ymd: string, days: number): string {
   const dt = ymdToUtcDate(ymd);
   dt.setUTCDate(dt.getUTCDate() + days);
   return dt.toISOString().slice(0, 10);
+}
+
+/** Inclusive day count of a YMD range (same day → 1). */
+export function daysInRangeYmd(from: string, to: string): number {
+  return (
+    Math.round(
+      (ymdToUtcDate(to).getTime() - ymdToUtcDate(from).getTime()) / 86_400_000,
+    ) + 1
+  );
+}
+
+/** Önceki dönem: aynı uzunlukta, `from`dan hemen önce biten aralık. */
+export function previousRangeYmd(
+  from: string,
+  to: string,
+): { from: string; to: string } {
+  const len = daysInRangeYmd(from, to);
+  const prevTo = addDaysYmd(from, -1);
+  return { from: addDaysYmd(prevTo, -(len - 1)), to: prevTo };
 }
 
 /**

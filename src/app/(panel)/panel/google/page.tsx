@@ -4,6 +4,7 @@ import BudgetPlanVsActual from "@/components/panel/BudgetPlanVsActual";
 import { ChannelCard } from "@/components/panel/ChannelCard";
 import { CampaignBarChart } from "@/components/panel/charts";
 import PeriodFilterBar from "@/components/panel/PeriodFilterBar";
+import { TimezoneNotice } from "@/components/panel/TimezoneNotice";
 import { StatusBadge } from "@/components/panel/StatusBadge";
 import { Delta, PanelStat, PanelTable } from "@/components/panel/ui";
 import { loadBrandBudgetPlan } from "@/lib/panel/brand-budget";
@@ -16,6 +17,7 @@ import {
   type AdsCampaignShareRow,
   type AdsKeywordRow,
   type AdsSearchTermRow,
+  type AdsTenantType,
 } from "@/lib/integrations/google/ads";
 import { useMockPanelData } from "@/lib/integrations/tokens";
 import { requireBundle } from "@/lib/panel/data";
@@ -26,8 +28,14 @@ import {
   deltaPct,
   derivedMetrics,
   type MockCampaignMetric,
+  type MockConversion,
 } from "@/lib/panel/mock-data";
-import { formatDate, formatNumber, formatTry } from "@/lib/panel/format";
+import {
+  formatConv,
+  formatDate,
+  formatNumber,
+  formatTry,
+} from "@/lib/panel/format";
 
 function MetricRow({
   label,
@@ -61,7 +69,7 @@ function MetricRow({
       <td className="px-3 py-2.5 tabular-nums">{formatNumber(current.clicks)}</td>
       <td className="px-3 py-2.5 tabular-nums">{formatNumber(c.ctr, 2)}%</td>
       <td className="px-3 py-2.5 tabular-nums">
-        {formatNumber(current.conv, 1)}
+        {formatConv(current.conv)}
       </td>
       {ecommerce ? (
         <td className="px-3 py-2.5 tabular-nums">
@@ -113,6 +121,7 @@ async function loadLiveAdsDetail(
   customerId: string | null,
   from: string,
   to: string,
+  tenantType: AdsTenantType,
 ): Promise<{
   campaignShares: LiveSlice<AdsCampaignShareRow>;
   adGroups: LiveSlice<AdsAdGroupRow>;
@@ -136,9 +145,9 @@ async function loadLiveAdsDetail(
 
   const [shares, ag, kw, st] = await Promise.allSettled([
     fetchAdsCampaignLostShare({ customerId, from, to }),
-    fetchAdsAdGroups({ customerId, from, to }),
-    fetchAdsKeywords({ customerId, from, to }),
-    fetchAdsSearchTerms({ customerId, from, to }),
+    fetchAdsAdGroups({ customerId, from, to, tenantType }),
+    fetchAdsKeywords({ customerId, from, to, tenantType }),
+    fetchAdsSearchTerms({ customerId, from, to, tenantType }),
   ]);
 
   return {
@@ -149,6 +158,75 @@ async function loadLiveAdsDetail(
     searchTerms: settledSlice(st),
   };
 }
+
+/** Dönüşüm aksiyonları — hangisi KPI'ya sayılıyor (teşhis). */
+function GoogleConversionActions({
+  actions,
+  counted,
+  allConv,
+  ecommerce,
+}: {
+  actions: MockConversion[];
+  counted: number;
+  allConv: number | null;
+  ecommerce: boolean;
+}) {
+  if (actions.length === 0 && !(allConv && allConv > counted)) return null;
+  return (
+    <div className="rounded-xl border border-zinc-200 bg-white p-4">
+      <h3 className="text-sm font-semibold text-zinc-800">
+        Dönüşüm aksiyonları
+      </h3>
+      <p className="mt-1 text-xs text-zinc-500">
+        {ecommerce
+          ? "E-ticaret: yalnızca satın alım aksiyonları dönüşüm sayılır."
+          : "Lead: sayfa görüntüleme / sepete ekleme gibi mikro adımlar hariç birincil aksiyonlar sayılır."}
+        {allConv != null && allConv > counted ? (
+          <>
+            {" "}
+            İkincil aksiyonlar dahil tüm dönüşümler:{" "}
+            <span className="font-medium text-zinc-700">
+              {formatConv(allConv)}
+            </span>{" "}
+            (KPI&apos;ya girmez — Google Ads&apos;te &quot;birincil&quot;
+            işaretli değil).
+          </>
+        ) : null}
+      </p>
+      {actions.length > 0 ? (
+        <div className="mt-3 overflow-x-auto">
+          <PanelTable
+            headers={["Aksiyon", "Tür", "Adet", "Sayılıyor"]}
+            numericCols={[2]}
+          >
+            {actions.map((a) => (
+              <tr key={a.name}>
+                <td className="font-medium text-zinc-800">
+                  {a.name}
+                  {a.dupeFlag ? (
+                    <span className="ml-2 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] text-amber-800">
+                      olası mükerrer
+                    </span>
+                  ) : null}
+                </td>
+                <td className="text-zinc-600">{CONV_KIND_LABEL[a.kind]}</td>
+                <td className="num">{formatConv(a.count)}</td>
+                <td>{a.primary ? "Evet" : "Hayır"}</td>
+              </tr>
+            ))}
+          </PanelTable>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+const CONV_KIND_LABEL: Record<MockConversion["kind"], string> = {
+  sale: "Satış",
+  form: "Form / lead",
+  whatsapp: "WhatsApp / mesaj",
+  other: "Diğer",
+};
 
 export default async function GooglePage({
   searchParams,
@@ -182,6 +260,7 @@ export default async function GooglePage({
     adsCustomerId,
     range.startDate,
     range.endDate,
+    bundle.tenant.type,
   );
 
   const chartData = ch.campaigns.map((c) => ({
@@ -190,7 +269,7 @@ export default async function GooglePage({
   }));
 
   const prevByName = new Map(
-    previous.campaigns.map((c) => [c.campaign, c] as const),
+    previous.campaigns.map((c) => [c.campaignId ?? c.campaign, c] as const),
   );
 
   const lastCol = ecommerce ? "Getiri" : "Lead maliyeti";
@@ -217,6 +296,8 @@ export default async function GooglePage({
       <Suspense fallback={null}>
         <PeriodFilterBar label={range.label} />
       </Suspense>
+
+      <TimezoneNotice platform="Google Ads" timeZone={bundle.tenant.mapping.adsTimezone} />
 
       {budgetPlan ? (
         <BudgetPlanVsActual plan={budgetPlan} provider="google" />
@@ -258,7 +339,7 @@ export default async function GooglePage({
             />
             <PanelStat
               label="Dönüşüm"
-              value={formatNumber(current.account.conv, 1)}
+              value={formatConv(current.account.conv)}
               hint={
                 <Delta
                   value={deltaPct(current.account.conv, previous.account.conv)}
@@ -284,6 +365,13 @@ export default async function GooglePage({
               />
             )}
           </div>
+
+          <GoogleConversionActions
+            actions={bundle.conversions.filter((c) => c.source === "Google Ads")}
+            counted={current.account.conv}
+            allConv={current.account.allConv ?? null}
+            ecommerce={ecommerce}
+          />
 
           {chartData.length > 0 ? (
             <div className="rounded-xl border border-zinc-200 bg-white p-4">
@@ -319,7 +407,7 @@ export default async function GooglePage({
                 key={c.campaign}
                 label={c.campaign}
                 current={c}
-                previous={prevByName.get(c.campaign)}
+                previous={prevByName.get(c.campaignId ?? c.campaign)}
                 currency={model.currency}
                 ecommerce={ecommerce}
               />
@@ -443,7 +531,7 @@ export default async function GooglePage({
                       {formatNumber(r.clicks)}
                     </td>
                     <td className="px-3 py-2.5 tabular-nums">
-                      {formatNumber(r.conv, 1)}
+                      {formatConv(r.conv)}
                     </td>
                   </tr>
                 ))}
@@ -490,7 +578,7 @@ export default async function GooglePage({
                       {formatNumber(r.clicks)}
                     </td>
                     <td className="px-3 py-2.5 tabular-nums">
-                      {formatNumber(r.conv, 1)}
+                      {formatConv(r.conv)}
                     </td>
                   </tr>
                 ))}
@@ -533,7 +621,7 @@ export default async function GooglePage({
                       {formatNumber(r.clicks)}
                     </td>
                     <td className="px-3 py-2.5 tabular-nums">
-                      {formatNumber(r.conv, 1)}
+                      {formatConv(r.conv)}
                     </td>
                   </tr>
                 ))}

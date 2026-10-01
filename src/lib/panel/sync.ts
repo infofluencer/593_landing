@@ -1,11 +1,12 @@
 import type { Prisma, TenantType } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import {
+  fetchAdsCustomerTimeZone,
   fetchGoogleAdsCampaignMetrics,
-  fetchGoogleAdsConversionActions,
 } from "@/lib/integrations/google/ads";
+import { addDaysYmd, ymdInTimeZone, ymdToUtcDate } from "@/lib/date/tr";
 import { fetchGoogleSuccessfulInvoices } from "@/lib/integrations/google/billing";
-import { fetchGa4Snapshot } from "@/lib/integrations/google/ga4";
+import { fetchGa4Daily } from "@/lib/integrations/google/ga4";
 import { fetchGtmSnapshotResolved } from "@/lib/integrations/google/gtm";
 import { fetchSearchConsoleQuery } from "@/lib/integrations/google/gsc";
 import { fetchMerchantProductIssues } from "@/lib/integrations/google/merchant";
@@ -46,7 +47,17 @@ import {
 } from "@/lib/panel/period";
 import { runSynced } from "@/lib/panel/sync-job";
 import { verifyTenantSite } from "@/lib/panel/verify-tenant-site";
-import { classifyConversion } from "@/lib/panel/classify-conversion";
+import { classifyConversionAction } from "@/lib/panel/classify-conversion";
+
+function maxYmd(a: string, b: string): string {
+  return a > b ? a : b;
+}
+
+function chunk<T>(items: T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
+  return out;
+}
 
 export type SyncSummary = {
   provision: Awaited<ReturnType<typeof provisionTenantsFromMeta>>;
@@ -109,7 +120,12 @@ async function ensureMetaConnection() {
 export type SyncProvider = "meta" | "google";
 
 /** full = 720g + kreatif/fatura/GA4; daily = son 3 gün kampanya metrikleri. */
-export type SyncMode = "full" | "daily";
+/**
+ * full: her şey (720g). daily: son günler, kampanya düzeyi.
+ * backfill: 720g kampanya metrikleri + dönüşümler + GA4 — kreatif / reklam düzeyi /
+ * fatura / GTM / GSC / provision atlanır (geriye dönük doldurma).
+ */
+export type SyncMode = "full" | "daily" | "backfill";
 
 export async function missingOrInactiveTenantMessage(slug: string): Promise<string> {
   const existing = await prisma.tenant.findUnique({
@@ -135,6 +151,8 @@ export async function runAgencySync(opts?: {
   const doMeta = providers.has("meta");
   const doGoogle = providers.has("google");
   const isDaily = opts?.mode === "daily";
+  // Ağır / dönüşümle ilgisiz adımları atla (günlük + backfill).
+  const lean = isDaily || opts?.mode === "backfill";
 
   if (doGoogle) await ensureGoogleConnection();
   if (doMeta) await ensureMetaConnection();
@@ -142,15 +160,15 @@ export async function runAgencySync(opts?: {
   // Tek marka / günlük sync’te tüm BM’yi yeniden taramaya gerek yok.
   // Ajans geneli tam Meta sync’te tenant listesini taze tutmak için provision çalışır.
   const provision: ProvisionResult =
-    doMeta && !opts?.tenantSlug && !isDaily
+    doMeta && !opts?.tenantSlug && !lean
       ? await provisionTenantsFromMeta()
       : doMeta
         ? {
             upserted: 0,
             accounts: [],
             skipped: true,
-            reason: isDaily
-              ? "Günlük sync — BM provision atlandı"
+            reason: lean
+              ? "Günlük / backfill sync — BM provision atlandı"
               : "Tek marka sync — BM provision atlandı",
           }
         : {
@@ -179,13 +197,16 @@ export async function runAgencySync(opts?: {
   }
 
   const envVerify = process.env.SITE_VERIFY_ON_SYNC === "true";
-  const doSiteVerify = !isDaily && (opts?.siteVerify === true || envVerify);
+  const doSiteVerify = !lean && (opts?.siteVerify === true || envVerify);
 
-  const { from, to } = isDaily
-    ? syncDailyLookbackRange()
-    : await syncLookbackRange();
+  const fullRange = isDaily ? null : await syncLookbackRange();
+  const dailyRanges = isDaily ? syncDailyLookbackRange() : null;
+  // Meta / Google pencereleri ayrı: geriye dönük atıf süreleri farklı.
+  const metaRange = dailyRanges?.meta ?? fullRange!;
+  const googleRange = dailyRanges?.google ?? fullRange!;
+  const { from, to } = googleRange;
   const adLevel = isDaily
-    ? { from, to }
+    ? metaRange
     : await syncAdLevelLookbackRange();
   const summary: SyncSummary["tenants"] = [];
 
@@ -226,7 +247,7 @@ export async function runAgencySync(opts?: {
     }
 
     // --- Meta creatives (thumbnail / link) — önce (hızlı; timeout’tan önce kalsın) ---
-    if (doMeta && !isDaily) {
+    if (doMeta && !lean) {
       // Eski birleşik ads/ad_daily job’ı UI’da “reduce data” hatası olarak kalıyordu
       await prisma.syncJob.deleteMany({
         where: {
@@ -318,157 +339,64 @@ export async function runAgencySync(opts?: {
               "metaAccountId yok — meta-ad-account-map / Tenant eksik (0 yazılmadı).",
             );
           }
+          // Hesap saat dilimi İstanbul'dan ilerideyse "bugün" bir gün sonra olabilir.
+          const metaTo = maxYmd(metaRange.to, ymdInTimeZone(tenant.timezone));
           const rows = await fetchMetaCampaignInsights({
             metaAccountId,
-            from,
-            to,
+            from: metaRange.from,
+            to: metaTo,
             tenantType: tenant.type as TenantType,
           });
 
-          for (const row of rows) {
-            await prisma.metaInsight.upsert({
-              where: {
-                tenantId_date_campaignId_objective: {
+          // Pencereyi komple değiştir: upsert'te Meta'nın artık döndürmediği
+          // satırlar (objective değişimi, silinen kampanya) kalıp çift sayıyordu.
+          const metaWindow = {
+            gte: ymdToUtcDate(metaRange.from),
+            lte: ymdToUtcDate(metaTo),
+          };
+          await prisma.$transaction([
+            prisma.metaInsight.deleteMany({
+              where: { tenantId: tenant.id, date: metaWindow },
+            }),
+            ...chunk(rows, 1000).map((part) =>
+              prisma.metaInsight.createMany({
+                skipDuplicates: true,
+                data: part.map((row) => ({
                   tenantId: tenant.id,
-                  date: new Date(row.date),
+                  date: ymdToUtcDate(row.date),
                   campaignId: row.campaignId,
+                  campaignName: row.campaignName,
                   objective: row.objective || "unknown",
-                },
-              },
-              update: {
-                campaignName: row.campaignName,
-                spend: row.spend,
-                impressions: row.impressions,
-                reach: row.reach,
-                frequency: row.frequency,
-                clicks: row.clicks,
-                ctr: row.ctr,
-                cpc: row.cpc,
-                actions: row.actions as Prisma.InputJsonValue,
-                actionValues: row.actionValues as Prisma.InputJsonValue,
-                conversions: row.conversions,
-                convValue: row.convValue,
-                cpa: row.cpa,
-                roas: row.roas,
-                cpaOrigin: "derived",
-                roasOrigin: tenant.type === "ecommerce" ? "derived" : "derived",
-              },
-              create: {
-                tenantId: tenant.id,
-                date: new Date(row.date),
-                campaignId: row.campaignId,
-                campaignName: row.campaignName,
-                objective: row.objective || "unknown",
-                spend: row.spend,
-                impressions: row.impressions,
-                reach: row.reach,
-                frequency: row.frequency,
-                clicks: row.clicks,
-                ctr: row.ctr,
-                cpc: row.cpc,
-                actions: row.actions as Prisma.InputJsonValue,
-                actionValues: row.actionValues as Prisma.InputJsonValue,
-                conversions: row.conversions,
-                convValue: row.convValue,
-                cpa: row.cpa,
-                roas: row.roas,
-                cpaOrigin: "derived",
-                roasOrigin: "derived",
-              },
-            });
-          }
-
-          // Dönem toplamı — kısa pencereli günlük sync bunu 3 güne düşürmesin.
-          if (isDaily) return rows.length;
-
-          // Aggregate Meta conversion kinds for conversions table
-          await prisma.conversion.deleteMany({
-            where: {
-              tenantId: tenant.id,
-              date: { gte: new Date(from), lte: new Date(to) },
-              source: "Meta Ads",
-            },
-          });
-
-          let purchase = 0;
-          let lead = 0;
-          let messaging = 0;
-          for (const row of rows) {
-            // omni öncelikli — aynı satışı purchase+omni+offsite ile üçleme
-            const p =
-              Number(row.actions.omni_purchase ?? 0) ||
-              Number(row.actions.purchase ?? 0) ||
-              Number(
-                row.actions["offsite_conversion.fb_pixel_purchase"] ?? 0,
-              ) ||
-              Number(row.actions.onsite_web_purchase ?? 0) ||
-              Number(row.actions["onsite_conversion.purchase"] ?? 0);
-            purchase += p;
-            lead += Number(
-              (row.actions.lead ?? 0) +
-                (row.actions["onsite_conversion.lead_grouped"] ?? 0) +
-                (row.actions["offsite_conversion.fb_pixel_lead"] ?? 0) +
-                (row.actions.onsite_web_lead ?? 0),
-            );
-            messaging += Number(
-              (row.actions[
-                "onsite_conversion.messaging_conversation_started_7d"
-              ] ?? 0) + (row.actions.messaging_conversation_started_7d ?? 0),
-            );
-          }
-
-          const metaConvRows: Array<{
-            name: string;
-            kind: "sale" | "form" | "whatsapp";
-            count: number;
-          }> = [];
-          // E-ticaret: yalnızca satın alım. Lead markalar: form + WhatsApp.
-          if (tenant.type === "ecommerce") {
-            if (purchase > 0) {
-              metaConvRows.push({
-                name: "Satın alım ücreti",
-                kind: "sale",
-                count: Math.round(purchase),
-              });
-            }
-          } else {
-            if (lead > 0) {
-              metaConvRows.push({
-                name: "Meta lead",
-                kind: "form",
-                count: Math.round(lead),
-              });
-            }
-            if (messaging > 0) {
-              metaConvRows.push({
-                name: "WhatsApp konuşma",
-                kind: "whatsapp",
-                count: Math.round(messaging),
-              });
-            }
-          }
-
-          for (const c of metaConvRows) {
-            await prisma.conversion.create({
-              data: {
-                tenantId: tenant.id,
-                date: new Date(to),
-                name: c.name,
-                source: "Meta Ads",
-                primary: true,
-                count: c.count,
-                kind: c.kind,
-                dupeFlag: false,
-              },
-            });
-          }
+                  spend: row.spend,
+                  impressions: row.impressions,
+                  reach: row.reach,
+                  frequency: row.frequency,
+                  clicks: row.clicks,
+                  ctr: row.ctr,
+                  cpc: row.cpc,
+                  actions: row.actions as Prisma.InputJsonValue,
+                  actionValues: row.actionValues as Prisma.InputJsonValue,
+                  conversions: row.conversions,
+                  convValue: row.convValue,
+                  cpa: row.cpa,
+                  roas: row.roas,
+                  cpaOrigin: "derived" as const,
+                  roasOrigin: "derived" as const,
+                })),
+              }),
+            ),
+            // Eski toplu Meta dönüşüm satırları — türler artık MetaInsight.actions'tan.
+            prisma.conversion.deleteMany({
+              where: { tenantId: tenant.id, source: "Meta Ads" },
+            }),
+          ]);
 
           return rows.length;
         },
       );
       services.meta = meta.ok ? { ok: true } : { ok: false, error: meta.error };
 
-      if (!isDaily) {
+      if (!lean) {
       const metaAdPerf = await runSynced(
         {
           tenantId: tenant.id,
@@ -730,99 +658,120 @@ export async function runAgencySync(opts?: {
           },
           async () => {
             async function persistAds(customerId: string) {
-              const purchaseOnly = tenant.type === "ecommerce";
-              const rows = await fetchGoogleAdsCampaignMetrics({
-                customerId,
-                from,
-                to,
-                purchaseOnly,
-              });
-
-              for (const row of rows) {
-                const cost = row.spend;
-                const cpa = row.conv > 0 ? cost / row.conv : null;
-                const roas = cost > 0 ? row.convValue / cost : null;
-                await prisma.googleAdsMetric.upsert({
-                  where: {
-                    tenantId_date_campaignId: {
-                      tenantId: tenant.id,
-                      date: new Date(row.date),
-                      campaignId: row.campaignId,
-                    },
-                  },
-                  update: {
-                    campaignName: row.campaign,
-                    cost,
-                    impressions: row.impr,
-                    clicks: row.clicks,
-                    conversions: row.conv,
-                    convValue: row.convValue,
-                    cpa,
-                    roas,
-                    cpaOrigin: "derived",
-                    roasOrigin: "derived",
-                  },
-                  create: {
-                    tenantId: tenant.id,
-                    date: new Date(row.date),
-                    campaignId: row.campaignId,
-                    campaignName: row.campaign,
-                    cost,
-                    impressions: row.impr,
-                    clicks: row.clicks,
-                    conversions: row.conv,
-                    convValue: row.convValue,
-                    cpa,
-                    roas,
-                    cpaOrigin: "derived",
-                    roasOrigin: "derived",
-                  },
+              // segments.date hesabın saat dilimindedir — kaydet, panel uyarsın.
+              const adsTz = await fetchAdsCustomerTimeZone(customerId).catch(
+                () => null,
+              );
+              if (adsTz && adsTz !== tenant.mapping?.adsTimezone) {
+                await prisma.tenantMapping.upsert({
+                  where: { tenantId: tenant.id },
+                  update: { adsTimezone: adsTz },
+                  create: { tenantId: tenant.id, adsTimezone: adsTz },
                 });
               }
+              const googleTo = maxYmd(googleRange.to, ymdInTimeZone(adsTz));
 
-              if (!isDaily) {
-                const actions = await fetchGoogleAdsConversionActions({
+              const { campaigns: rows, conversions } =
+                await fetchGoogleAdsCampaignMetrics({
                   customerId,
-                  from,
-                  to,
-                  purchaseOnly,
+                  from: googleRange.from,
+                  to: googleTo,
+                  tenantType: tenant.type as TenantType,
                 });
 
-                await prisma.conversion.deleteMany({
+              const googleWindow = {
+                gte: ymdToUtcDate(googleRange.from),
+                lte: ymdToUtcDate(googleTo),
+              };
+
+              // Dönüşüm aksiyonu × gün (kampanyalar toplanır).
+              const convByDayName = new Map<
+                string,
+                {
+                  date: string;
+                  name: string;
+                  category: string | null;
+                  counted: boolean;
+                  count: number;
+                  value: number;
+                }
+              >();
+              for (const c of conversions) {
+                const key = `${c.date}|${c.name}`;
+                const prev = convByDayName.get(key) ?? {
+                  date: c.date,
+                  name: c.name,
+                  category: c.category,
+                  counted: c.counted,
+                  count: 0,
+                  value: 0,
+                };
+                prev.count += c.conv;
+                prev.value += c.convValue;
+                convByDayName.set(key, prev);
+              }
+              const names = new Set(
+                [...convByDayName.values()].map((c) => c.name),
+              );
+              const lowerCount = new Map<string, number>();
+              for (const n of names) {
+                const k = n.toLowerCase();
+                lowerCount.set(k, (lowerCount.get(k) ?? 0) + 1);
+              }
+
+              await prisma.$transaction([
+                prisma.googleAdsMetric.deleteMany({
+                  where: { tenantId: tenant.id, date: googleWindow },
+                }),
+                ...chunk(rows, 1000).map((part) =>
+                  prisma.googleAdsMetric.createMany({
+                    skipDuplicates: true,
+                    data: part.map((row) => ({
+                      tenantId: tenant.id,
+                      date: ymdToUtcDate(row.date),
+                      campaignId: row.campaignId,
+                      campaignName: row.campaign,
+                      cost: row.spend,
+                      impressions: row.impr,
+                      clicks: row.clicks,
+                      conversions: row.conv,
+                      convValue: row.convValue,
+                      allConversions: row.allConv,
+                      cpa: row.conv > 0 ? row.spend / row.conv : null,
+                      roas: row.spend > 0 ? row.convValue / row.spend : null,
+                      cpaOrigin: "derived" as const,
+                      roasOrigin: "derived" as const,
+                    })),
+                  }),
+                ),
+                prisma.conversion.deleteMany({
                   where: {
                     tenantId: tenant.id,
-                    date: { gte: new Date(from), lte: new Date(to) },
                     source: "Google Ads",
+                    date: googleWindow,
                   },
-                });
-
-                const nameCounts = new Map<string, number>();
-                for (const a of actions) {
-                  nameCounts.set(
-                    a.name.toLowerCase(),
-                    (nameCounts.get(a.name.toLowerCase()) ?? 0) + 1,
-                  );
-                }
-
-                for (const a of actions) {
-                  const kind = classifyConversion(a.name);
-                  const dupeFlag =
-                    (nameCounts.get(a.name.toLowerCase()) ?? 0) > 1 ||
-                    /ga4|import/i.test(a.name);
-                  await prisma.conversion.create({
-                    data: {
+                }),
+                ...chunk([...convByDayName.values()], 1000).map((part) =>
+                  prisma.conversion.createMany({
+                    data: part.map((c) => ({
                       tenantId: tenant.id,
-                      date: new Date(to),
-                      name: a.name,
-                      source: a.source,
-                      primary: a.primary,
-                      count: Math.round(a.count),
-                      kind,
-                      dupeFlag,
-                    },
-                  });
-                }
-              }
+                      date: ymdToUtcDate(c.date),
+                      name: c.name,
+                      source: "Google Ads",
+                      primary: c.counted,
+                      count: c.count,
+                      value: c.value,
+                      category: c.category,
+                      kind: classifyConversionAction(c.name, c.category),
+                      // Aynı ad farklı büyük/küçük harfle ya da GA4 içe aktarımı
+                      // (Ads etiketiyle aynı işlemi ikinci kez sayabilir).
+                      dupeFlag:
+                        (lowerCount.get(c.name.toLowerCase()) ?? 0) > 1 ||
+                        /ga4|import/i.test(c.name),
+                    })),
+                  }),
+                ),
+              ]);
 
               return rows.length;
             }
@@ -851,7 +800,7 @@ export async function runAgencySync(opts?: {
         );
         services.ads = ads.ok ? { ok: true } : { ok: false, error: ads.error };
 
-        if (!isDaily) {
+        if (!lean) {
         const googleBilling = await runSynced(
           {
             tenantId: tenant.id,
@@ -921,8 +870,7 @@ export async function runAgencySync(opts?: {
         }
       }
 
-      if (!isDaily) {
-      // --- GA4 (persist) ---
+      // --- GA4 (persist, günlük satırlar) ---
       const ga4PropertyId = resolveGa4PropertyId(tenant);
       if (!ga4PropertyId) {
         await runSynced(
@@ -946,75 +894,73 @@ export async function runAgencySync(opts?: {
             objective: "overview",
           },
           async () => {
-            const snap = await fetchGa4Snapshot({
+            // Günlük satırlar: dönem filtresi DB'de toplanır. Günlük modda son
+            // 3 gün (GA4 verisi ~48 saatte kesinleşir).
+            const ga4Range = isDaily
+              ? { from: addDaysYmd(googleRange.to, -3), to: googleRange.to }
+              : googleRange;
+            const daily = await fetchGa4Daily({
               propertyId: ga4PropertyId,
-              from,
-              to,
+              from: ga4Range.from,
+              to: ga4Range.to,
               ecommerce: tenant.type === "ecommerce",
             });
 
-            const periodDate = new Date(to);
-
-            await prisma.ga4Metric.deleteMany({
-              where: {
-                tenantId: tenant.id,
-                date: { gte: new Date(from), lte: new Date(to) },
-              },
-            });
-
-            await prisma.ga4Metric.create({
-              data: {
-                tenantId: tenant.id,
-                date: periodDate,
-                dimensionType: "overview",
-                dimensionValue: "",
-                totalUsers: snap.overview.totalUsers,
-                sessions: snap.overview.sessions,
-                averageSessionDuration: snap.overview.averageSessionDuration,
-                bounceRate: snap.overview.bounceRate,
-                screenPageViewsPerSession:
-                  snap.overview.screenPageViewsPerSession,
-                sessionConversionRate: snap.overview.sessionConversionRate,
-                purchaseRevenue: snap.overview.purchaseRevenue,
-                transactions: snap.overview.transactions,
-              },
-            });
-
-            for (const ch of snap.channels) {
-              await prisma.ga4Metric.create({
-                data: {
+            await prisma.$transaction([
+              prisma.ga4Metric.deleteMany({
+                where: {
                   tenantId: tenant.id,
-                  date: periodDate,
-                  dimensionType: "channel",
-                  dimensionValue: ch.dimension,
-                  sessions: ch.sessions,
-                  totalUsers: ch.users,
-                  sessionConversionRate:
-                    ch.sessions > 0 ? ch.conversions / ch.sessions : null,
+                  date: {
+                    gte: ymdToUtcDate(ga4Range.from),
+                    lte: ymdToUtcDate(ga4Range.to),
+                  },
                 },
-              });
-            }
+              }),
+              ...chunk(daily.overview, 1000).map((part) =>
+                prisma.ga4Metric.createMany({
+                  skipDuplicates: true,
+                  data: part.map((o) => ({
+                    tenantId: tenant.id,
+                    date: ymdToUtcDate(o.date),
+                    dimensionType: "overview",
+                    dimensionValue: "",
+                    totalUsers: o.totalUsers,
+                    sessions: o.sessions,
+                    averageSessionDuration: o.averageSessionDuration,
+                    bounceRate: o.bounceRate,
+                    screenPageViewsPerSession: o.screenPageViewsPerSession,
+                    sessionConversionRate: o.sessionKeyEventRate,
+                    purchaseRevenue: o.purchaseRevenue,
+                    transactions: o.transactions,
+                    ecommercePurchases: o.ecommercePurchases,
+                  })),
+                }),
+              ),
+              ...chunk(daily.channels, 1000).map((part) =>
+                prisma.ga4Metric.createMany({
+                  skipDuplicates: true,
+                  data: part.map((c) => ({
+                    tenantId: tenant.id,
+                    date: ymdToUtcDate(c.date),
+                    dimensionType: "channel",
+                    dimensionValue: c.channel.slice(0, 500),
+                    sessions: c.sessions,
+                    totalUsers: c.users,
+                    keyEvents: c.keyEvents,
+                    sessionConversionRate:
+                      c.sessions > 0 ? c.keyEvents / c.sessions : null,
+                  })),
+                }),
+              ),
+            ]);
 
-            for (const lp of snap.landings) {
-              await prisma.ga4Metric.create({
-                data: {
-                  tenantId: tenant.id,
-                  date: periodDate,
-                  dimensionType: "landing",
-                  dimensionValue: lp.dimension.slice(0, 500),
-                  sessions: lp.sessions,
-                  totalUsers: lp.users,
-                  sessionConversionRate:
-                    lp.sessions > 0 ? lp.conversions / lp.sessions : null,
-                },
-              });
-            }
-
-            return snap.channels.length;
+            return daily.overview.length;
           },
         );
         services.ga4 = ga4.ok ? { ok: true } : { ok: false, error: ga4.error };
       }
+
+      if (!lean) {
 
       // --- GTM ---
       const gtmRef = resolveGtmApiRef(tenant);

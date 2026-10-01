@@ -24,6 +24,8 @@ export type MockTenant = {
     gtmContainerId: string | null;
     gscSiteUrl: string | null;
     merchantId: string | null;
+    /** Google Ads hesap saat dilimi (sync'te customer.time_zone) */
+    adsTimezone?: string | null;
   };
 };
 
@@ -35,6 +37,8 @@ export type MockCampaignMetric = {
   clicks: number;
   conv: number;
   convValue: number;
+  /** Google: ikincil dönüşümler dahil (all_conversions) — teşhis */
+  allConv?: number;
   reach?: number;
   frequency?: number;
   objective?: string;
@@ -187,6 +191,9 @@ export type MockDailySpendPoint = {
   google: number;
   meta: number;
   total: number;
+  /** Günlük dönüşüm (panel kuralıyla sayılan) */
+  googleConv?: number;
+  metaConv?: number;
 };
 
 export type MockMetaFunnel = {

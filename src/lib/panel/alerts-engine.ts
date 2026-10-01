@@ -1,5 +1,10 @@
 import type { AlertSeverity, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
+import {
+  istanbulYmd,
+  startOfIstanbulMonthYmd,
+  ymdToUtcDate,
+} from "@/lib/date/tr";
 
 type HistoryEntry = {
   at: string;
@@ -62,14 +67,20 @@ export async function upsertOpenAlert(opts: {
  * Low volume below minSpendForAlert does not create noise.
  */
 export async function evaluateTenantAlerts(tenantId: string) {
+  // Ay başı / ayın günü İstanbul takvimine göre (UTC'de 1'inin 00–03 arası önceki ay sayılıyordu).
+  const todayYmd = istanbulYmd(new Date());
+  const monthStart = ymdToUtcDate(startOfIstanbulMonthYmd(todayYmd));
+  const dayOfMonth = Number(todayYmd.slice(8, 10));
+
   const tenant = await prisma.tenant.findUnique({
     where: { id: tenantId },
     include: {
       thresholds: true,
       mapping: true,
       syncJobs: true,
-      googleAdsMetrics: { orderBy: { date: "desc" }, take: 90 },
-      metaInsights: { orderBy: { date: "desc" }, take: 90 },
+      // Satır sayısı değil tarih: çok kampanyalı hesapta take:90 ay toplamını kesiyordu.
+      googleAdsMetrics: { where: { date: { gte: monthStart } } },
+      metaInsights: { where: { date: { gte: monthStart } } },
     },
   });
   if (!tenant) return;
@@ -88,13 +99,8 @@ export async function evaluateTenantAlerts(tenantId: string) {
       : thresholds.minSpendForAlert,
   );
 
-  const now = new Date();
-  const monthStart = new Date(
-    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1),
-  );
-
-  const mtdGoogle = tenant.googleAdsMetrics.filter((m) => m.date >= monthStart);
-  const mtdMeta = tenant.metaInsights.filter((m) => m.date >= monthStart);
+  const mtdGoogle = tenant.googleAdsMetrics;
+  const mtdMeta = tenant.metaInsights;
   const mtdSpend =
     mtdGoogle.reduce((s, m) => s + Number(m.cost), 0) +
     mtdMeta.reduce((s, m) => s + Number(m.spend), 0);
@@ -148,7 +154,7 @@ export async function evaluateTenantAlerts(tenantId: string) {
   }
 
   const dropoutDays = thresholds.convDropoutDays ?? 3;
-  if (mtdSpend >= minSpend && mtdConv === 0 && now.getUTCDate() >= dropoutDays) {
+  if (mtdSpend >= minSpend && mtdConv === 0 && dayOfMonth >= dropoutDays) {
     await upsertOpenAlert({
       tenantId,
       type: "conv_dropout",

@@ -2,11 +2,10 @@ import type { TenantType } from "@prisma/client";
 import { iterateYmdRanges } from "@/lib/date/tr";
 import {
   META_INSIGHT_BASE_FIELDS,
-  firstPositive,
+  deriveMetaLeadParts,
+  deriveMetaPurchase,
   mapActions,
   mergeVideoActions,
-  PURCHASE_KEYS,
-  sumKeys,
 } from "@/lib/integrations/meta/metrics";
 import { getMetaSystemUserToken } from "@/lib/integrations/tokens";
 
@@ -41,27 +40,9 @@ function actId(metaAccountId: string): string {
     : `act_${metaAccountId}`;
 }
 
-const LEAD_KEYS = [
-  "lead",
-  "onsite_conversion.lead_grouped",
-  "offsite_conversion.fb_pixel_lead",
-  "onsite_web_lead",
-  "complete_registration",
-  "omni_complete_registration",
-  "submit_application",
-  "contact",
-];
-
-const MESSAGE_KEYS = [
-  "onsite_conversion.messaging_conversation_started_7d",
-  "onsite_conversion.messaging_first_reply",
-  "messaging_conversation_started_7d",
-  "messaging_first_reply",
-];
-
 /**
  * Tenant.type → primary KPI from Meta actions / action_values.
- * ecommerce: purchase (+ value/ROAS). lead: form/lead (+ messaging separate in UI).
+ * ecommerce: purchase (+ value/ROAS). lead: form lead + messaging conversations.
  */
 export function deriveMetaKpis(
   type: TenantType,
@@ -70,8 +51,10 @@ export function deriveMetaKpis(
   spend: number,
 ): { conversions: number; convValue: number; cpa: number | null; roas: number | null } {
   if (type === "ecommerce") {
-    const conversions = firstPositive(actions, PURCHASE_KEYS);
-    const convValue = firstPositive(actionValues, PURCHASE_KEYS);
+    const { count: conversions, value: convValue } = deriveMetaPurchase(
+      actions,
+      actionValues,
+    );
     return {
       conversions,
       convValue,
@@ -80,9 +63,9 @@ export function deriveMetaKpis(
     };
   }
 
-  const lead = sumKeys(actions, LEAD_KEYS);
-  const messaging = sumKeys(actions, MESSAGE_KEYS);
-  const conversions = lead > 0 ? lead : messaging;
+  // Lead = form lead + başlayan mesajlaşma (ikisi ayrı olaylar, örtüşmez).
+  const { form, messaging } = deriveMetaLeadParts(actions);
+  const conversions = form + messaging;
   return {
     conversions,
     convValue: 0,
@@ -139,6 +122,8 @@ async function fetchMetaCampaignInsightsChunk(opts: {
     access_token: token,
     level: "campaign",
     time_increment: "1",
+    // Ads Manager ile aynı: reklam setinin kendi atıf ayarı (varsayılan 7g tık / 1g görüntüleme değil)
+    use_unified_attribution_setting: "true",
     time_range: JSON.stringify({ since: opts.from, until: opts.to }),
     fields,
     limit: "500",
@@ -228,4 +213,59 @@ async function fetchMetaCampaignInsightsChunk(opts: {
   }
 
   return rows;
+}
+
+/**
+ * Dönem tekil erişimi (time_increment yok → Meta tekilleştirir).
+ * Günlük erişimleri toplamak aynı kişiyi her gün yeniden sayar.
+ */
+export async function fetchMetaPeriodReach(opts: {
+  metaAccountId: string;
+  from: string;
+  to: string;
+}): Promise<{
+  account: { reach: number; frequency: number | null } | null;
+  byCampaign: Map<string, { reach: number; frequency: number | null }>;
+}> {
+  const token = getMetaSystemUserToken();
+  const account = actId(opts.metaAccountId);
+
+  async function pull(level: "account" | "campaign") {
+    const params = new URLSearchParams({
+      access_token: token,
+      level,
+      use_unified_attribution_setting: "true",
+      time_range: JSON.stringify({ since: opts.from, until: opts.to }),
+      fields:
+        level === "campaign" ? "campaign_id,reach,frequency" : "reach,frequency",
+      limit: "500",
+    });
+    const out: Array<{ campaign_id?: string; reach?: string; frequency?: string }> = [];
+    let url: string | null = `${GRAPH}/${account}/insights?${params}`;
+    while (url) {
+      const res = await fetch(url);
+      const json = (await res.json()) as {
+        data?: Array<{ campaign_id?: string; reach?: string; frequency?: string }>;
+        paging?: { next?: string };
+        error?: { message?: string };
+      };
+      if (!res.ok || json.error) {
+        throw new Error(json.error?.message || `Meta reach ${res.status}`);
+      }
+      out.push(...(json.data ?? []));
+      url = json.paging?.next ?? null;
+    }
+    return out;
+  }
+
+  const [acc, camps] = await Promise.all([pull("account"), pull("campaign")]);
+  const parse = (r: { reach?: string; frequency?: string }) => ({
+    reach: Number(r.reach ?? 0),
+    frequency: r.frequency != null ? Number(r.frequency) : null,
+  });
+  const byCampaign = new Map<string, { reach: number; frequency: number | null }>();
+  for (const r of camps) {
+    if (r.campaign_id) byCampaign.set(r.campaign_id, parse(r));
+  }
+  return { account: acc[0] ? parse(acc[0]) : null, byCampaign };
 }

@@ -55,6 +55,8 @@ export default function TenantSettingsForm({
   tenantSlug,
   rootDomain,
   allowDelete = false,
+  canManageClientUser = true,
+  canEditIdentity = true,
   detailBasePath = "/settings",
 }: {
   initial: TenantSettingsInitial;
@@ -63,6 +65,10 @@ export default function TenantSettingsForm({
   rootDomain: string;
   /** DB’de gerçek tenant varsa silmeye izin ver. */
   allowDelete?: boolean;
+  /** Müşteri hesabı oluşturma/güncelleme (yalnızca admin). */
+  canManageClientUser?: boolean;
+  /** Marka adı, slug ve tür (yalnızca admin). */
+  canEditIdentity?: boolean;
   /**
    * Slug değişince / silinince nereye gideceği.
    * `/brands` → `/brands/{slug}` ; `/settings` → `/settings?tenant=`
@@ -367,7 +373,9 @@ export default function TenantSettingsForm({
             Panel adresi:{" "}
             <code className="text-zinc-600">{panelHint}</code>
             {" — "}
-            slug değişince DNS / Dokploy’u da güncelleyin.
+            {canEditIdentity
+              ? "slug değişince DNS / Dokploy’u da güncelleyin."
+              : "ad, panel adresi ve tipi yalnızca admin değiştirebilir."}
           </p>
           <div className="grid gap-3 sm:grid-cols-2">
             <Field label="Marka adı">
@@ -375,6 +383,7 @@ export default function TenantSettingsForm({
                 className={inputClass}
                 value={form.name}
                 onChange={(e) => setField("name", e.target.value)}
+                disabled={!canEditIdentity}
                 required
               />
             </Field>
@@ -390,6 +399,7 @@ export default function TenantSettingsForm({
                       .replace(/[^a-z0-9-]/g, ""),
                   )
                 }
+                disabled={!canEditIdentity}
                 required
               />
             </Field>
@@ -400,6 +410,7 @@ export default function TenantSettingsForm({
                 onChange={(e) =>
                   setField("type", e.target.value as TenantType)
                 }
+                disabled={!canEditIdentity}
               >
                 <option value="ecommerce">E-ticaret (satış / getiri)</option>
                 <option value="lead">Lead / form (iletişim)</option>
@@ -658,210 +669,212 @@ export default function TenantSettingsForm({
         )}
       </section>
 
-      <form
-        onSubmit={onSaveClient}
-        className="space-y-4 border-t border-zinc-100 pt-8"
-      >
-        <h3 className="text-sm font-semibold text-zinc-800">Müşteri hesabı</h3>
-        <p className="text-xs text-zinc-500">
-          Marka paneli girişi:{" "}
-          <code className="text-zinc-400">{clientPanelHint}</code>
-          . E-postanın @ öncesi kısmı panel adresi ile aynı olmalı (
-          <code className="text-zinc-400">
-            {clientEmailForPanel(
-              clientForm.panelSlug.trim() || tenantSlug,
-              rootDomain,
-            )}
-          </code>
-          ). Harici domain kabul edilmez. Panel adresini Dokploy’da da
-          tanımlayın.
-        </p>
+      {canManageClientUser ? (
+        <form
+          onSubmit={onSaveClient}
+          className="space-y-4 border-t border-zinc-100 pt-8"
+        >
+          <h3 className="text-sm font-semibold text-zinc-800">Müşteri hesabı</h3>
+          <p className="text-xs text-zinc-500">
+            Marka paneli girişi:{" "}
+            <code className="text-zinc-400">{clientPanelHint}</code>
+            . E-postanın @ öncesi kısmı panel adresi ile aynı olmalı (
+            <code className="text-zinc-400">
+              {clientEmailForPanel(
+                clientForm.panelSlug.trim() || tenantSlug,
+                rootDomain,
+              )}
+            </code>
+            ). Harici domain kabul edilmez. Panel adresini Dokploy’da da
+            tanımlayın.
+          </p>
 
-        {hasExistingClient ? (
-          <div className="rounded-xl border border-zinc-200 bg-zinc-50/80 px-4 py-3">
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
-              Kayıtlı giriş
-            </p>
-            <dl className="mt-2 grid gap-3 sm:grid-cols-2">
-              <div>
-                <dt className="text-[11px] text-zinc-500">Panel adresi</dt>
-                <dd className="mt-0.5 font-mono text-sm font-medium text-zinc-900">
-                  {tenantSlug}.{rootDomain}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-[11px] text-zinc-500">Kullanıcı (e-posta)</dt>
-                <dd className="mt-0.5 flex flex-wrap items-center gap-2">
-                  <span className="font-mono text-sm font-medium text-zinc-900">
-                    {initial.clientUsers[0]?.email}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => void copyEmail()}
-                    className="rounded border border-zinc-200 bg-white px-1.5 py-0.5 text-[10px] font-medium text-zinc-600 hover:bg-zinc-100"
-                  >
-                    {emailCopied ? "Kopyalandı" : "Kopyala"}
-                  </button>
-                </dd>
-              </div>
-              <div>
-                <dt className="text-[11px] text-zinc-500">Şifre</dt>
-                <dd className="mt-0.5 flex flex-wrap items-center gap-2">
-                  {storedPassword ? (
-                    <>
-                      <span className="font-mono text-sm font-medium text-zinc-900">
-                        {showStoredPassword ? storedPassword : "••••••••"}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => setShowStoredPassword((v) => !v)}
-                        className="rounded border border-zinc-200 bg-white px-1.5 py-0.5 text-[10px] font-medium text-zinc-600 hover:bg-zinc-100"
-                      >
-                        {showStoredPassword ? "Gizle" : "Göster"}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => void copyStoredPassword()}
-                        className="rounded border border-zinc-200 bg-white px-1.5 py-0.5 text-[10px] font-medium text-zinc-600 hover:bg-zinc-100"
-                      >
-                        {passwordCopied ? "Kopyalandı" : "Kopyala"}
-                      </button>
-                    </>
-                  ) : (
-                    <span className="text-sm text-amber-800">
-                      Eski kayıt — şifre görüntülenemez. Aşağıya yeni şifre
-                      yazıp kaydedin; sonra Göster ile görünür.
-                    </span>
-                  )}
-                </dd>
-              </div>
-              {initial.clientUsers[0]?.name ? (
+          {hasExistingClient ? (
+            <div className="rounded-xl border border-zinc-200 bg-zinc-50/80 px-4 py-3">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
+                Kayıtlı giriş
+              </p>
+              <dl className="mt-2 grid gap-3 sm:grid-cols-2">
                 <div>
-                  <dt className="text-[11px] text-zinc-500">Ad</dt>
-                  <dd className="mt-0.5 text-sm text-zinc-800">
-                    {initial.clientUsers[0].name}
+                  <dt className="text-[11px] text-zinc-500">Panel adresi</dt>
+                  <dd className="mt-0.5 font-mono text-sm font-medium text-zinc-900">
+                    {tenantSlug}.{rootDomain}
                   </dd>
                 </div>
+                <div>
+                  <dt className="text-[11px] text-zinc-500">Kullanıcı (e-posta)</dt>
+                  <dd className="mt-0.5 flex flex-wrap items-center gap-2">
+                    <span className="font-mono text-sm font-medium text-zinc-900">
+                      {initial.clientUsers[0]?.email}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => void copyEmail()}
+                      className="rounded border border-zinc-200 bg-white px-1.5 py-0.5 text-[10px] font-medium text-zinc-600 hover:bg-zinc-100"
+                    >
+                      {emailCopied ? "Kopyalandı" : "Kopyala"}
+                    </button>
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-[11px] text-zinc-500">Şifre</dt>
+                  <dd className="mt-0.5 flex flex-wrap items-center gap-2">
+                    {storedPassword ? (
+                      <>
+                        <span className="font-mono text-sm font-medium text-zinc-900">
+                          {showStoredPassword ? storedPassword : "••••••••"}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setShowStoredPassword((v) => !v)}
+                          className="rounded border border-zinc-200 bg-white px-1.5 py-0.5 text-[10px] font-medium text-zinc-600 hover:bg-zinc-100"
+                        >
+                          {showStoredPassword ? "Gizle" : "Göster"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void copyStoredPassword()}
+                          className="rounded border border-zinc-200 bg-white px-1.5 py-0.5 text-[10px] font-medium text-zinc-600 hover:bg-zinc-100"
+                        >
+                          {passwordCopied ? "Kopyalandı" : "Kopyala"}
+                        </button>
+                      </>
+                    ) : (
+                      <span className="text-sm text-amber-800">
+                        Eski kayıt — şifre görüntülenemez. Aşağıya yeni şifre
+                        yazıp kaydedin; sonra Göster ile görünür.
+                      </span>
+                    )}
+                  </dd>
+                </div>
+                {initial.clientUsers[0]?.name ? (
+                  <div>
+                    <dt className="text-[11px] text-zinc-500">Ad</dt>
+                    <dd className="mt-0.5 text-sm text-zinc-800">
+                      {initial.clientUsers[0].name}
+                    </dd>
+                  </div>
+                ) : null}
+              </dl>
+              {assertClientEmailForPanel(
+                initial.clientUsers[0]?.email ?? "",
+                tenantSlug,
+                rootDomain,
+              ) ? (
+                <p className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-[11px] text-amber-900">
+                  Eşleşme yok: e-posta local-part ile panel adresi (
+                  <code>{tenantSlug}</code>) farklı. Aşağıdan panel adresi veya
+                  e-postayı düzeltip kaydedin; Dokploy host’unu da güncelleyin.
+                </p>
               ) : null}
-            </dl>
-            {assertClientEmailForPanel(
-              initial.clientUsers[0]?.email ?? "",
-              tenantSlug,
-              rootDomain,
-            ) ? (
-              <p className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-[11px] text-amber-900">
-                Eşleşme yok: e-posta local-part ile panel adresi (
-                <code>{tenantSlug}</code>) farklı. Aşağıdan panel adresi veya
-                e-postayı düzeltip kaydedin; Dokploy host’unu da güncelleyin.
-              </p>
-            ) : null}
-            {initial.clientUsers.length > 1 ? (
-              <p className="mt-2 text-[11px] text-zinc-500">
-                +{initial.clientUsers.length - 1} ek müşteri üyeliği var; form
-                birincisini düzenler.
-              </p>
-            ) : null}
-          </div>
-        ) : (
-          <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-            Henüz müşteri hesabı yok — aşağıdan oluşturun.
-          </p>
-        )}
+              {initial.clientUsers.length > 1 ? (
+                <p className="mt-2 text-[11px] text-zinc-500">
+                  +{initial.clientUsers.length - 1} ek müşteri üyeliği var; form
+                  birincisini düzenler.
+                </p>
+              ) : null}
+            </div>
+          ) : (
+            <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+              Henüz müşteri hesabı yok — aşağıdan oluşturun.
+            </p>
+          )}
 
-        <div className="grid gap-3 sm:grid-cols-2">
-          <Field label="Müşteri adı">
-            <input
-              className={inputClass}
-              value={clientForm.name}
-              onChange={(e) =>
-                setClientForm((f) => ({ ...f, name: e.target.value }))
-              }
-              autoComplete="off"
-            />
-          </Field>
-          <Field label="Panel adresi (subdomain)">
-            <input
-              className={inputClass}
-              value={clientForm.panelSlug}
-              onChange={(e) => onPanelSlugChange(e.target.value)}
-              required
-              autoComplete="off"
-              placeholder={tenantSlug}
-            />
-            <span className="mt-1 block text-[11px] text-zinc-500">
-              Tam adres:{" "}
-              <code className="text-zinc-600">{clientPanelHint}</code>
-            </span>
-          </Field>
-          <Field label="Kullanıcı adı (e-posta)">
-            <input
-              className={inputClass}
-              type="email"
-              value={clientForm.email}
-              onChange={(e) => onClientEmailChange(e.target.value)}
-              required
-              autoComplete="off"
-            />
-            {clientEmailMismatch ? (
-              <span className="mt-1 block text-[11px] text-amber-700">
-                Beklenen:{" "}
-                {clientEmailForPanel(
-                  clientForm.panelSlug.trim() || tenantSlug,
-                  rootDomain,
-                )}
-              </span>
-            ) : null}
-          </Field>
-          <div className="sm:col-span-2">
-            <Field
-              label={
-                hasExistingClient
-                  ? "Yeni şifre (boş = değiştirme)"
-                  : "Şifre (min. 8)"
-              }
-            >
-              <div className="flex gap-2">
-                <input
-                  key={showPassword ? "pw-visible" : "pw-hidden"}
-                  className={inputClass}
-                  type={showPassword ? "text" : "password"}
-                  name="client-new-password"
-                  value={clientForm.password}
-                  onChange={(e) =>
-                    setClientForm((f) => ({ ...f, password: e.target.value }))
-                  }
-                  required={!hasExistingClient}
-                  minLength={hasExistingClient ? undefined : 8}
-                  autoComplete="new-password"
-                  placeholder={
-                    hasExistingClient
-                      ? "Değiştirmek için yeni şifre yazın"
-                      : ""
-                  }
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword((v) => !v)}
-                  className="shrink-0 rounded-md border border-zinc-200 bg-white px-3 text-xs font-medium text-zinc-700 hover:bg-zinc-50"
-                >
-                  {showPassword ? "Gizle" : "Göster"}
-                </button>
-              </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label="Müşteri adı">
+              <input
+                className={inputClass}
+                value={clientForm.name}
+                onChange={(e) =>
+                  setClientForm((f) => ({ ...f, name: e.target.value }))
+                }
+                autoComplete="off"
+              />
             </Field>
+            <Field label="Panel adresi (subdomain)">
+              <input
+                className={inputClass}
+                value={clientForm.panelSlug}
+                onChange={(e) => onPanelSlugChange(e.target.value)}
+                required
+                autoComplete="off"
+                placeholder={tenantSlug}
+              />
+              <span className="mt-1 block text-[11px] text-zinc-500">
+                Tam adres:{" "}
+                <code className="text-zinc-600">{clientPanelHint}</code>
+              </span>
+            </Field>
+            <Field label="Kullanıcı adı (e-posta)">
+              <input
+                className={inputClass}
+                type="email"
+                value={clientForm.email}
+                onChange={(e) => onClientEmailChange(e.target.value)}
+                required
+                autoComplete="off"
+              />
+              {clientEmailMismatch ? (
+                <span className="mt-1 block text-[11px] text-amber-700">
+                  Beklenen:{" "}
+                  {clientEmailForPanel(
+                    clientForm.panelSlug.trim() || tenantSlug,
+                    rootDomain,
+                  )}
+                </span>
+              ) : null}
+            </Field>
+            <div className="sm:col-span-2">
+              <Field
+                label={
+                  hasExistingClient
+                    ? "Yeni şifre (boş = değiştirme)"
+                    : "Şifre (min. 8)"
+                }
+              >
+                <div className="flex gap-2">
+                  <input
+                    key={showPassword ? "pw-visible" : "pw-hidden"}
+                    className={inputClass}
+                    type={showPassword ? "text" : "password"}
+                    name="client-new-password"
+                    value={clientForm.password}
+                    onChange={(e) =>
+                      setClientForm((f) => ({ ...f, password: e.target.value }))
+                    }
+                    required={!hasExistingClient}
+                    minLength={hasExistingClient ? undefined : 8}
+                    autoComplete="new-password"
+                    placeholder={
+                      hasExistingClient
+                        ? "Değiştirmek için yeni şifre yazın"
+                        : ""
+                    }
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword((v) => !v)}
+                    className="shrink-0 rounded-md border border-zinc-200 bg-white px-3 text-xs font-medium text-zinc-700 hover:bg-zinc-50"
+                  >
+                    {showPassword ? "Gizle" : "Göster"}
+                  </button>
+                </div>
+              </Field>
+            </div>
           </div>
-        </div>
-        <button
-          type="submit"
-          disabled={clientPending}
-          className="rounded-md border border-zinc-200 bg-white px-4 py-2 text-sm font-medium text-zinc-800 hover:bg-zinc-50 disabled:opacity-50"
-        >
-          {clientPending
-            ? "Kaydediliyor…"
-            : hasExistingClient
-              ? "Müşteri hesabını güncelle"
-              : "Müşteri hesabı oluştur"}
-        </button>
-      </form>
+          <button
+            type="submit"
+            disabled={clientPending}
+            className="rounded-md border border-zinc-200 bg-white px-4 py-2 text-sm font-medium text-zinc-800 hover:bg-zinc-50 disabled:opacity-50"
+          >
+            {clientPending
+              ? "Kaydediliyor…"
+              : hasExistingClient
+                ? "Müşteri hesabını güncelle"
+                : "Müşteri hesabı oluştur"}
+          </button>
+        </form>
+      ) : null}
 
       {allowDelete ? (
         <section className="space-y-3 rounded-xl border border-red-200 bg-red-50/60 p-4">
@@ -937,4 +950,4 @@ function Field({
 }
 
 const inputClass =
-  "w-full rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-900 outline-none ring-[#e91825]/40 placeholder:text-zinc-600 focus:ring-2";
+  "w-full rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-900 outline-none ring-[#e91825]/40 placeholder:text-zinc-600 focus:ring-2 disabled:cursor-not-allowed disabled:text-zinc-500";

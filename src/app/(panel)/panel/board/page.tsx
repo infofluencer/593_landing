@@ -8,7 +8,9 @@ import {
   serializeBoardCard,
 } from "@/lib/panel/board";
 import { isStaffRole } from "@/lib/panel/host";
+import { can } from "@/lib/panel/permissions";
 import { prisma } from "@/lib/db";
+import { fixedTeamOrderBy, fixedTeamWhere } from "@/lib/panel/teams";
 
 /** Yalnızca admin.* ajans portalı — marka subdomain’de yok. */
 export default async function BoardPage() {
@@ -36,7 +38,8 @@ export default async function BoardPage() {
         color: true,
         members: { select: { userId: true } },
       },
-      orderBy: { name: "asc" },
+      where: fixedTeamWhere,
+      orderBy: fixedTeamOrderBy,
     }),
     prisma.tenant.findMany({
       where: { visible: true },
@@ -64,6 +67,7 @@ export default async function BoardPage() {
         staff={staff}
         teams={teams}
         tenants={tenants}
+        canDeleteCards={can(session.user.role, "board.deleteCards")}
       />
     </Suspense>
   );

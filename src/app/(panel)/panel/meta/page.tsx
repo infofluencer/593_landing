@@ -6,11 +6,13 @@ import {
 } from "@/components/panel/charts";
 import BudgetPlanVsActual from "@/components/panel/BudgetPlanVsActual";
 import PeriodFilterBar from "@/components/panel/PeriodFilterBar";
+import { TimezoneNotice } from "@/components/panel/TimezoneNotice";
 import { StatusBadge } from "@/components/panel/StatusBadge";
 import { KPICard, DataTable } from "@/components/panel/ds";
 import { Delta } from "@/components/panel/ui";
 import { loadBrandBudgetPlan } from "@/lib/panel/brand-budget";
 import { requireBundle } from "@/lib/panel/data";
+import { withMetaPeriodReach } from "@/lib/panel/meta-reach";
 import { resolvePanelDateRange } from "@/lib/panel/period";
 import {
   CHANNEL_BRAND,
@@ -116,7 +118,9 @@ function MetricRow({
       {ecommerce ? (
         <>
           <td className="num">
-            {current.spend > 0 ? `${formatNumber(c.roas, 2)}x` : "—"}
+            {current.spend > 0 && current.convValue > 0
+              ? `${formatNumber(c.roas, 2)}x`
+              : "—"}
           </td>
           <td className="num">
             {current.conv > 0 ? formatTry(c.cpa, currency) : "—"}
@@ -399,10 +403,13 @@ export default async function MetaPage({
   const slug = h.get("x-tenant-slug")!;
   const sp = await searchParams;
   const range = await resolvePanelDateRange(sp);
-  const bundle = await requireBundle(slug, {
-    from: range.startDate,
-    to: range.endDate,
-  });
+  const bundle = await withMetaPeriodReach(
+    await requireBundle(slug, {
+      from: range.startDate,
+      to: range.endDate,
+    }),
+    { from: range.startDate, to: range.endDate },
+  );
   const model = buildPresentation(bundle, range.label);
   const budgetPlan = await loadBrandBudgetPlan(slug, {
     from: range.startDate,
@@ -420,7 +427,7 @@ export default async function MetaPage({
   }));
 
   const prevByName = new Map(
-    metaPrevious.campaigns.map((c) => [c.campaign, c] as const),
+    metaPrevious.campaigns.map((c) => [c.campaignId ?? c.campaign, c] as const),
   );
 
   const formLeads = bundle.conversions
@@ -518,6 +525,8 @@ export default async function MetaPage({
       <Suspense fallback={null}>
         <PeriodFilterBar label={range.label} />
       </Suspense>
+
+      <TimezoneNotice platform="Meta reklam" timeZone={bundle.tenant.timezone} />
 
       {budgetPlan ? (
         <BudgetPlanVsActual plan={budgetPlan} provider="meta" />
@@ -704,7 +713,7 @@ export default async function MetaPage({
                   tier={2}
                   metricKey="formLeads"
                   kind="count"
-                  value={formatNumber(formLeads || ch.conv)}
+                  value={formatNumber(formLeads)}
                   goodDirection="up"
                 />
                 <KPICard
@@ -872,7 +881,7 @@ export default async function MetaPage({
                   key={c.campaign}
                   label={c.campaign}
                   current={c}
-                  previous={prevByName.get(c.campaign)}
+                  previous={prevByName.get(c.campaignId ?? c.campaign)}
                   currency={currency}
                   ecommerce={ecommerce}
                 />

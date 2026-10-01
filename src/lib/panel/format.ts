@@ -13,6 +13,17 @@ export function formatNumber(value: number, digits = 0): string {
   }).format(value);
 }
 
+/**
+ * Dönüşüm adedi: veri temelli atıf kesirli dağıtır — 0,04 gibi değerler
+ * "0,0" görünmesin. 0 < x < 1 → 2 ondalık, diğerleri 1 ondalık (tam sayıysa 0).
+ */
+export function formatConv(value: number): string {
+  if (!Number.isFinite(value) || value === 0) return "0";
+  if (Math.abs(value) < 1) return formatNumber(value, 2);
+  if (Number.isInteger(value)) return formatNumber(value, 0);
+  return formatNumber(value, 1);
+}
+
 export function formatPct(value: number, digits = 1): string {
   const sign = value > 0 ? "+" : "";
   return `${sign}${formatNumber(value, digits)}%`;

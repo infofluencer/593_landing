@@ -180,26 +180,70 @@ function buildChannel(
   };
 }
 
+const TR_MONTHS = [
+  "Oca", "Şub", "Mar", "Nis", "May", "Haz",
+  "Tem", "Ağu", "Eyl", "Eki", "Kas", "Ara",
+];
+
+function dayLabel(ymd: string): string {
+  return `${Number(ymd.slice(8, 10))} ${TR_MONTHS[Number(ymd.slice(5, 7)) - 1]}`;
+}
+
+/**
+ * Gerçek günlük harcama / dönüşüm (bundle.dailySpend). Uzun dönemde
+ * haftalık (≤ 120 gün) ya da aylık kovalara toplanır.
+ */
 function buildDaily(
-  gSpend: number,
-  mSpend: number,
-  gConv: number,
-  mConv: number,
+  points: MockTenantBundle["dailySpend"],
   gUnk: boolean,
   mUnk: boolean,
 ): DailyTrendPoint[] {
-  const weights = [0.11, 0.13, 0.14, 0.15, 0.16, 0.17, 0.14];
-  const labels = ["Pzt", "Sal", "Çar", "Per", "Cum", "Cmt", "Paz"];
-  return labels.map((label, i) => {
-    const w = weights[i]!;
-    return {
+  const sorted = [...points].sort((a, b) => a.date.localeCompare(b.date));
+  if (sorted.length === 0) return [];
+  const span =
+    (Date.parse(sorted[sorted.length - 1]!.date) - Date.parse(sorted[0]!.date)) /
+      86_400_000 +
+    1;
+  const mode = span <= 31 ? "day" : span <= 120 ? "week" : "month";
+
+  const buckets = new Map<string, DailyTrendPoint>();
+  for (const p of sorted) {
+    let key = p.date;
+    let label = dayLabel(p.date);
+    if (mode === "week") {
+      const d = new Date(`${p.date}T00:00:00Z`);
+      const monday = new Date(d);
+      monday.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7));
+      key = monday.toISOString().slice(0, 10);
+      label = `${dayLabel(key)} haftası`;
+    } else if (mode === "month") {
+      key = p.date.slice(0, 7);
+      label = `${TR_MONTHS[Number(p.date.slice(5, 7)) - 1]} ${p.date.slice(2, 4)}`;
+    }
+    const prev = buckets.get(key) || {
       label,
-      googleSpend: gUnk ? 0 : Math.round(gSpend * w),
-      metaSpend: mUnk ? 0 : Math.round(mSpend * w),
-      googleConv: gUnk ? 0 : Math.round(gConv * w * 10) / 10,
-      metaConv: mUnk ? 0 : Math.round(mConv * w * 10) / 10,
+      googleSpend: 0,
+      metaSpend: 0,
+      googleConv: 0,
+      metaConv: 0,
     };
-  });
+    if (!gUnk) {
+      prev.googleSpend += p.google;
+      prev.googleConv += p.googleConv ?? 0;
+    }
+    if (!mUnk) {
+      prev.metaSpend += p.meta;
+      prev.metaConv += p.metaConv ?? 0;
+    }
+    buckets.set(key, prev);
+  }
+  return [...buckets.values()].map((b) => ({
+    ...b,
+    googleSpend: Math.round(b.googleSpend),
+    metaSpend: Math.round(b.metaSpend),
+    googleConv: Math.round(b.googleConv * 10) / 10,
+    metaConv: Math.round(b.metaConv * 10) / 10,
+  }));
 }
 
 const CONV_COLORS = {
@@ -250,6 +294,8 @@ export function buildPresentation(
 
   const byKind = { sale: 0, form: 0, whatsapp: 0, other: 0 };
   for (const c of bundle.conversions) {
+    // KPI ile aynı küme: yalnızca sayılan (primary) ve olası mükerrer olmayanlar.
+    if (!c.primary || c.dupeFlag) continue;
     if (type === "ecommerce" && c.kind !== "sale") continue;
     byKind[c.kind] += c.count;
   }
@@ -289,10 +335,7 @@ export function buildPresentation(
     google,
     meta,
     daily: buildDaily(
-      gSpend,
-      mSpend,
-      gConv,
-      mConv,
+      bundle.dailySpend,
       google.status === "unknown",
       meta.status === "unknown",
     ),

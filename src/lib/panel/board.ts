@@ -65,42 +65,6 @@ export async function ensureAgencyBoard() {
 
 export type AgencyBoard = Awaited<ReturnType<typeof ensureAgencyBoard>>;
 
-/** Takım adı → URL-safe slug. */
-export function slugifyTeamName(name: string): string {
-  const base = name
-    .trim()
-    .toLocaleLowerCase("tr")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/ğ/g, "g")
-    .replace(/ü/g, "u")
-    .replace(/ş/g, "s")
-    .replace(/ı/g, "i")
-    .replace(/ö/g, "o")
-    .replace(/ç/g, "c")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-  return base || "ekip";
-}
-
-export async function uniqueTeamSlug(name: string, excludeId?: string) {
-  const base = slugifyTeamName(name);
-  let slug = base;
-  let n = 2;
-  for (;;) {
-    const clash = await prisma.team.findFirst({
-      where: {
-        slug,
-        ...(excludeId ? { id: { not: excludeId } } : {}),
-      },
-      select: { id: true },
-    });
-    if (!clash) return slug;
-    slug = `${base}-${n}`;
-    n += 1;
-  }
-}
-
 /** dueAt geçmiş ve kolon “Tamamlandı” değilse gecikmiş. */
 export function isCardOverdue(opts: {
   dueAt: Date | string | null | undefined;

@@ -1,63 +1,37 @@
 import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/db";
-import { uniqueTeamSlug } from "@/lib/panel/board";
-import { requireStaffApi } from "@/lib/panel/staff-auth";
+import { can } from "@/lib/panel/permissions";
+import { requirePermissionApi, requireStaffApi } from "@/lib/panel/staff-auth";
+import {
+  fixedTeamOrderBy,
+  fixedTeamWhere,
+  staffSelect,
+  teamInclude,
+} from "@/lib/panel/teams";
 
 export const runtime = "nodejs";
 
-/** GET — ekipler + tüm staff kullanıcılar. */
+/** GET — sabit ekipler + tüm staff kullanıcılar. */
 export async function GET() {
-  const { error } = await requireStaffApi();
-  if (error) return error;
+  const { session, error } = await requireStaffApi();
+  if (error || !session) return error;
 
   const [teams, staff] = await Promise.all([
     prisma.team.findMany({
-      orderBy: { name: "asc" },
-      include: {
-        members: {
-          include: {
-            user: {
-              select: {
-                id: true,
-                name: true,
-                email: true,
-                role: true,
-              },
-            },
-          },
-          orderBy: { createdAt: "asc" },
-        },
-      },
+      where: fixedTeamWhere,
+      orderBy: fixedTeamOrderBy,
+      include: teamInclude,
     }),
     prisma.user.findMany({
       where: { role: { in: ["admin", "team"] } },
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        role: true,
-        passwordPlain: true,
-        createdAt: true,
-        teamMemberships: {
-          select: {
-            teamId: true,
-            team: { select: { id: true, name: true, slug: true, color: true } },
-          },
-        },
-      },
+      select: staffSelect(can(session.user.role, "users.viewPasswords")),
       orderBy: [{ role: "asc" }, { name: "asc" }, { email: "asc" }],
     }),
   ]);
 
   return NextResponse.json({ teams, staff });
 }
-
-type CreateTeamBody = {
-  name?: string;
-  description?: string | null;
-  color?: string | null;
-};
 
 type CreateMemberBody = {
   email?: string;
@@ -67,49 +41,16 @@ type CreateMemberBody = {
   teamIds?: string[];
 };
 
-/** POST — yeni ekip veya yeni staff üye. */
+/** POST — yeni staff kullanıcı (yalnızca admin). Ekipler sabittir. */
 export async function POST(request: Request) {
-  const { session, error } = await requireStaffApi();
-  if (error || !session) return error;
+  const { error } = await requirePermissionApi("users.manage");
+  if (error) return error;
 
-  let body: (CreateTeamBody & CreateMemberBody & { kind?: string }) | null;
+  let body: CreateMemberBody;
   try {
-    body = (await request.json()) as CreateTeamBody &
-      CreateMemberBody & { kind?: string };
+    body = (await request.json()) as CreateMemberBody;
   } catch {
     return NextResponse.json({ error: "JSON gerekli" }, { status: 400 });
-  }
-
-  const kind = body.kind === "member" ? "member" : "team";
-
-  if (kind === "team") {
-    const name = body.name?.trim();
-    if (!name) {
-      return NextResponse.json({ error: "name gerekli" }, { status: 400 });
-    }
-    const color =
-      typeof body.color === "string" && /^#[0-9a-fA-F]{6}$/.test(body.color.trim())
-        ? body.color.trim()
-        : "#71717a";
-    const slug = await uniqueTeamSlug(name);
-    const team = await prisma.team.create({
-      data: {
-        name,
-        slug,
-        color,
-        description: body.description?.trim() || null,
-      },
-      include: { members: { include: { user: true } } },
-    });
-    return NextResponse.json({ team }, { status: 201 });
-  }
-
-  // Yalnızca admin yeni staff oluşturabilir
-  if (session.user.role !== "admin") {
-    return NextResponse.json(
-      { error: "Yalnızca admin ekip üyesi ekleyebilir" },
-      { status: 403 },
-    );
   }
 
   const email = String(body.email ?? "")
@@ -141,11 +82,15 @@ export async function POST(request: Request) {
   }
 
   const teamIds = Array.isArray(body.teamIds)
-    ? body.teamIds.filter((id): id is string => typeof id === "string")
+    ? Array.from(
+        new Set(body.teamIds.filter((id): id is string => typeof id === "string")),
+      )
     : [];
 
   if (teamIds.length > 0) {
-    const count = await prisma.team.count({ where: { id: { in: teamIds } } });
+    const count = await prisma.team.count({
+      where: { id: { in: teamIds }, ...fixedTeamWhere },
+    });
     if (count !== teamIds.length) {
       return NextResponse.json(
         { error: "Geçersiz ekip seçimi" },
@@ -167,19 +112,7 @@ export async function POST(request: Request) {
           ? { create: teamIds.map((teamId) => ({ teamId })) }
           : undefined,
     },
-    select: {
-      id: true,
-      name: true,
-      email: true,
-      role: true,
-      passwordPlain: true,
-      teamMemberships: {
-        select: {
-          teamId: true,
-          team: { select: { id: true, name: true, slug: true, color: true } },
-        },
-      },
-    },
+    select: staffSelect(true),
   });
 
   return NextResponse.json({ user }, { status: 201 });

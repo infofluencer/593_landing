@@ -2,13 +2,21 @@ import type { AlertSeverity, ConversionKind, Role, TenantType } from "@prisma/cl
 import { cache } from "react";
 import { getTenantBySlug, prisma, TenantAccessError } from "@/lib/db";
 import { useMockPanelData } from "@/lib/integrations/tokens";
+import { deriveMetaKpis } from "@/lib/integrations/meta/insights";
 import {
   deriveMetaFunnel,
+  deriveMetaLeadParts,
+  deriveMetaPurchase,
   deriveMetaVideo,
   sumMetaFunnel,
   sumMetaVideo,
 } from "@/lib/integrations/meta/metrics";
-import { istanbulYmd, startOfIstanbulMonthYmd, ymdToUtcDate } from "@/lib/date/tr";
+import {
+  istanbulYmd,
+  previousRangeYmd,
+  startOfIstanbulMonthYmd,
+  ymdToUtcDate,
+} from "@/lib/date/tr";
 import {
   EMPTY_META_FUNNEL,
   EMPTY_META_VIDEO,
@@ -18,6 +26,7 @@ import {
   listVisibleMockBundles,
   type HealthStatus,
   type MockCampaignMetric,
+  type MockConversion,
   type MockDailySpendPoint,
   type MockGa4Overview,
   type MockGtmSnapshot,
@@ -25,7 +34,6 @@ import {
   type MockMetaAdsetPerformance,
   type MockMetaBreakdownRow,
   type MockMetaDailyPoint,
-  type MockPeriodMetrics,
   type MockTenantBundle,
 } from "@/lib/panel/mock-data";
 import { resolveGa4PropertyId } from "@/lib/panel/ga4-property-map";
@@ -82,10 +90,6 @@ function dateKey(d: Date): string {
   return d.toISOString().slice(0, 10);
 }
 
-function emptyPeriod(from: string, to: string): MockPeriodMetrics {
-  return { from, to, account: { ...EMPTY_ACCOUNT }, campaigns: [] };
-}
-
 function sumCampaigns(
   campaigns: MockCampaignMetric[],
   label = "Hesap toplamı",
@@ -99,11 +103,211 @@ function sumCampaigns(
       clicks: acc.clicks + c.clicks,
       conv: acc.conv + c.conv,
       convValue: acc.convValue + c.convValue,
+      allConv:
+        c.allConv != null ? (acc.allConv ?? 0) + c.allConv : acc.allConv,
       reach: hasReach ? (acc.reach ?? 0) + (c.reach ?? 0) : undefined,
       frequency: undefined,
     }),
     { ...EMPTY_ACCOUNT, campaign: label },
   );
+}
+
+/**
+ * Meta dönüşümü okuma anında actions'tan yeniden hesapla — kural değişince
+ * (örn. lead çift sayımı düzeltmesi) tam sync beklemeden geçmiş de düzelir.
+ */
+function metaConv(
+  type: TenantType,
+  row: { actions?: unknown; actionValues?: unknown; conversions: unknown; convValue: unknown; spend: unknown },
+): { conv: number; convValue: number } {
+  if (row.actions === undefined) {
+    return {
+      conv: Number(row.conversions ?? 0),
+      convValue: Number(row.convValue ?? 0),
+    };
+  }
+  const k = deriveMetaKpis(
+    type,
+    asActionMap(row.actions),
+    asActionMap(row.actionValues),
+    Number(row.spend),
+  );
+  return { conv: k.conversions, convValue: k.convValue };
+}
+
+/**
+ * Meta tıklama = bağlantı tıklaması (actions.link_click), Ads Manager'daki
+ * "CTR (bağlantı)" ile aynı. "clicks" profil/beğeni/genişletme dahil tüm tıklamalar.
+ */
+function metaLinkClicks(row: { actions?: unknown; clicks: number }): number {
+  if (row.actions === undefined) return row.clicks;
+  const link = asActionMap(row.actions).link_click;
+  return link != null ? link : row.clicks;
+}
+
+type GoogleMetricRow = {
+  date: Date;
+  campaignId: string;
+  campaignName: string;
+  cost: unknown;
+  impressions: number;
+  clicks: number;
+  conversions: unknown;
+  convValue: unknown;
+  allConversions?: unknown;
+};
+
+type MetaInsightLite = {
+  actions?: unknown;
+  actionValues?: unknown;
+  date: Date;
+  campaignId: string;
+  campaignName: string;
+  objective: string;
+  spend: unknown;
+  impressions: number;
+  clicks: number;
+  reach: number;
+  conversions: unknown;
+  convValue: unknown;
+};
+
+/**
+ * Kampanya ID'sine göre topla (ad değişince bölünmesin, aynı adlı iki kampanya
+ * birleşmesin). Görünen ad: en son tarihli satırın adı.
+ */
+function groupGoogleCampaigns(rows: GoogleMetricRow[]): MockCampaignMetric[] {
+  const byId = new Map<string, MockCampaignMetric>();
+  const lastSeen = new Map<string, number>();
+  for (const m of rows) {
+    const id = m.campaignId || m.campaignName || "Google Ads";
+    const t = m.date.getTime();
+    const prev = byId.get(id) || {
+      campaign: m.campaignName || "Google Ads",
+      campaignId: id,
+      spend: 0,
+      impr: 0,
+      clicks: 0,
+      conv: 0,
+      convValue: 0,
+    };
+    if (t >= (lastSeen.get(id) ?? 0) && m.campaignName) {
+      prev.campaign = m.campaignName;
+      lastSeen.set(id, t);
+    }
+    prev.spend += Number(m.cost);
+    prev.impr += m.impressions;
+    prev.clicks += m.clicks;
+    prev.conv += Number(m.conversions);
+    prev.convValue += Number(m.convValue);
+    prev.allConv = (prev.allConv ?? 0) + Number(m.allConversions ?? 0);
+    byId.set(id, prev);
+  }
+  return [...byId.values()];
+}
+
+function groupMetaCampaigns(
+  type: TenantType,
+  rows: MetaInsightLite[],
+): MockCampaignMetric[] {
+  const byId = new Map<string, MockCampaignMetric>();
+  const lastSeen = new Map<string, number>();
+  for (const m of rows) {
+    const id = m.campaignId || m.campaignName || "Meta Ads";
+    const t = m.date.getTime();
+    const prev = byId.get(id) || {
+      campaign: m.campaignName || "Meta Ads",
+      campaignId: id,
+      spend: 0,
+      impr: 0,
+      clicks: 0,
+      conv: 0,
+      convValue: 0,
+      // Erişim günlerden toplanamaz (aynı kişi her gün sayılır) — dönem tekil
+      // erişimi canlı çekilir: withMetaPeriodReach.
+    };
+    if (t >= (lastSeen.get(id) ?? 0) && m.campaignName) {
+      prev.campaign = m.campaignName;
+      lastSeen.set(id, t);
+    }
+    const c = metaConv(type, m);
+    prev.spend += Number(m.spend);
+    prev.impr += m.impressions;
+    prev.clicks += metaLinkClicks(m);
+    prev.conv += c.conv;
+    prev.convValue += c.convValue;
+    byId.set(id, prev);
+  }
+  return [...byId.values()];
+}
+
+/** Meta dönüşüm türleri — seçili dönemin MetaInsight.actions'ından. */
+function metaConversionKinds(
+  type: TenantType,
+  rows: { actions: unknown; actionValues: unknown }[],
+): MockConversion[] {
+  let purchase = 0;
+  let form = 0;
+  let messaging = 0;
+  for (const r of rows) {
+    const actions = asActionMap(r.actions);
+    if (type === "ecommerce") {
+      purchase += deriveMetaPurchase(actions, asActionMap(r.actionValues)).count;
+    } else {
+      const parts = deriveMetaLeadParts(actions);
+      form += parts.form;
+      messaging += parts.messaging;
+    }
+  }
+  const out: MockConversion[] = [];
+  const add = (name: string, kind: ConversionKind, count: number) => {
+    if (count > 0) {
+      out.push({
+        name,
+        source: "Meta Ads",
+        primary: true,
+        count,
+        kind,
+        dupeFlag: false,
+      });
+    }
+  };
+  add("Meta satın alım", "sale", purchase);
+  add("Meta form lead", "form", form);
+  add("Meta mesajlaşma (WhatsApp/Messenger)", "whatsapp", messaging);
+  return out;
+}
+
+/** Google dönüşüm aksiyonu günlük satırları → dönem toplamı (ad başına). */
+function groupGoogleConversions(
+  rows: {
+    name: string;
+    source: string;
+    primary: boolean;
+    count: unknown;
+    kind: ConversionKind;
+    dupeFlag: boolean;
+  }[],
+): MockConversion[] {
+  const byName = new Map<string, MockConversion>();
+  for (const c of rows) {
+    const key = `${c.source}|${c.name}`;
+    const prev = byName.get(key) || {
+      name: c.name,
+      source: c.source,
+      primary: c.primary,
+      count: 0,
+      kind: c.kind,
+      dupeFlag: c.dupeFlag,
+    };
+    prev.count += Number(c.count);
+    prev.primary = prev.primary || c.primary;
+    prev.dupeFlag = prev.dupeFlag || c.dupeFlag;
+    byName.set(key, prev);
+  }
+  return [...byName.values()]
+    .filter((c) => c.count > 0)
+    .sort((a, b) => b.count - a.count);
 }
 
 export const resolvePanelTenant = cache(async function resolvePanelTenant(
@@ -160,6 +364,9 @@ function healthFromJobs(
 ): HealthStatus {
   if (openAlerts.some((a) => a.severity === "critical")) return "critical";
 
+  // Geriye dönük doldurma kaydı marka sağlığını etkilemez.
+  jobs = jobs.filter((j) => j.service !== "backfill");
+
   const hasSuccess = jobs.some((j) => j.status === "success");
   const hasError = jobs.some((j) => j.status === "error");
 
@@ -179,6 +386,11 @@ async function bundleFromDb(
   const fromDate = ymdToUtcDate(range.from);
   const toDate = ymdToUtcDate(range.to);
   const dateFilter = { gte: fromDate, lte: toDate };
+  const prevRange = previousRangeYmd(range.from, range.to);
+  const prevDateFilter = {
+    gte: ymdToUtcDate(prevRange.from),
+    lte: ymdToUtcDate(prevRange.to),
+  };
 
   const tenant = await prisma.tenant.findUnique({
     where: { slug },
@@ -208,17 +420,44 @@ async function bundleFromDb(
       metaBreakdowns: {
         where: { date: dateFilter },
       },
+      // GA4 günlük satırlar (genel bakış + kanal) — canlı çekim başarısızsa yedek.
       ga4Metrics: {
-        where: { date: dateFilter },
-        take: 60,
+        where: {
+          date: dateFilter,
+          dimensionType: { in: ["overview", "channel"] },
+        },
       },
       conversions: {
-        orderBy: { updatedAt: "desc" },
-        take: 50,
+        where: { date: dateFilter },
       },
     },
   });
   if (!tenant) return null;
+
+  // Önceki dönem (aynı uzunluk, hemen önce) — delta rozetleri için.
+  const [prevGoogleRows, prevMetaRows] = await Promise.all([
+    prisma.googleAdsMetric.findMany({
+      where: { tenantId: tenant.id, date: prevDateFilter },
+    }),
+    prisma.metaInsight.findMany({
+      where: { tenantId: tenant.id, date: prevDateFilter },
+      select: {
+        date: true,
+        campaignId: true,
+        campaignName: true,
+        objective: true,
+        spend: true,
+        impressions: true,
+        clicks: true,
+        reach: true,
+        conversions: true,
+        convValue: true,
+        actions: true,
+        actionValues: true,
+      },
+    }),
+  ]);
+  const ga4Rows = tenant.ga4Metrics;
 
   const adsJob = tenant.syncJobs.find(
     (j) => j.provider === "google" && j.service === "ads",
@@ -242,53 +481,26 @@ async function bundleFromDb(
   const from = range.from;
   const to = range.to;
 
-  const googleByCamp = new Map<string, MockCampaignMetric>();
-  for (const m of tenant.googleAdsMetrics) {
-    const key = m.campaignName || "Google Ads";
-    const prev = googleByCamp.get(key) || {
-      campaign: key,
-      spend: 0,
-      impr: 0,
-      clicks: 0,
-      conv: 0,
-      convValue: 0,
-    };
-    prev.spend += Number(m.cost);
-    prev.impr += m.impressions;
-    prev.clicks += m.clicks;
-    prev.conv += Number(m.conversions);
-    prev.convValue += Number(m.convValue);
-    googleByCamp.set(key, prev);
-  }
-  const googleCampaigns = adsUnknown ? [] : [...googleByCamp.values()];
+  const googleCampaigns = adsUnknown
+    ? []
+    : groupGoogleCampaigns(tenant.googleAdsMetrics);
   const googleAccount = adsUnknown
     ? { ...EMPTY_ACCOUNT }
     : sumCampaigns(googleCampaigns);
 
-  const metaByCamp = new Map<string, MockCampaignMetric>();
-  for (const m of tenant.metaInsights) {
-    const key = m.campaignName || "Meta Ads";
-    const prev = metaByCamp.get(key) || {
-      campaign: key,
-      spend: 0,
-      impr: 0,
-      clicks: 0,
-      conv: 0,
-      convValue: 0,
-      reach: 0,
-    };
-    prev.spend += Number(m.spend);
-    prev.impr += m.impressions;
-    prev.clicks += m.clicks;
-    prev.conv += Number(m.conversions ?? 0);
-    prev.convValue += Number(m.convValue ?? 0);
-    prev.reach = (prev.reach ?? 0) + (m.reach ?? 0);
-    metaByCamp.set(key, prev);
-  }
-  const metaCampaigns = metaUnknown ? [] : [...metaByCamp.values()];
+  const metaCampaigns = metaUnknown
+    ? []
+    : groupMetaCampaigns(tenant.type, tenant.metaInsights);
   const metaAccount = metaUnknown
     ? { ...EMPTY_ACCOUNT, campaign: "Meta toplam" }
     : sumCampaigns(metaCampaigns, "Meta toplam");
+
+  const prevGoogleCampaigns = adsUnknown
+    ? []
+    : groupGoogleCampaigns(prevGoogleRows);
+  const prevMetaCampaigns = metaUnknown
+    ? []
+    : groupMetaCampaigns(tenant.type, prevMetaRows);
 
   const creativeByAdId = new Map(
     tenant.metaAds.map((a) => [a.adId, a] as const),
@@ -315,10 +527,11 @@ async function bundleFromDb(
     };
     prev.spend += Number(row.spend);
     prev.impr += row.impressions;
-    prev.clicks += row.clicks;
+    prev.clicks += metaLinkClicks(row);
     prev.reach += row.reach;
-    prev.conv += Number(row.conversions ?? 0);
-    prev.convValue += Number(row.convValue ?? 0);
+    const mc = metaConv(tenant.type, row);
+    prev.conv += mc.conv;
+    prev.convValue += mc.convValue;
     if (creative) {
       prev.adName = creative.adName || prev.adName;
       prev.campaignName = creative.campaignName || prev.campaignName;
@@ -369,10 +582,11 @@ async function bundleFromDb(
     };
     prev.spend += Number(row.spend);
     prev.impr += row.impressions;
-    prev.clicks += row.clicks;
+    prev.clicks += metaLinkClicks(row);
     prev.reach += row.reach;
-    prev.conv += Number(row.conversions ?? 0);
-    prev.convValue += Number(row.convValue ?? 0);
+    const mc = metaConv(tenant.type, row);
+    prev.conv += mc.conv;
+    prev.convValue += mc.convValue;
     if (row.adsetName) prev.adsetName = row.adsetName;
     if (row.campaignName) prev.campaignName = row.campaignName;
     metaAdsetsById.set(row.adsetId, prev);
@@ -421,9 +635,10 @@ async function bundleFromDb(
       convValue: 0,
     };
     prev.spend += Number(m.spend);
-    prev.clicks += m.clicks;
-    prev.conv += Number(m.conversions ?? 0);
-    prev.convValue += Number(m.convValue ?? 0);
+    prev.clicks += metaLinkClicks(m);
+    const mc = metaConv(tenant.type, m);
+    prev.conv += mc.conv;
+    prev.convValue += mc.convValue;
     dailyMap.set(key, prev);
 
     const actions = asActionMap(m.actions);
@@ -450,6 +665,7 @@ async function bundleFromDb(
         total: 0,
       };
       prev.google += Number(m.cost);
+      prev.googleConv = (prev.googleConv ?? 0) + Number(m.conversions);
       spendByDay.set(key, prev);
     }
   }
@@ -463,6 +679,7 @@ async function bundleFromDb(
         total: 0,
       };
       prev.meta += Number(m.spend);
+      prev.metaConv = (prev.metaConv ?? 0) + metaConv(tenant.type, m).conv;
       spendByDay.set(key, prev);
     }
   }
@@ -487,50 +704,67 @@ async function bundleFromDb(
   const ga4Channels: MockTenantBundle["ga4Channels"] = [];
   const ga4Landings: MockTenantBundle["ga4Landings"] = [];
 
-  if (ga4Job?.status === "error" && tenant.ga4Metrics.length === 0) {
+  if (ga4Job?.status === "error" && ga4Rows.length === 0) {
     // leave empty — unknown ≠ zero
-  } else if (tenant.ga4Metrics.length > 0) {
-    const overviewRows = tenant.ga4Metrics.filter(
-      (r) => r.dimensionType === "overview",
-    );
-    const ov = overviewRows[0];
-    if (ov) {
+  } else if (ga4Rows.length > 0) {
+    // Oranlar / ortalamalar oturum ağırlıklı; kullanıcı günlük toplamdır (tekil değil).
+    const ov = ga4Rows.filter((r) => r.dimensionType === "overview");
+    let sessions = 0;
+    let users = 0;
+    let durW = 0;
+    let bounceW = 0;
+    let ppsW = 0;
+    let convW = 0;
+    let revenue: number | null = null;
+    let transactions: number | null = null;
+    for (const r of ov) {
+      const sess = r.sessions ?? 0;
+      sessions += sess;
+      users += r.totalUsers ?? 0;
+      durW += Number(r.averageSessionDuration ?? 0) * sess;
+      bounceW += Number(r.bounceRate ?? 0) * sess;
+      ppsW += Number(r.screenPageViewsPerSession ?? 0) * sess;
+      convW += Number(r.sessionConversionRate ?? 0) * sess;
+      if (r.purchaseRevenue != null) {
+        revenue = (revenue ?? 0) + Number(r.purchaseRevenue);
+      }
+      if (r.transactions != null) {
+        transactions = (transactions ?? 0) + r.transactions;
+      }
+    }
+    if (ov.length > 0) {
+      const w = (x: number) => (sessions > 0 ? x / sessions : 0);
       ga4 = {
-        totalUsers: ov.totalUsers ?? 0,
-        sessions: ov.sessions ?? 0,
-        averageSessionDuration: Number(ov.averageSessionDuration ?? 0),
-        bounceRate: Number(ov.bounceRate ?? 0),
-        screenPageViewsPerSession: Number(ov.screenPageViewsPerSession ?? 0),
-        sessionConversionRate: Number(ov.sessionConversionRate ?? 0),
-        purchaseRevenue:
-          ov.purchaseRevenue != null ? Number(ov.purchaseRevenue) : null,
-        transactions: ov.transactions ?? null,
+        totalUsers: users,
+        sessions,
+        averageSessionDuration: w(durW),
+        bounceRate: w(bounceW),
+        screenPageViewsPerSession: w(ppsW),
+        sessionConversionRate: w(convW),
+        purchaseRevenue: revenue,
+        transactions,
       };
     }
-    for (const r of tenant.ga4Metrics.filter(
-      (x) => x.dimensionType === "channel",
-    )) {
-      const sessions = r.sessions ?? 0;
-      const rate = Number(r.sessionConversionRate ?? 0);
-      ga4Channels.push({
+    const byChannel = new Map<string, MockTenantBundle["ga4Channels"][number]>();
+    for (const r of ga4Rows.filter((x) => x.dimensionType === "channel")) {
+      const prev = byChannel.get(r.dimensionValue) || {
         dimension: r.dimensionValue,
-        sessions,
-        users: r.totalUsers ?? 0,
-        conversions: Math.round(sessions * rate),
-      });
+        sessions: 0,
+        users: 0,
+        conversions: 0,
+      };
+      prev.sessions += r.sessions ?? 0;
+      prev.users += r.totalUsers ?? 0;
+      prev.conversions +=
+        r.keyEvents != null
+          ? Number(r.keyEvents)
+          : (r.sessions ?? 0) * Number(r.sessionConversionRate ?? 0);
+      byChannel.set(r.dimensionValue, prev);
     }
-    for (const r of tenant.ga4Metrics.filter(
-      (x) => x.dimensionType === "landing",
-    )) {
-      const sessions = r.sessions ?? 0;
-      const rate = Number(r.sessionConversionRate ?? 0);
-      ga4Landings.push({
-        dimension: r.dimensionValue,
-        sessions,
-        users: r.totalUsers ?? 0,
-        conversions: Math.round(sessions * rate),
-      });
-    }
+    ga4Channels.push(
+      ...[...byChannel.values()].sort((a, b) => b.sessions - a.sessions),
+    );
+    // Açılış sayfaları DB'de tutulmaz — yalnızca canlı GA4.
   }
 
   return {
@@ -565,6 +799,7 @@ async function bundleFromDb(
           null,
         gscSiteUrl: tenant.mapping?.gscSiteUrl ?? null,
         merchantId: tenant.mapping?.merchantId ?? null,
+        adsTimezone: tenant.mapping?.adsTimezone ?? null,
       },
     },
     thresholds: {
@@ -587,14 +822,24 @@ async function bundleFromDb(
       account: googleAccount,
       campaigns: googleCampaigns,
     },
-    previous: emptyPeriod(from, to),
+    previous: {
+      from: prevRange.from,
+      to: prevRange.to,
+      account: sumCampaigns(prevGoogleCampaigns),
+      campaigns: prevGoogleCampaigns,
+    },
     metaCurrent: {
       from,
       to,
       account: metaAccount,
       campaigns: metaCampaigns,
     },
-    metaPrevious: emptyPeriod(from, to),
+    metaPrevious: {
+      from: prevRange.from,
+      to: prevRange.to,
+      account: sumCampaigns(prevMetaCampaigns, "Meta toplam"),
+      campaigns: prevMetaCampaigns,
+    },
     metaAds,
     metaAdsets,
     metaBreakdowns,
@@ -602,14 +847,12 @@ async function bundleFromDb(
     dailySpend,
     metaFunnel,
     metaVideo,
-    conversions: tenant.conversions.map((c) => ({
-      name: c.name,
-      source: c.source,
-      primary: c.primary,
-      count: c.count,
-      kind: c.kind as ConversionKind,
-      dupeFlag: c.dupeFlag,
-    })),
+    conversions: [
+      ...(metaUnknown
+        ? []
+        : metaConversionKinds(tenant.type, tenant.metaInsights)),
+      ...(adsUnknown ? [] : groupGoogleConversions(tenant.conversions)),
+    ],
     alerts: tenant.alerts.map((a) => ({
       id: a.id,
       type: a.type,

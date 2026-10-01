@@ -133,7 +133,7 @@ export default function PresentationDashboard({
 
       <div className="grid gap-4 lg:grid-cols-5">
         <ChartCard
-          title="Haftalık harcama (Meta vs Google)"
+          title="Harcama trendi (Meta vs Google)"
           className="lg:col-span-3"
           empty={chartsEmpty}
         >

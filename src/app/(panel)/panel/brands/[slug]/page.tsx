@@ -20,6 +20,7 @@ import { getBrandMissingIntegrations } from "@/lib/panel/brand-onboarding";
 import { getTenantBundle } from "@/lib/panel/data";
 import { formatDateTime, formatNumber, formatTry } from "@/lib/panel/format";
 import { isStaffRole, rootDomain } from "@/lib/panel/host";
+import { can } from "@/lib/panel/permissions";
 import { resolvePanelDateRange } from "@/lib/panel/period";
 import { loadTenantSettingsInitial } from "@/lib/panel/tenant-settings";
 import { useMockPanelData } from "@/lib/integrations/tokens";
@@ -189,7 +190,11 @@ export default async function BrandDetailPage({ params, searchParams }: Props) {
   const slug = decodeURIComponent(rawSlug).trim().toLowerCase();
   if (!slug) notFound();
 
-  const bundle = await getTenantBundle(slug);
+  const range = await resolvePanelDateRange(await searchParams);
+  const bundle = await getTenantBundle(slug, {
+    from: range.startDate,
+    to: range.endDate,
+  });
   if (!bundle) notFound();
 
   const host = h.get("x-forwarded-host") ?? h.get("host") ?? "";
@@ -221,9 +226,18 @@ export default async function BrandDetailPage({ params, searchParams }: Props) {
 
   const openAlerts = bundle.alerts.filter((a) => !a.resolved);
   const { thresholds, syncJobs } = bundle;
-  const { initial: settingsInitial, existsInDb } =
+  const { initial: loadedSettings, existsInDb } =
     await loadTenantSettingsInitial(slug, bundle);
-  const range = await resolvePanelDateRange(await searchParams);
+  // Müşteri şifreleri yalnızca yetkili role gönderilir (RSC payload'a girmesin).
+  const settingsInitial = can(session.user.role, "users.viewPasswords")
+    ? loadedSettings
+    : {
+        ...loadedSettings,
+        clientUsers: loadedSettings.clientUsers.map((u) => ({
+          ...u,
+          passwordPlain: null,
+        })),
+      };
   const [budgetOk, budgetPlan] = existsInDb
     ? await Promise.all([
         tenantHasBudgetPlan(bundle.tenant.id),
@@ -516,7 +530,9 @@ export default async function BrandDetailPage({ params, searchParams }: Props) {
           initial={settingsInitial}
           tenantSlug={slug}
           rootDomain={root}
-          allowDelete={existsInDb}
+          allowDelete={existsInDb && can(session.user.role, "brands.delete")}
+          canManageClientUser={can(session.user.role, "users.manage")}
+          canEditIdentity={can(session.user.role, "brands.editIdentity")}
           detailBasePath="/brands"
         />
       </BrandSettingsDisclosure>

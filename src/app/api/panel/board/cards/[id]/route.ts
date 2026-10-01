@@ -5,7 +5,11 @@ import {
   boardCardInclude,
   serializeBoardCard,
 } from "@/lib/panel/board";
-import { requireStaffApi, resolveStaffUserId } from "@/lib/panel/staff-auth";
+import {
+  requirePermissionApi,
+  requireStaffApi,
+  resolveStaffUserId,
+} from "@/lib/panel/staff-auth";
 
 export const runtime = "nodejs";
 
@@ -375,7 +379,7 @@ export async function DELETE(
   _request: Request,
   ctx: { params: Promise<{ id: string }> },
 ) {
-  const { error } = await requireStaffApi();
+  const { error } = await requirePermissionApi("board.deleteCards");
   if (error) return error;
 
   const { id } = await ctx.params;

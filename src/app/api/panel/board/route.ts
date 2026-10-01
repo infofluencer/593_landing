@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { ensureAgencyBoard, serializeBoardCard } from "@/lib/panel/board";
 import { requireStaffApi } from "@/lib/panel/staff-auth";
 import { prisma } from "@/lib/db";
+import { fixedTeamOrderBy, fixedTeamWhere } from "@/lib/panel/teams";
 
 export const runtime = "nodejs";
 
@@ -41,7 +42,8 @@ export async function GET() {
         color: true,
         members: { select: { userId: true } },
       },
-      orderBy: { name: "asc" },
+      where: fixedTeamWhere,
+      orderBy: fixedTeamOrderBy,
     }),
     prisma.tenant.findMany({
       where: { visible: true },

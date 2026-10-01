@@ -1,6 +1,6 @@
 "use client";
 
-import { Plus, Trash2, UserMinus, X } from "lucide-react";
+import { Check, Lock, Plus, Trash2, UserMinus, X } from "lucide-react";
 import { useState } from "react";
 import { EmptyState } from "@/components/panel/ds/EmptyState";
 import { TeamPlatformIcon } from "@/components/panel/TeamPlatformIcon";
@@ -17,7 +17,6 @@ type StaffUser = {
   name: string | null;
   email: string;
   role: string;
-  passwordPlain?: string | null;
   teamMemberships: Array<{
     teamId: string;
     team: TeamBrief;
@@ -42,15 +41,16 @@ type Team = {
   }>;
 };
 
-const TEAM_COLORS = [
-  "#0866FF",
-  "#4285F4",
-  "#E37400",
-  "#7C3AED",
-  "#0D9488",
-  "#e91825",
-  "#71717a",
-];
+type PermissionRow = {
+  permission: string;
+  label: string;
+  roles: Record<"admin" | "team", boolean>;
+};
+
+const ROLE_LABELS: Record<string, string> = {
+  admin: "Admin",
+  team: "Ekip üyesi",
+};
 
 function label(u: { name: string | null; email: string }) {
   return u.name?.trim() || u.email;
@@ -60,23 +60,40 @@ function teamColor(t: { color?: string | null }) {
   return t.color && /^#[0-9a-fA-F]{6}$/.test(t.color) ? t.color : "#71717a";
 }
 
+function RoleBadge({ role }: { role: string }) {
+  const admin = role === "admin";
+  return (
+    <span
+      className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+        admin
+          ? "bg-[#e91825]/10 text-[#e91825]"
+          : "bg-zinc-100 text-zinc-600"
+      }`}
+    >
+      {ROLE_LABELS[role] ?? role}
+    </span>
+  );
+}
+
 export default function TeamManager({
   initialTeams,
   initialStaff,
+  currentUserId,
+  canManageUsers,
   canManageMembers,
+  permissions,
 }: {
   initialTeams: Team[];
   initialStaff: StaffUser[];
+  currentUserId: string | null;
+  canManageUsers: boolean;
   canManageMembers: boolean;
+  permissions: PermissionRow[];
 }) {
   const [teams, setTeams] = useState(initialTeams);
   const [staff, setStaff] = useState(initialStaff);
   const [error, setError] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
-
-  const [teamName, setTeamName] = useState("");
-  const [teamDesc, setTeamDesc] = useState("");
-  const [teamColorPick, setTeamColorPick] = useState(TEAM_COLORS[0]);
 
   const [memberEmail, setMemberEmail] = useState("");
   const [memberName, setMemberName] = useState("");
@@ -91,48 +108,6 @@ export default function TeamManager({
     const data = (await res.json()) as { teams: Team[]; staff: StaffUser[] };
     setTeams(data.teams);
     setStaff(data.staff);
-  }
-
-  async function createTeam() {
-    setError(null);
-    setOk(null);
-    const res = await fetch("/api/panel/teams", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        kind: "team",
-        name: teamName,
-        description: teamDesc || null,
-        color: teamColorPick,
-      }),
-    });
-    const j = (await res.json().catch(() => null)) as
-      | { team?: Team; error?: string }
-      | null;
-    if (!res.ok || !j?.team) {
-      setError(j?.error || "Ekip oluşturulamadı");
-      return;
-    }
-    setTeams((prev) =>
-      [...prev, j.team!].sort((a, b) => a.name.localeCompare(b.name, "tr")),
-    );
-    setTeamName("");
-    setTeamDesc("");
-    setTeamColorPick(TEAM_COLORS[0]);
-    setOk("Ekip eklendi");
-  }
-
-  async function deleteTeam(id: string) {
-    if (!confirm("Bu ekip silinsin mi?")) return;
-    setError(null);
-    const res = await fetch(`/api/panel/teams/${id}`, { method: "DELETE" });
-    if (!res.ok) {
-      const j = (await res.json().catch(() => null)) as { error?: string } | null;
-      setError(j?.error || "Silinemedi");
-      return;
-    }
-    setTeams((prev) => prev.filter((t) => t.id !== id));
-    await refresh();
   }
 
   async function toggleMember(teamId: string, userId: string, inTeam: boolean) {
@@ -163,7 +138,6 @@ export default function TeamManager({
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        kind: "member",
         email: memberEmail,
         password: memberPassword,
         name: memberName || null,
@@ -175,7 +149,7 @@ export default function TeamManager({
       | { user?: StaffUser; error?: string }
       | null;
     if (!res.ok || !j?.user) {
-      setError(j?.error || "Üye eklenemedi");
+      setError(j?.error || "Kullanıcı eklenemedi");
       return;
     }
     setMemberEmail("");
@@ -183,7 +157,21 @@ export default function TeamManager({
     setMemberPassword("");
     setMemberRole("team");
     setMemberTeamIds([]);
-    setOk("Ekip üyesi oluşturuldu");
+    setOk("Kullanıcı oluşturuldu");
+    await refresh();
+  }
+
+  async function deleteUser(u: StaffUser) {
+    if (!confirm(`${label(u)} hesabı kalıcı olarak silinsin mi?`)) return;
+    setError(null);
+    setOk(null);
+    const res = await fetch(`/api/panel/users/${u.id}`, { method: "DELETE" });
+    if (!res.ok) {
+      const j = (await res.json().catch(() => null)) as { error?: string } | null;
+      setError(j?.error || "Kullanıcı silinemedi");
+      return;
+    }
+    setOk("Kullanıcı silindi");
     await refresh();
   }
 
@@ -211,83 +199,51 @@ export default function TeamManager({
       ) : null}
 
       <section className="space-y-3">
-        <h3 className="text-sm font-semibold text-zinc-800">Ekipler</h3>
-        <div className="flex flex-wrap items-end gap-2 rounded-xl border border-zinc-200 bg-white p-4 shadow-sm">
-          <input
-            value={teamName}
-            onChange={(e) => setTeamName(e.target.value)}
-            placeholder="Ekip adı (örn. Meta)"
-            className="min-w-[160px] flex-1 rounded-md border border-zinc-200 px-3 py-2 text-sm outline-none focus:border-[#e91825]"
-          />
-          <input
-            value={teamDesc}
-            onChange={(e) => setTeamDesc(e.target.value)}
-            placeholder="Açıklama"
-            className="min-w-[160px] flex-1 rounded-md border border-zinc-200 px-3 py-2 text-sm outline-none focus:border-[#e91825]"
-          />
-          <div className="flex items-center gap-1.5">
-            {TEAM_COLORS.map((c) => (
-              <button
-                key={c}
-                type="button"
-                aria-label={`Renk ${c}`}
-                onClick={() => setTeamColorPick(c)}
-                className={`size-7 rounded-full border-2 transition ${
-                  teamColorPick === c
-                    ? "border-zinc-900 scale-110"
-                    : "border-transparent"
-                }`}
-                style={{ backgroundColor: c }}
-              />
-            ))}
-          </div>
-          <button
-            type="button"
-            onClick={() => void createTeam()}
-            className="inline-flex items-center gap-1.5 rounded-md bg-[#e91825] px-4 py-2 text-sm font-medium text-white hover:bg-[#c91420]"
-          >
-            <Plus className="size-4" aria-hidden />
-            Ekip ekle
-          </button>
+        <div className="flex items-baseline justify-between gap-2">
+          <h3 className="text-sm font-semibold text-zinc-800">Ekipler</h3>
+          <p className="text-xs text-zinc-400">Sabit ekipler · {teams.length}</p>
         </div>
 
         {teams.length === 0 ? (
           <EmptyState
             variant="empty"
-            title="Henüz ekip yok"
-            description="Üstteki formdan ilk takımı ekleyin."
+            title="Ekipler bulunamadı"
+            description="Veritabanı migration’ını çalıştırın (prisma migrate deploy)."
           />
         ) : (
-          <ul className="grid gap-3 sm:grid-cols-2">
+          <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
             {teams.map((team) => {
               const color = teamColor(team);
               return (
                 <li
                   key={team.id}
-                  className="rounded-xl border border-zinc-200 bg-white p-4"
+                  className="flex flex-col rounded-xl border border-zinc-200 bg-white p-4"
                   style={{
                     boxShadow: `inset 4px 0 0 ${color}, 0 1px 2px rgba(28,25,23,0.04)`,
                   }}
                 >
-                  <div className="flex items-start gap-2">
+                  <div className="flex items-start gap-2.5">
+                    <span
+                      className="flex size-9 shrink-0 items-center justify-center rounded-lg text-white"
+                      style={{ backgroundColor: color }}
+                    >
+                      <TeamPlatformIcon
+                        name={team.name}
+                        slug={team.slug}
+                        className="size-4 brightness-0 invert"
+                      />
+                    </span>
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
-                        <span
-                          className="flex size-7 items-center justify-center rounded-full text-white"
-                          style={{ backgroundColor: color }}
-                        >
-                          <TeamPlatformIcon
-                            name={team.name}
-                            slug={team.slug}
-                            className="size-3.5 brightness-0 invert"
-                          />
-                        </span>
                         <h4 className="font-semibold text-zinc-900">
                           {team.name}
                         </h4>
                         <span
-                          className="rounded-full px-2 py-0.5 text-[10px] font-bold tabular-nums text-white"
-                          style={{ backgroundColor: color }}
+                          className="rounded-full px-2 py-0.5 text-[10px] font-bold tabular-nums"
+                          style={{
+                            backgroundColor: `${color}1a`,
+                            color,
+                          }}
                         >
                           {team.members.length} üye
                         </span>
@@ -298,90 +254,76 @@ export default function TeamManager({
                         </p>
                       ) : null}
                     </div>
-                    {canManageMembers ? (
-                      <button
-                        type="button"
-                        onClick={() => void deleteTeam(team.id)}
-                        className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-zinc-400 transition hover:bg-rose-50 hover:text-rose-600"
-                      >
-                        <Trash2 className="size-3.5" aria-hidden />
-                        Sil
-                      </button>
-                    ) : null}
                   </div>
 
                   {team.members.length === 0 ? (
-                    <div className="mt-3">
-                      <EmptyState
-                        variant="empty"
-                        title="Henüz üye yok"
-                        description="Aşağıdan üye ekleyin."
-                      />
-                    </div>
+                    <p className="mt-3 rounded-lg border border-dashed border-zinc-200 px-3 py-2 text-center text-xs text-zinc-400">
+                      Henüz üye yok
+                    </p>
                   ) : (
                     <ul className="mt-3 space-y-1.5">
-                      {team.members.map((m) => {
-                        const membershipCount =
-                          staff.find((s) => s.id === m.userId)
-                            ?.teamMemberships.length ?? 1;
-                        return (
-                          <li
-                            key={m.id}
-                            className="group flex items-center justify-between gap-2 text-sm"
-                          >
-                            <span className="truncate">
-                              {label(m.user)}
-                              <span className="ml-1 text-xs text-zinc-400">
-                                · {m.user.role}
-                                {membershipCount > 1
-                                  ? ` · ${membershipCount} takım`
-                                  : ""}
-                              </span>
-                            </span>
-                            {canManageMembers ? (
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  void toggleMember(team.id, m.userId, true)
-                                }
-                                className="inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-medium text-zinc-400 opacity-0 transition group-hover:opacity-100 hover:bg-zinc-100 hover:text-zinc-700"
-                              >
-                                <UserMinus className="size-3" aria-hidden />
-                                Çıkar
-                              </button>
+                      {team.members.map((m) => (
+                        <li
+                          key={m.id}
+                          className="group flex items-center justify-between gap-2 text-sm"
+                        >
+                          <span className="flex min-w-0 items-center gap-2">
+                            <span className="truncate">{label(m.user)}</span>
+                            {m.user.role === "admin" ? (
+                              <RoleBadge role="admin" />
                             ) : null}
-                          </li>
-                        );
-                      })}
+                          </span>
+                          {canManageMembers ? (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                void toggleMember(team.id, m.userId, true)
+                              }
+                              className="inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-medium text-zinc-400 opacity-0 transition group-hover:opacity-100 hover:bg-zinc-100 hover:text-zinc-700 focus:opacity-100"
+                            >
+                              <UserMinus className="size-3" aria-hidden />
+                              Çıkar
+                            </button>
+                          ) : null}
+                        </li>
+                      ))}
                     </ul>
                   )}
 
                   {canManageMembers ? (
-                    <div className="mt-3 border-t border-zinc-100 pt-3">
-                      <p className="mb-1.5 text-[11px] font-medium uppercase tracking-wide text-zinc-400">
-                        Üye ekle
-                      </p>
-                      <div className="flex flex-wrap gap-1.5">
-                        {staff
-                          .filter(
-                            (u) =>
-                              !team.members.some((m) => m.userId === u.id),
-                          )
-                          .map((u) => (
-                            <button
-                              key={u.id}
-                              type="button"
-                              onClick={() =>
-                                void toggleMember(team.id, u.id, false)
-                              }
-                              className="inline-flex items-center gap-1 rounded-md border border-[#e91825]/25 bg-[#e91825]/5 px-2 py-1 text-xs font-medium text-[#e91825] hover:bg-[#e91825]/10"
-                            >
-                              <Plus className="size-3" aria-hidden />
-                              {label(u)}
-                            </button>
-                          ))}
-                      </div>
-                    </div>
+                    (() => {
+                      const candidates = staff.filter(
+                        (u) => !team.members.some((m) => m.userId === u.id),
+                      );
+                      if (candidates.length === 0) return null;
+                      return (
+                        <div className="mt-3 border-t border-zinc-100 pt-3">
+                          <p className="mb-1.5 text-[11px] font-medium uppercase tracking-wide text-zinc-400">
+                            Üye ekle
+                          </p>
+                          <div className="flex flex-wrap gap-1.5">
+                            {candidates.map((u) => (
+                              <button
+                                key={u.id}
+                                type="button"
+                                onClick={() =>
+                                  void toggleMember(team.id, u.id, false)
+                                }
+                                className="inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs font-medium transition hover:brightness-95"
+                                style={{
+                                  borderColor: `${color}40`,
+                                  backgroundColor: `${color}0d`,
+                                  color,
+                                }}
+                              >
+                                <Plus className="size-3" aria-hidden />
+                                {label(u)}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })()
                   ) : null}
                 </li>
               );
@@ -392,13 +334,18 @@ export default function TeamManager({
 
       <section className="space-y-3">
         <h3 className="text-sm font-semibold text-zinc-800">Staff hesapları</h3>
-        <div className="overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm">
+        <div className="overflow-x-auto rounded-xl border border-zinc-200 bg-white shadow-sm">
           <table className="w-full text-left text-sm">
             <thead className="border-b border-zinc-200 bg-zinc-50 text-[11px] uppercase tracking-wide text-zinc-500">
               <tr>
                 <th className="px-4 py-2.5 font-medium">Kişi</th>
                 <th className="px-4 py-2.5 font-medium">Rol</th>
                 <th className="px-4 py-2.5 font-medium">Ekipler</th>
+                {canManageUsers ? (
+                  <th className="px-4 py-2.5 font-medium">
+                    <span className="sr-only">İşlemler</span>
+                  </th>
+                ) : null}
               </tr>
             </thead>
             <tbody>
@@ -407,21 +354,26 @@ export default function TeamManager({
                   u.teamMemberships.map((tm) => tm.teamId),
                 );
                 const available = teams.filter((t) => !memberTeamIds.has(t.id));
+                const isSelf = u.id === currentUserId;
                 return (
                   <tr
                     key={u.id}
                     className="border-b border-zinc-50 last:border-0 hover:bg-zinc-50/60"
                   >
                     <td className="px-4 py-3">
-                      <p className="font-medium text-zinc-900">{label(u)}</p>
+                      <p className="font-medium text-zinc-900">
+                        {label(u)}
+                        {isSelf ? (
+                          <span className="ml-1.5 text-xs font-normal text-zinc-400">
+                            (siz)
+                          </span>
+                        ) : null}
+                      </p>
                       <p className="text-xs text-zinc-500">{u.email}</p>
-                      {u.teamMemberships.length > 1 ? (
-                        <p className="mt-0.5 text-[10px] text-zinc-400">
-                          {u.teamMemberships.length} takımda
-                        </p>
-                      ) : null}
                     </td>
-                    <td className="px-4 py-3 text-zinc-600">{u.role}</td>
+                    <td className="px-4 py-3">
+                      <RoleBadge role={u.role} />
+                    </td>
                     <td className="px-4 py-3">
                       <div className="flex flex-wrap items-center gap-1.5">
                         {u.teamMemberships.length === 0 ? (
@@ -432,7 +384,7 @@ export default function TeamManager({
                             return (
                               <span
                                 key={tm.teamId}
-                                className="inline-flex items-center gap-1 rounded-full py-0.5 pl-1 pr-1 text-[11px] font-bold text-white"
+                                className="inline-flex items-center gap-1 rounded-full py-0.5 pl-1 pr-2 text-[11px] font-bold text-white"
                                 style={{ backgroundColor: c }}
                               >
                                 <span className="flex size-4 items-center justify-center rounded-full bg-white/20">
@@ -450,7 +402,7 @@ export default function TeamManager({
                                     onClick={() =>
                                       void toggleMember(tm.teamId, u.id, true)
                                     }
-                                    className="rounded-full p-0.5 opacity-80 transition hover:bg-black/25 hover:opacity-100"
+                                    className="-mr-1 rounded-full p-0.5 opacity-80 transition hover:bg-black/25 hover:opacity-100"
                                   >
                                     <X className="size-3" aria-hidden />
                                   </button>
@@ -471,10 +423,10 @@ export default function TeamManager({
                               className="inline-flex items-center gap-0.5 rounded-full border border-dashed border-[#e91825]/40 bg-[#e91825]/5 px-2 py-0.5 text-[11px] font-semibold text-[#e91825] hover:bg-[#e91825]/10"
                             >
                               <Plus className="size-3" aria-hidden />
-                              takım
+                              ekip
                             </button>
                             {addMenuUserId === u.id ? (
-                              <div className="absolute left-0 top-full z-20 mt-1 min-w-[150px] rounded-lg border border-zinc-200 bg-white p-1 shadow-md">
+                              <div className="absolute left-0 top-full z-20 mt-1 min-w-[170px] rounded-lg border border-zinc-200 bg-white p-1 shadow-md">
                                 {available.map((t) => (
                                   <button
                                     key={t.id}
@@ -484,11 +436,16 @@ export default function TeamManager({
                                     }
                                     className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs font-medium text-zinc-700 hover:bg-zinc-50"
                                   >
-                                    <TeamPlatformIcon
-                                      name={t.name}
-                                      slug={t.slug}
-                                      className="size-3.5"
-                                    />
+                                    <span
+                                      className="flex size-5 items-center justify-center rounded-md text-white"
+                                      style={{ backgroundColor: teamColor(t) }}
+                                    >
+                                      <TeamPlatformIcon
+                                        name={t.name}
+                                        slug={t.slug}
+                                        className="size-3 brightness-0 invert"
+                                      />
+                                    </span>
                                     {t.name}
                                   </button>
                                 ))}
@@ -498,6 +455,20 @@ export default function TeamManager({
                         ) : null}
                       </div>
                     </td>
+                    {canManageUsers ? (
+                      <td className="px-4 py-3 text-right">
+                        {isSelf ? null : (
+                          <button
+                            type="button"
+                            onClick={() => void deleteUser(u)}
+                            className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-zinc-400 transition hover:bg-rose-50 hover:text-rose-600"
+                          >
+                            <Trash2 className="size-3.5" aria-hidden />
+                            Sil
+                          </button>
+                        )}
+                      </td>
+                    ) : null}
                   </tr>
                 );
               })}
@@ -505,9 +476,9 @@ export default function TeamManager({
           </table>
         </div>
 
-        {canManageMembers ? (
+        {canManageUsers ? (
           <div className="space-y-3 rounded-xl border border-zinc-200 bg-white p-4 shadow-sm">
-            <h4 className="text-sm font-semibold">Yeni staff üye</h4>
+            <h4 className="text-sm font-semibold">Yeni kullanıcı</h4>
             <div className="grid gap-2 sm:grid-cols-2">
               <input
                 value={memberName}
@@ -536,8 +507,8 @@ export default function TeamManager({
                 }
                 className="rounded-md border border-zinc-200 px-3 py-2 text-sm"
               >
-                <option value="team">team</option>
-                <option value="admin">admin</option>
+                <option value="team">{ROLE_LABELS.team}</option>
+                <option value="admin">{ROLE_LABELS.admin}</option>
               </select>
             </div>
             {teams.length > 0 ? (
@@ -582,14 +553,59 @@ export default function TeamManager({
               className="inline-flex items-center gap-1.5 rounded-md bg-[#e91825] px-4 py-2 text-sm font-medium text-white hover:bg-[#c91420]"
             >
               <Plus className="size-4" aria-hidden />
-              Üye oluştur
+              Kullanıcı oluştur
             </button>
           </div>
         ) : (
-          <p className="text-xs text-zinc-500">
-            Yeni üye eklemek için admin hesabı gerekir.
+          <p className="inline-flex items-center gap-1.5 text-xs text-zinc-500">
+            <Lock className="size-3.5" aria-hidden />
+            Kullanıcı ekleme ve ekip düzenleme yalnızca admin hesabına açıktır.
           </p>
         )}
+      </section>
+
+      <section className="space-y-3">
+        <h3 className="text-sm font-semibold text-zinc-800">Rol yetkileri</h3>
+        <div className="overflow-x-auto rounded-xl border border-zinc-200 bg-white shadow-sm">
+          <table className="w-full text-left text-sm">
+            <thead className="border-b border-zinc-200 bg-zinc-50 text-[11px] uppercase tracking-wide text-zinc-500">
+              <tr>
+                <th className="px-4 py-2.5 font-medium">Yetki</th>
+                <th className="w-28 px-4 py-2.5 text-center font-medium">
+                  {ROLE_LABELS.admin}
+                </th>
+                <th className="w-28 px-4 py-2.5 text-center font-medium">
+                  {ROLE_LABELS.team}
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {permissions.map((p) => (
+                <tr
+                  key={p.permission}
+                  className="border-b border-zinc-50 last:border-0"
+                >
+                  <td className="px-4 py-2.5 text-zinc-700">{p.label}</td>
+                  {(["admin", "team"] as const).map((r) => (
+                    <td key={r} className="px-4 py-2.5 text-center">
+                      {p.roles[r] ? (
+                        <Check
+                          className="mx-auto size-4 text-emerald-600"
+                          aria-label="Var"
+                        />
+                      ) : (
+                        <X
+                          className="mx-auto size-4 text-zinc-300"
+                          aria-label="Yok"
+                        />
+                      )}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </section>
     </div>
   );

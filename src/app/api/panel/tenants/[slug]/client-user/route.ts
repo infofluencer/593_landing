@@ -8,6 +8,7 @@ import {
   validatePanelSlug,
 } from "@/lib/panel/client-email";
 import { rootDomain } from "@/lib/panel/host";
+import { can } from "@/lib/panel/permissions";
 
 export const runtime = "nodejs";
 
@@ -24,7 +25,7 @@ type Body = {
   panelSlug?: string;
 };
 
-/** Admin/team — create/update client user + membership for a tenant. */
+/** Admin — create/update client user + membership for a tenant. */
 export async function POST(
   request: Request,
   ctx: { params: Promise<{ slug: string }> },
@@ -33,7 +34,7 @@ export async function POST(
   if (!session?.user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  if (session.user.role !== "admin" && session.user.role !== "team") {
+  if (!can(session.user.role, "users.manage")) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 

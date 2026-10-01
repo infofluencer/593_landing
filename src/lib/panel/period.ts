@@ -12,10 +12,13 @@ import {
 export const SYNC_HISTORY_DAYS = 720;
 
 /**
- * Scheduled daily sync window (inclusive).
- * today + 2 previous days covers in-day spend and Meta/Google attribution lag.
+ * Scheduled daily sync windows (inclusive, today − N → today).
+ * Dönüşümler tıklama/gösterim gününe geriye dönük yazılır:
+ * - Meta: varsayılan atıf 7g tık → son 7 gün değişebilir.
+ * - Google Ads: dönüşüm gecikmesi 30+ gün sürebilir.
  */
-export const SYNC_DAILY_DAYS = 2;
+export const SYNC_DAILY_META_DAYS = 7;
+export const SYNC_DAILY_GOOGLE_DAYS = 30;
 
 /**
  * Ad / adset / breakdown insights lookback.
@@ -23,7 +26,31 @@ export const SYNC_DAILY_DAYS = 2;
  */
 export const SYNC_AD_LEVEL_DAYS = 90;
 
-export type PanelPeriod = "mtd" | "1" | "3" | "6" | "12" | "24" | "custom";
+export type PanelPeriod =
+  | "yesterday"
+  | "7d"
+  | "30d"
+  | "mtd"
+  | "lastmonth"
+  | "1"
+  | "3"
+  | "6"
+  | "12"
+  | "24"
+  | "custom";
+
+/** Hazır dönem düğmeleri (PeriodFilterBar + DateRangePicker ortak). */
+export const PANEL_PERIOD_PRESETS: { period: PanelPeriod; label: string }[] = [
+  { period: "yesterday", label: "Dün" },
+  { period: "7d", label: "Son 7 gün" },
+  { period: "30d", label: "Son 30 gün" },
+  { period: "mtd", label: "Bu ay" },
+  { period: "lastmonth", label: "Geçen ay" },
+  { period: "3", label: "3 ay" },
+  { period: "6", label: "6 ay" },
+  { period: "12", label: "12 ay" },
+  { period: "24", label: `${SYNC_HISTORY_DAYS} gün` },
+];
 
 export type PanelDateRange = {
   startDate: string;
@@ -42,6 +69,10 @@ const RELATIVE_MONTHS: Partial<Record<PanelPeriod, number>> = {
 
 export function parsePanelPeriod(raw: string | undefined | null): PanelPeriod {
   if (
+    raw === "yesterday" ||
+    raw === "7d" ||
+    raw === "30d" ||
+    raw === "lastmonth" ||
     raw === "mtd" ||
     raw === "1" ||
     raw === "3" ||
@@ -86,6 +117,14 @@ function labelFor(
 ): string {
   const span = `${formatYmdTr(startDate)} – ${formatYmdTr(endDate)}`;
   switch (period) {
+    case "yesterday":
+      return `Dün · ${formatYmdTr(startDate)}`;
+    case "7d":
+      return `Son 7 gün · ${span}`;
+    case "30d":
+      return `Son 30 gün · ${span}`;
+    case "lastmonth":
+      return `Geçen ay · ${span}`;
     case "mtd":
       return `Bu ay · ${span}`;
     case "1":
@@ -151,17 +190,31 @@ export async function resolvePanelDateRange(
     };
   }
 
-  if (period === "24") {
-    return {
-      startDate: floor,
-      endDate: today,
-      period,
-      label: labelFor(period, floor, today),
-    };
+  const fixed = (startDate: string, endDate: string): PanelDateRange => {
+    const s = startDate < floor ? floor : startDate;
+    return { startDate: s, endDate, period, label: labelFor(period, s, endDate) };
+  };
+
+  if (period === "yesterday") {
+    const y = addDaysYmd(today, -1);
+    return fixed(y, y);
+  }
+  // "Son N gün" bugünü içerir: today − (N−1) → today
+  if (period === "7d") return fixed(addDaysYmd(today, -6), today);
+  if (period === "30d") return fixed(addDaysYmd(today, -29), today);
+  if (period === "lastmonth") {
+    const thisMonthStart = startOfIstanbulMonthYmd(today);
+    const lastMonthEnd = addDaysYmd(thisMonthStart, -1);
+    return fixed(startOfIstanbulMonthYmd(lastMonthEnd), lastMonthEnd);
   }
 
+  if (period === "24") {
+    return fixed(addDaysYmd(today, -(SYNC_HISTORY_DAYS - 1)), today);
+  }
+
+  // "Son N ay": aynı günden bir sonraki gün başlar (1 ay = 30/31 gün, fazladan gün yok).
   const months = RELATIVE_MONTHS[period] ?? 1;
-  let startDate = subMonthsYmd(today, months);
+  let startDate = addDaysYmd(subMonthsYmd(today, months), 1);
   if (startDate < floor) startDate = floor;
   return {
     startDate,
@@ -180,12 +233,15 @@ export async function syncLookbackRange(): Promise<{
   return { from: syncFloorYmd(today), to: today };
 }
 
-/** Short window for twice-daily logo-brand campaign metrics. */
+/** Short windows for twice-daily campaign metrics (per provider). */
 export function syncDailyLookbackRange(today = istanbulYmd(new Date())): {
-  from: string;
-  to: string;
+  meta: { from: string; to: string };
+  google: { from: string; to: string };
 } {
-  return { from: addDaysYmd(today, -SYNC_DAILY_DAYS), to: today };
+  return {
+    meta: { from: addDaysYmd(today, -SYNC_DAILY_META_DAYS), to: today },
+    google: { from: addDaysYmd(today, -SYNC_DAILY_GOOGLE_DAYS), to: today },
+  };
 }
 
 /** Shorter window for ad / adset / breakdown Meta pulls. */

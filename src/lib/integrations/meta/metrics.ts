@@ -116,6 +116,53 @@ const PURCHASE_KEYS = [
   "web_in_store_purchase",
 ];
 
+/**
+ * Meta `lead` zaten piksel + Facebook formu (lead_grouped) toplamıdır; alt
+ * anahtarları ayrıca toplamak 2–3× sayar. Önce toplam anahtar, yoksa parçalar.
+ */
+const LEAD_ROLLUP_KEYS = ["lead"];
+const LEAD_PART_KEYS = [
+  "onsite_conversion.lead_grouped",
+  "offsite_conversion.fb_pixel_lead",
+];
+/** Lead olayı yoksa: aynı formun alternatif olayları (ilk dolu olan). */
+const LEAD_FALLBACK_KEYS = [
+  "omni_complete_registration",
+  "complete_registration",
+  "offsite_conversion.fb_pixel_complete_registration",
+  "submit_application",
+  "offsite_conversion.fb_pixel_submit_application",
+  "contact",
+  "offsite_conversion.fb_pixel_contact",
+];
+/** Mesaj: tek ölçü — başlayan konuşma (first_reply aynı konuşmanın alt kümesi). */
+const MESSAGING_KEYS = [
+  "onsite_conversion.messaging_conversation_started_7d",
+  "messaging_conversation_started_7d",
+];
+
+export type MetaLeadParts = { form: number; messaging: number };
+
+export function deriveMetaLeadParts(
+  actions: Record<string, number>,
+): MetaLeadParts {
+  let form = firstPositive(actions, LEAD_ROLLUP_KEYS);
+  if (form <= 0) form = sumKeys(actions, LEAD_PART_KEYS);
+  if (form <= 0) form = firstPositive(actions, LEAD_FALLBACK_KEYS);
+  return { form, messaging: firstPositive(actions, MESSAGING_KEYS) };
+}
+
+/** Satın alım adedi + değeri (omni öncelikli, tek anahtar). */
+export function deriveMetaPurchase(
+  actions: Record<string, number>,
+  actionValues: Record<string, number>,
+): { count: number; value: number } {
+  return {
+    count: firstPositive(actions, PURCHASE_KEYS),
+    value: firstPositive(actionValues, PURCHASE_KEYS),
+  };
+}
+
 export type MetaFunnel = {
   viewContent: number;
   addToCart: number;

@@ -127,6 +127,11 @@ model TenantBudget {
   month         String
   monthlyBudget Decimal? @db.Decimal(14, 2)
   dailyBudget   Decimal? @db.Decimal(14, 2)
+  /// Aylık planın Google Ads payı
+  googleBudget  Decimal? @db.Decimal(14, 2)
+  /// Aylık planın Meta Ads payı
+  metaBudget    Decimal? @db.Decimal(14, 2)
+  note          String   @default("")
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
@@ -215,6 +220,8 @@ model TenantMapping {
   gtmContainerId String?
   gscSiteUrl     String?
   merchantId     String?
+  /// Google Ads customer.time_zone (segments.date bu saat dilimindedir).
+  adsTimezone    String?
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 }
@@ -238,7 +245,7 @@ model User {
   cardActivities   BoardCardActivity[]
 }
 
-/// Ajans içi ekip (yalnızca admin/team staff). Üye çoka-çok (TeamMember).
+/// Ajans içi sabit ekip (src/lib/panel/teams.ts). Üye çoka-çok (TeamMember).
 model Team {
   id          String   @id @default(cuid())
   name        String
@@ -246,6 +253,8 @@ model Team {
   description String?
   /// Kanban filtre / rozet rengi (hex).
   color       String   @default("#71717a")
+  /// Sabit ekip sırası (FIXED_TEAMS).
+  sortOrder   Int      @default(0)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -566,6 +575,8 @@ model GoogleAdsMetric {
   cpc          Decimal? @db.Decimal(14, 4)
   conversions  Decimal  @default(0) @db.Decimal(14, 4)
   convValue    Decimal  @default(0) @db.Decimal(14, 2)
+  /// metrics.all_conversions — ikincil aksiyonlar dahil (teşhis; KPI'ya girmez).
+  allConversions Decimal @default(0) @db.Decimal(14, 4)
   cpa          Decimal? @db.Decimal(14, 4)
   roas         Decimal? @db.Decimal(14, 4)
   ctrOrigin    MetricOrigin @default(provider)
@@ -597,6 +608,8 @@ model Ga4Metric {
   purchaseRevenue Decimal? @db.Decimal(14, 2)
   transactions   Int?
   ecommercePurchases Int?
+  /// GA4 anahtar etkinlik adedi (eski adıyla conversions)
+  keyEvents      Decimal? @db.Decimal(14, 4)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
@@ -607,14 +620,20 @@ model Ga4Metric {
   @@index([tenantId, dimensionType])
 }
 
+/// Google Ads dönüşüm aksiyonu × gün (segments.date). Meta türleri MetaInsight.actions'tan türetilir.
 model Conversion {
   id        String         @id @default(cuid())
   tenantId  String
   date      DateTime       @db.Date
   name      String
   source    String
+  /// Panel KPI'sına sayılıyor mu (marka tipine göre countsAsPanelConversion).
   primary   Boolean        @default(false)
-  count     Int            @default(0)
+  /// Veri temelli atıf kesirli dağıtır — tam sayıya yuvarlanmaz.
+  count     Decimal        @default(0) @db.Decimal(14, 4)
+  value     Decimal        @default(0) @db.Decimal(14, 2)
+  /// Google Ads conversion_action_category (PURCHASE, SUBMIT_LEAD_FORM…)
+  category  String?
   kind      ConversionKind @default(other)
   /// Same action measured via GA4 import + Ads tag, etc.
   dupeFlag  Boolean        @default(false)

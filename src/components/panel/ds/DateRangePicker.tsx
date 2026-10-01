@@ -1,21 +1,19 @@
 "use client";
 
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useTransition } from "react";
+import { usePathname, useSearchParams } from "next/navigation";
+import {
+  PeriodNavStatusLine,
+  PeriodSpinner,
+} from "@/components/panel/period-nav/PeriodNavUi";
+import { usePeriodNavigation } from "@/components/panel/period-nav/usePeriodNavigation";
 import {
   buildPeriodHref,
+  PANEL_PERIOD_PRESETS,
   parsePanelPeriod,
   type PanelPeriod,
 } from "@/lib/panel/period";
 
-const PRESETS: { period: PanelPeriod; label: string }[] = [
-  { period: "mtd", label: "Bu ay" },
-  { period: "1", label: "1 ay" },
-  { period: "3", label: "3 ay" },
-  { period: "6", label: "6 ay" },
-  { period: "12", label: "12 ay" },
-  { period: "24", label: "720 gün" },
-];
+const PRESETS = PANEL_PERIOD_PRESETS;
 
 /**
  * Tarih aralığı + önceki dönem karşılaştırma toggle.
@@ -28,22 +26,20 @@ export function DateRangePicker({
   label?: string;
   showCompare?: boolean;
 }) {
-  const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const [pending, startTransition] = useTransition();
+  const { navigate, busy, status, activeKey, label: navLabel } =
+    usePeriodNavigation();
   const active = parsePanelPeriod(searchParams.get("period"));
   const start = searchParams.get("start") ?? "";
   const end = searchParams.get("end") ?? "";
   const compareOn = searchParams.get("compare") === "1";
 
-  function pushHref(href: string) {
-    startTransition(() => {
-      router.push(href);
-    });
-  }
-
-  function go(period: PanelPeriod, custom?: { start: string; end: string }) {
+  function go(
+    period: PanelPeriod,
+    navLabelText: string,
+    custom?: { start: string; end: string },
+  ) {
     let href = buildPeriodHref(pathname || "/", {
       period,
       start: custom?.start,
@@ -52,7 +48,7 @@ export function DateRangePicker({
     if (compareOn) {
       href += href.includes("?") ? "&compare=1" : "?compare=1";
     }
-    pushHref(href);
+    navigate(href, { key: period, label: navLabelText });
   }
 
   function toggleCompare() {
@@ -60,28 +56,33 @@ export function DateRangePicker({
     if (compareOn) next.delete("compare");
     else next.set("compare", "1");
     const qs = next.toString();
-    pushHref(qs ? `${pathname}?${qs}` : pathname || "/");
+    navigate(qs ? `${pathname}?${qs}` : pathname || "/", {
+      key: "compare",
+      label: compareOn ? "Karşılaştırmasız" : "Önceki dönemle karşılaştırma",
+    });
   }
 
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col gap-3" aria-busy={busy}>
       <div className="flex flex-wrap items-center gap-1.5">
         {PRESETS.map((p) => {
           const selected = active === p.period;
+          const loadingThis = busy && activeKey === p.period;
           return (
             <button
               key={p.period}
               type="button"
-              disabled={pending}
-              onClick={() => go(p.period)}
+              disabled={busy}
+              onClick={() => go(p.period, p.label)}
               className={[
-                "rounded-panel-btn border px-2.5 py-1.5 text-xs font-medium transition",
-                selected
+                "inline-flex items-center gap-1.5 rounded-panel-btn border px-2.5 py-1.5 text-xs font-medium transition",
+                selected || loadingThis
                   ? "border-panel-accent/30 bg-panel-accent-soft text-panel-accent"
                   : "border-panel-border bg-panel-surface text-panel-fg-secondary hover:border-panel-border-strong hover:text-panel-fg",
-                "disabled:opacity-60",
+                loadingThis ? "disabled:opacity-100" : "disabled:opacity-60",
               ].join(" ")}
             >
+              {loadingThis ? <PeriodSpinner /> : null}
               {p.label}
             </button>
           );
@@ -97,7 +98,7 @@ export function DateRangePicker({
             const s = String(fd.get("start") || "");
             const en = String(fd.get("end") || "");
             if (!s || !en) return;
-            go("custom", { start: s, end: en });
+            go("custom", "Özel aralık", { start: s, end: en });
           }}
         >
           <label className="text-[10px] font-semibold uppercase tracking-wide text-panel-fg-muted">
@@ -120,15 +121,18 @@ export function DateRangePicker({
           </label>
           <button
             type="submit"
-            disabled={pending}
+            disabled={busy}
             className={[
-              "rounded-panel-btn border px-2.5 py-1.5 text-xs font-medium",
-              active === "custom"
+              "inline-flex items-center gap-1.5 rounded-panel-btn border px-2.5 py-1.5 text-xs font-medium",
+              active === "custom" || (busy && activeKey === "custom")
                 ? "border-panel-accent/30 bg-panel-accent-soft text-panel-accent"
                 : "border-panel-border bg-panel-surface text-panel-fg-secondary hover:border-panel-border-strong",
-              "disabled:opacity-60",
+              busy && activeKey === "custom"
+                ? "disabled:opacity-100"
+                : "disabled:opacity-60",
             ].join(" ")}
           >
+            {busy && activeKey === "custom" ? <PeriodSpinner /> : null}
             Uygula
           </button>
         </form>
@@ -136,25 +140,29 @@ export function DateRangePicker({
         {showCompare ? (
           <button
             type="button"
-            disabled={pending}
+            disabled={busy}
             onClick={toggleCompare}
             aria-pressed={compareOn}
             className={[
-              "rounded-panel-btn border px-2.5 py-1.5 text-xs font-medium transition",
+              "inline-flex items-center gap-1.5 rounded-panel-btn border px-2.5 py-1.5 text-xs font-medium transition",
               compareOn
                 ? "border-panel-accent/30 bg-panel-accent-soft text-panel-accent"
                 : "border-panel-border bg-panel-surface text-panel-fg-secondary hover:border-panel-border-strong",
-              "disabled:opacity-60",
+              busy && activeKey === "compare"
+                ? "disabled:opacity-100"
+                : "disabled:opacity-60",
             ].join(" ")}
           >
+            {busy && activeKey === "compare" ? <PeriodSpinner /> : null}
             Önceki dönemle karşılaştır
           </button>
         ) : null}
       </div>
 
-      {label ? (
+      {status === "idle" && label ? (
         <p className="text-xs text-panel-fg-secondary">{label}</p>
       ) : null}
+      <PeriodNavStatusLine status={status} label={navLabel} />
     </div>
   );
 }

@@ -22,6 +22,7 @@
     "db:apply-ga4-map": "npx tsx scripts/apply-ga4-map.ts",
     "db:repair-google-maps": "npx tsx scripts/repair-google-mappings.ts",
     "db:migrate-client-emails": "npx tsx scripts/migrate-client-email-panel-match.ts",
+    "db:backfill-conversions": "npx tsx --tsconfig tsconfig.json scripts/backfill-conversions.ts",
     "playwright:install": "npx playwright install chromium",
     "site-verify": "echo 'Use panel GTM → Sitede test et, or POST /api/panel/site-verify'"
   },
