@@ -3,7 +3,7 @@ import type { TenantType } from "@prisma/client";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/db";
 import { slugifyTr } from "@/lib/integrations/slugify";
-import { RESERVED_SLUGS } from "@/lib/panel/host";
+import { validatePanelSlug } from "@/lib/panel/client-email";
 import { sanitizeMappingForDb } from "@/lib/panel/mapping-placeholders";
 
 export const runtime = "nodejs";
@@ -58,17 +58,9 @@ export async function POST(request: Request) {
   }
 
   const slug = (body.slug?.trim() || slugifyTr(name)).toLowerCase();
-  if (!slug || slug.includes(".") || RESERVED_SLUGS.has(slug)) {
-    return NextResponse.json(
-      { error: "Geçersiz veya reserved slug" },
-      { status: 400 },
-    );
-  }
-  if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) {
-    return NextResponse.json(
-      { error: "slug yalnızca a-z, 0-9 ve tire olmalı" },
-      { status: 400 },
-    );
+  const slugErr = validatePanelSlug(slug);
+  if (slugErr) {
+    return NextResponse.json({ error: slugErr }, { status: 400 });
   }
 
   const type = body.type === "ecommerce" ? "ecommerce" : "lead";

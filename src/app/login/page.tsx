@@ -5,6 +5,7 @@ import LoginForm from "@/components/panel/LoginForm";
 import AuthSessionProvider from "@/components/panel/AuthSessionProvider";
 import { auth } from "@/auth";
 import { sanitizeCallbackPath } from "@/lib/panel/auth-nav";
+import { clientEmailForPanel } from "@/lib/panel/client-email";
 import { rootDomain } from "@/lib/panel/host";
 import { useMockPanelData } from "@/lib/integrations/tokens";
 
@@ -28,6 +29,10 @@ export default async function LoginPage({
   );
   const showDevCreds = useMockPanelData();
   const root = rootDomain();
+  const tenantEmailHint =
+    panelMode === "tenant" && tenantSlug
+      ? clientEmailForPanel(tenantSlug, root)
+      : null;
 
   // Already signed in on a panel host → go to panel (or requested path).
   if (session?.user && (tenantSlug || panelMode === "staff")) {
@@ -77,7 +82,7 @@ export default async function LoginPage({
                   <>
                     Marka paneli:{" "}
                     <span className="font-medium text-zinc-800">
-                      {tenantSlug}
+                      {tenantSlug}.{root}
                     </span>
                   </>
                 )}
@@ -89,7 +94,10 @@ export default async function LoginPage({
                   <li>Meta / Google çek → slug.{root} kontrol</li>
                 </ol>
               ) : null}
-              <LoginForm callbackUrl={callbackUrl} />
+              <LoginForm
+                callbackUrl={callbackUrl}
+                emailHint={tenantEmailHint}
+              />
             </div>
           ) : (
             <div className="rounded-xl border border-zinc-200 bg-white p-5 text-sm leading-6 text-zinc-600">
@@ -131,7 +139,7 @@ export default async function LoginPage({
               <code className="text-zinc-400">demo1234</code>
               <br />
               Müşteri (mareen.*):{" "}
-              <code className="text-zinc-400">musteri@mareen.com</code> /{" "}
+              <code className="text-zinc-400">mareen@593emarketing.com</code> /{" "}
               <code className="text-zinc-400">client1234</code>
             </p>
           ) : null}

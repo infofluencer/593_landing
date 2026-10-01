@@ -9,6 +9,12 @@ import {
   brandMapHintsFor,
   draftMetaAccountId,
 } from "@/lib/panel/brand-map-hints";
+import {
+  assertClientEmailForPanel,
+  clientEmailForPanel,
+  emailLocalPart,
+  normalizePanelSlug,
+} from "@/lib/panel/client-email";
 
 type MappingFields = {
   adsCustomerId: string;
@@ -99,7 +105,11 @@ function applyMapHints(form: FormState): FormState {
   };
 }
 
-export default function AddBrandWizard() {
+export default function AddBrandWizard({
+  rootDomain = "593emarketing.com",
+}: {
+  rootDomain?: string;
+}) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [step, setStep] = useState(0);
@@ -177,13 +187,19 @@ export default function AddBrandWizard() {
   }
 
   async function createClientUser(slug: string): Promise<boolean> {
-    const email = form.clientEmail.trim();
+    const email = form.clientEmail.trim().toLowerCase();
     const password = form.clientPassword;
     if (!email && !password) return true;
     if (!email || !password) {
       setError(
         "Müşteri için e-posta ve şifre birlikte gerekli (veya ikisini de boş bırakın)",
       );
+      return false;
+    }
+    const panelSlug = normalizePanelSlug(form.slug) || slug;
+    const matchErr = assertClientEmailForPanel(email, panelSlug, rootDomain);
+    if (matchErr) {
+      setError(matchErr);
       return false;
     }
     setPending(true);
@@ -198,14 +214,20 @@ export default function AddBrandWizard() {
             email,
             password,
             name: form.clientName.trim() || null,
+            panelSlug,
           }),
         },
       );
-      const json = (await res.json()) as { ok?: boolean; error?: string };
+      const json = (await res.json()) as {
+        ok?: boolean;
+        error?: string;
+        slug?: string;
+      };
       if (!res.ok) {
         setError(json.error || "Müşteri hesabı oluşturulamadı");
         return false;
       }
+      if (json.slug) setCreatedSlug(json.slug);
       return true;
     } catch (err) {
       setError(err instanceof Error ? err.message : "Network error");
@@ -249,12 +271,40 @@ export default function AddBrandWizard() {
       return;
     }
     if (step === 2) {
-      setForm((f) => applyMapHints(f));
+      setForm((f) => {
+        const next = applyMapHints(f);
+        const panel = next.slug.trim() || slugifyDraft(next.name);
+        return {
+          ...next,
+          clientEmail:
+            next.clientEmail.trim() ||
+            clientEmailForPanel(panel, rootDomain),
+        };
+      });
       setStep(3);
       return;
     }
     if (step === 3) {
-      const slug = createdSlug ?? (await createTenant());
+      const preparedSlug =
+        normalizePanelSlug(form.slug) || slugifyDraft(form.name);
+      if (!preparedSlug) {
+        setError("Panel adresi (slug) gerekli");
+        return;
+      }
+      if (form.clientEmail.trim() || form.clientPassword) {
+        const matchErr = assertClientEmailForPanel(
+          form.clientEmail.trim().toLowerCase(),
+          preparedSlug,
+          rootDomain,
+        );
+        if (matchErr) {
+          setError(matchErr);
+          return;
+        }
+      }
+      const slug =
+        createdSlug ??
+        (await createTenant());
       if (!slug) return;
       setCreatedSlug(slug);
       const ok = await createClientUser(slug);
@@ -613,8 +663,20 @@ export default function AddBrandWizard() {
               {step === 3 ? (
                 <>
                   <p className="text-xs text-zinc-500">
-                    Opsiyonel — marka subdomain’ine giriş için müşteri
-                    kullanıcısı. Atlamak için boş bırakın.
+                    Opsiyonel — panel adresi{" "}
+                    <code className="text-zinc-600">
+                      {(form.slug.trim() || createdSlug || "slug") +
+                        "." +
+                        rootDomain}
+                    </code>
+                    . E-posta local-part bu adresle aynı olmalı (
+                    <code className="text-zinc-600">
+                      {clientEmailForPanel(
+                        form.slug.trim() || createdSlug || "slug",
+                        rootDomain,
+                      )}
+                    </code>
+                    ). Harici domain kabul edilmez. Atlamak için boş bırakın.
                   </p>
                   <Field label="Müşteri adı">
                     <input
@@ -623,12 +685,53 @@ export default function AddBrandWizard() {
                       onChange={(e) => setField("clientName", e.target.value)}
                     />
                   </Field>
+                  <Field label="Panel adresi (subdomain)">
+                    <input
+                      className={inputClass}
+                      value={form.slug}
+                      onChange={(e) => {
+                        const slug = e.target.value
+                          .toLowerCase()
+                          .replace(/[^a-z0-9-]/g, "");
+                        setForm((f) => {
+                          const prevLocal = emailLocalPart(f.clientEmail);
+                          const synced =
+                            !f.clientEmail.trim() ||
+                            prevLocal === f.slug ||
+                            prevLocal === normalizePanelSlug(f.slug);
+                          return {
+                            ...f,
+                            slug,
+                            clientEmail: synced
+                              ? clientEmailForPanel(slug, rootDomain)
+                              : f.clientEmail,
+                          };
+                        });
+                      }}
+                      placeholder="mareen"
+                    />
+                  </Field>
                   <Field label="E-posta">
                     <input
                       className={inputClass}
                       type="email"
                       value={form.clientEmail}
-                      onChange={(e) => setField("clientEmail", e.target.value)}
+                      onChange={(e) => {
+                        const email = e.target.value.toLowerCase();
+                        const local = emailLocalPart(email);
+                        setForm((f) => ({
+                          ...f,
+                          clientEmail: email,
+                          slug:
+                            local && /^[a-z0-9-]*$/.test(local)
+                              ? local
+                              : f.slug,
+                        }));
+                      }}
+                      placeholder={clientEmailForPanel(
+                        form.slug.trim() || "slug",
+                        rootDomain,
+                      )}
                       autoComplete="off"
                     />
                   </Field>

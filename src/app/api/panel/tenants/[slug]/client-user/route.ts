@@ -2,6 +2,12 @@ import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/db";
+import {
+  assertClientEmailForPanel,
+  normalizePanelSlug,
+  validatePanelSlug,
+} from "@/lib/panel/client-email";
+import { rootDomain } from "@/lib/panel/host";
 
 export const runtime = "nodejs";
 
@@ -11,6 +17,11 @@ type Body = {
   name?: string | null;
   /** Existing client user id on this tenant (preferred when editing). */
   userId?: string;
+  /**
+   * Panel subdomain (slug). Güncellenebilir — e-posta local-part ile
+   * birebir eşleşmeli. Dokploy’da da aynı host tanımlanmalı.
+   */
+  panelSlug?: string;
 };
 
 /** Admin/team — create/update client user + membership for a tenant. */
@@ -45,12 +56,33 @@ export async function POST(
   const password = String(body.password ?? "");
   const name = body.name?.trim() || null;
   const userId = body.userId?.trim() || "";
+  const domain = rootDomain();
 
-  if (!email || !email.includes("@")) {
-    return NextResponse.json(
-      { error: "Geçerli e-posta gerekli" },
-      { status: 400 },
-    );
+  const nextPanelSlug =
+    body.panelSlug !== undefined
+      ? normalizePanelSlug(body.panelSlug)
+      : tenant.slug;
+
+  const slugErr = validatePanelSlug(nextPanelSlug);
+  if (slugErr) {
+    return NextResponse.json({ error: slugErr }, { status: 400 });
+  }
+
+  const emailErr = assertClientEmailForPanel(email, nextPanelSlug, domain);
+  if (emailErr) {
+    return NextResponse.json({ error: emailErr }, { status: 400 });
+  }
+
+  if (nextPanelSlug !== tenant.slug) {
+    const taken = await prisma.tenant.findUnique({
+      where: { slug: nextPanelSlug },
+    });
+    if (taken) {
+      return NextResponse.json(
+        { error: "Bu panel adresi zaten var" },
+        { status: 409 },
+      );
+    }
   }
 
   try {
@@ -108,6 +140,14 @@ export async function POST(
       ? await bcrypt.hash(password, 10)
       : null;
 
+    const slugChanged = nextPanelSlug !== tenant.slug;
+    if (slugChanged) {
+      await prisma.tenant.update({
+        where: { id: tenant.id },
+        data: { slug: nextPanelSlug },
+      });
+    }
+
     let user;
     if (membershipUser) {
       user = await prisma.user.update({
@@ -138,7 +178,7 @@ export async function POST(
           email,
           passwordHash: passwordHash!,
           passwordPlain: password,
-          name: name || email.split("@")[0],
+          name: name || nextPanelSlug,
           role: "client",
         },
       });
@@ -155,6 +195,8 @@ export async function POST(
     return NextResponse.json({
       ok: true,
       passwordUpdated: Boolean(passwordHash),
+      slugChanged,
+      slug: nextPanelSlug,
       user: {
         id: user.id,
         email: user.email,
@@ -163,7 +205,7 @@ export async function POST(
         hasPassword: true,
         passwordPlain: user.passwordPlain ?? null,
       },
-      tenantSlug: tenant.slug,
+      tenantSlug: nextPanelSlug,
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

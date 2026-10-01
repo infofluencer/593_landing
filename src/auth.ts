@@ -1,9 +1,11 @@
 import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
+import type { Role } from "@prisma/client";
 import { headers } from "next/headers";
 import { prisma } from "@/lib/db";
-import { isStaffRole, resolvePanelHost } from "@/lib/panel/host";
+import { clientEmailForPanel, emailLocalPart } from "@/lib/panel/client-email";
+import { isStaffRole, resolvePanelHost, rootDomain } from "@/lib/panel/host";
 
 /**
  * Relative-only redirect helper: never bounce a tenant host (demo.localhost)
@@ -26,6 +28,18 @@ function safeRedirectUrl(url: string, baseUrl: string): string {
   }
 }
 
+/** Normalize login id: trim/lower; bare local-part → {local}@{root}. */
+function normalizeLoginEmail(raw: string, tenantSlug: string | null): string {
+  const trimmed = raw.trim().toLowerCase();
+  if (!trimmed) return "";
+  const domain = rootDomain();
+  if (!trimmed.includes("@")) {
+    const local = trimmed || tenantSlug || "";
+    return local ? clientEmailForPanel(local, domain) : "";
+  }
+  return trimmed;
+}
+
 export const { handlers, auth, signIn, signOut } = NextAuth({
   providers: [
     Credentials({
@@ -35,27 +49,84 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         password: { label: "Şifre", type: "password" },
       },
       async authorize(credentials) {
-        const email = String(credentials?.email ?? "")
-          .trim()
-          .toLowerCase();
         const password = String(credentials?.password ?? "");
-
-        if (!email || !password) return null;
-
-        const user = await prisma.user.findUnique({
-          where: { email },
-          include: { memberships: { select: { tenantId: true } } },
-        });
-
-        if (!user) return null;
-
-        const valid = await bcrypt.compare(password, user.passwordHash);
-        if (!valid) return null;
+        if (!password) return null;
 
         const h = await headers();
         const host = resolvePanelHost(
           h.get("x-forwarded-host") ?? h.get("host"),
         );
+        const tenantSlug =
+          host.kind === "tenant" ? host.tenantSlug : null;
+
+        const email = normalizeLoginEmail(
+          String(credentials?.email ?? ""),
+          tenantSlug,
+        );
+        if (!email) return null;
+
+        // Exact email, then on tenant host: {slug}@{root}.
+        const candidates = Array.from(
+          new Set(
+            [
+              email,
+              tenantSlug
+                ? clientEmailForPanel(tenantSlug, rootDomain())
+                : null,
+            ].filter((v): v is string => Boolean(v)),
+          ),
+        );
+
+        type UserRow = {
+          id: string;
+          email: string;
+          name: string | null;
+          role: Role;
+          passwordHash: string;
+          memberships: { tenantId: string }[];
+        };
+
+        let user: UserRow | null = null;
+
+        for (const candidate of candidates) {
+          const row = await prisma.user.findUnique({
+            where: { email: candidate },
+            include: { memberships: { select: { tenantId: true } } },
+          });
+          if (row) {
+            user = row;
+            break;
+          }
+        }
+
+        // Geçiş: eski local-part (tire yok) ↔ slug (tireli) uyumsuzluğu.
+        if (!user && tenantSlug) {
+          const tenant = await prisma.tenant.findUnique({
+            where: { slug: tenantSlug },
+            select: { id: true },
+          });
+          if (tenant) {
+            const local = emailLocalPart(email).replace(/-/g, "");
+            const members = await prisma.user.findMany({
+              where: {
+                role: "client",
+                memberships: { some: { tenantId: tenant.id } },
+              },
+              include: { memberships: { select: { tenantId: true } } },
+            });
+            user =
+              members.find(
+                (m) =>
+                  emailLocalPart(m.email).replace(/-/g, "") === local ||
+                  emailLocalPart(m.email) === emailLocalPart(email),
+              ) ?? null;
+          }
+        }
+
+        if (!user) return null;
+
+        const valid = await bcrypt.compare(password, user.passwordHash);
+        if (!valid) return null;
 
         // Marka subdomain: yalnızca o markanın üyesi (admin/team burada giremez).
         if (host.kind === "tenant") {
@@ -68,10 +139,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           const member = user.memberships.some((m) => m.tenantId === tenant.id);
           if (!member) return null;
         } else if (host.kind === "staff") {
-          // Ajans portalı: yalnızca admin/team.
           if (!isStaffRole(user.role)) return null;
         } else {
-          // Apex / bilinmeyen host — panel oturumu açma.
           return null;
         }
 
@@ -99,7 +168,6 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         token.role = user.role;
         token.tenantIds = user.tenantIds;
       }
-      // NextAuth Credentials bazen id’yi yalnızca `sub`’a yazar.
       if (!token.id && typeof token.sub === "string") {
         token.id = token.sub;
       }

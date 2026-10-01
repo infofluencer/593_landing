@@ -7,11 +7,14 @@ import { sanitizeCallbackPath } from "@/lib/panel/auth-nav";
 
 export default function LoginForm({
   callbackUrl,
+  emailHint,
 }: {
   callbackUrl: string;
+  /** Marka host’ta beklenen e-posta (slug@root). */
+  emailHint?: string | null;
 }) {
   const router = useRouter();
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState(emailHint ?? "");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [pending, setPending] = useState(false);
@@ -33,7 +36,11 @@ export default function LoginForm({
       });
 
       if (!res || res.error) {
-        setError("E-posta veya şifre hatalı.");
+        setError(
+          emailHint
+            ? `Giriş başarısız. Kullanıcı adı: ${emailHint} — doğru panel adresinde olduğunuzdan emin olun.`
+            : "E-posta veya şifre hatalı.",
+        );
         setPending(false);
         return;
       }
@@ -65,8 +72,15 @@ export default function LoginForm({
           required
           value={email}
           onChange={(e) => setEmail(e.target.value)}
+          placeholder={emailHint ?? undefined}
           className="w-full rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2.5 text-sm text-zinc-900 outline-none ring-[#e91825]/40 focus:ring-2"
         />
+        {emailHint ? (
+          <p className="mt-1 text-[11px] text-zinc-500">
+            Kullanıcı adı panel adresi ile aynı:{" "}
+            <code className="text-zinc-600">{emailHint}</code>
+          </p>
+        ) : null}
       </div>
       <div>
         <label

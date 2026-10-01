@@ -11,6 +11,12 @@ import {
   brandMapHintsFor,
   draftMetaAccountId,
 } from "@/lib/panel/brand-map-hints";
+import {
+  assertClientEmailForPanel,
+  clientEmailForPanel,
+  emailLocalPart,
+  normalizePanelSlug,
+} from "@/lib/panel/client-email";
 import { isPlaceholderMetaAccountId } from "@/lib/panel/mapping-placeholders";
 
 export type TenantSettingsInitial = {
@@ -73,7 +79,8 @@ export default function TenantSettingsForm({
   const [deleteMessage, setDeleteMessage] = useState<string | null>(null);
   const [clientForm, setClientForm] = useState({
     userId: initial.clientUsers[0]?.id ?? "",
-    email: initial.clientUsers[0]?.email ?? "",
+    panelSlug: tenantSlug,
+    email: initial.clientUsers[0]?.email ?? clientEmailForPanel(tenantSlug, rootDomain),
     name: initial.clientUsers[0]?.name ?? "",
     password: "",
   });
@@ -83,6 +90,15 @@ export default function TenantSettingsForm({
   const [passwordCopied, setPasswordCopied] = useState(false);
   const hasExistingClient = initial.clientUsers.length > 0;
   const storedPassword = initial.clientUsers[0]?.passwordPlain ?? null;
+  const clientPanelHint = `${clientForm.panelSlug.trim() || tenantSlug}.${rootDomain}`;
+  const clientEmailMismatch = Boolean(
+    clientForm.email.trim() &&
+      assertClientEmailForPanel(
+        clientForm.email,
+        clientForm.panelSlug || tenantSlug,
+        rootDomain,
+      ),
+  );
 
   const hints = useMemo(
     () =>
@@ -169,6 +185,14 @@ export default function TenantSettingsForm({
     e.preventDefault();
     setClientPending(true);
     setMessage(null);
+    const panelSlug = normalizePanelSlug(clientForm.panelSlug);
+    const email = clientForm.email.trim().toLowerCase();
+    const matchErr = assertClientEmailForPanel(email, panelSlug, rootDomain);
+    if (matchErr) {
+      setMessage(matchErr);
+      setClientPending(false);
+      return;
+    }
     try {
       const res = await fetch(
         `/api/panel/tenants/${encodeURIComponent(tenantSlug)}/client-user`,
@@ -177,7 +201,8 @@ export default function TenantSettingsForm({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             userId: clientForm.userId || undefined,
-            email: clientForm.email.trim(),
+            panelSlug,
+            email,
             password: clientForm.password,
             name: clientForm.name.trim() || null,
           }),
@@ -187,17 +212,34 @@ export default function TenantSettingsForm({
         ok?: boolean;
         error?: string;
         passwordUpdated?: boolean;
+        slugChanged?: boolean;
+        slug?: string;
       };
       if (!res.ok) {
         setMessage(json.error || "Müşteri kaydı başarısız");
       } else {
         setMessage(
-          json.passwordUpdated
-            ? "Müşteri hesabı kaydedildi (şifre güncellendi)"
-            : "Müşteri hesabı kaydedildi",
+          json.slugChanged && json.slug
+            ? `Kaydedildi — panel: ${json.slug}.${rootDomain} (Dokploy’da da ekleyin)`
+            : json.passwordUpdated
+              ? "Müşteri hesabı kaydedildi (şifre güncellendi)"
+              : "Müşteri hesabı kaydedildi",
         );
-        setClientForm((f) => ({ ...f, password: "" }));
+        setClientForm((f) => ({
+          ...f,
+          password: "",
+          panelSlug: json.slug ?? panelSlug,
+          email,
+        }));
+        setForm((f) => ({ ...f, slug: json.slug ?? panelSlug }));
         setShowPassword(false);
+        if (json.slugChanged && json.slug) {
+          const next =
+            detailBasePath === "/brands"
+              ? `/brands/${encodeURIComponent(json.slug)}#ayarlar`
+              : `/settings?tenant=${encodeURIComponent(json.slug)}`;
+          router.replace(next);
+        }
         router.refresh();
       }
     } catch (err) {
@@ -205,6 +247,38 @@ export default function TenantSettingsForm({
     } finally {
       setClientPending(false);
     }
+  }
+
+  function onPanelSlugChange(raw: string) {
+    const panelSlug = raw.toLowerCase().replace(/[^a-z0-9-]/g, "");
+    setClientForm((f) => {
+      const prevLocal = emailLocalPart(f.email);
+      const syncedFromPanel =
+        !f.email.trim() ||
+        prevLocal === f.panelSlug ||
+        prevLocal === normalizePanelSlug(f.panelSlug);
+      return {
+        ...f,
+        panelSlug,
+        email: syncedFromPanel
+          ? clientEmailForPanel(panelSlug || f.panelSlug, rootDomain)
+          : f.email,
+      };
+    });
+  }
+
+  function onClientEmailChange(raw: string) {
+    const email = raw.toLowerCase();
+    const local = emailLocalPart(email);
+    setClientForm((f) => ({
+      ...f,
+      email,
+      // Local-part yazılınca panel adresi de hizalanır (eşleşme kuralı).
+      panelSlug:
+        local && /^[a-z0-9-]*$/.test(local)
+          ? local
+          : f.panelSlug,
+    }));
   }
 
   async function copyEmail() {
@@ -591,11 +665,16 @@ export default function TenantSettingsForm({
         <h3 className="text-sm font-semibold text-zinc-800">Müşteri hesabı</h3>
         <p className="text-xs text-zinc-500">
           Marka paneli girişi:{" "}
+          <code className="text-zinc-400">{clientPanelHint}</code>
+          . E-postanın @ öncesi kısmı panel adresi ile aynı olmalı (
           <code className="text-zinc-400">
-            {tenantSlug}.{rootDomain}
+            {clientEmailForPanel(
+              clientForm.panelSlug.trim() || tenantSlug,
+              rootDomain,
+            )}
           </code>
-          . Kullanıcı adı e-postadır. Giriş bcrypt ile doğrulanır; ajans
-          panelinde görüntülemek için şifre ayrıca saklanır.
+          ). Harici domain kabul edilmez. Panel adresini Dokploy’da da
+          tanımlayın.
         </p>
 
         {hasExistingClient ? (
@@ -604,6 +683,12 @@ export default function TenantSettingsForm({
               Kayıtlı giriş
             </p>
             <dl className="mt-2 grid gap-3 sm:grid-cols-2">
+              <div>
+                <dt className="text-[11px] text-zinc-500">Panel adresi</dt>
+                <dd className="mt-0.5 font-mono text-sm font-medium text-zinc-900">
+                  {tenantSlug}.{rootDomain}
+                </dd>
+              </div>
               <div>
                 <dt className="text-[11px] text-zinc-500">Kullanıcı (e-posta)</dt>
                 <dd className="mt-0.5 flex flex-wrap items-center gap-2">
@@ -651,7 +736,7 @@ export default function TenantSettingsForm({
                 </dd>
               </div>
               {initial.clientUsers[0]?.name ? (
-                <div className="sm:col-span-2">
+                <div>
                   <dt className="text-[11px] text-zinc-500">Ad</dt>
                   <dd className="mt-0.5 text-sm text-zinc-800">
                     {initial.clientUsers[0].name}
@@ -659,6 +744,17 @@ export default function TenantSettingsForm({
                 </div>
               ) : null}
             </dl>
+            {assertClientEmailForPanel(
+              initial.clientUsers[0]?.email ?? "",
+              tenantSlug,
+              rootDomain,
+            ) ? (
+              <p className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-[11px] text-amber-900">
+                Eşleşme yok: e-posta local-part ile panel adresi (
+                <code>{tenantSlug}</code>) farklı. Aşağıdan panel adresi veya
+                e-postayı düzeltip kaydedin; Dokploy host’unu da güncelleyin.
+              </p>
+            ) : null}
             {initial.clientUsers.length > 1 ? (
               <p className="mt-2 text-[11px] text-zinc-500">
                 +{initial.clientUsers.length - 1} ek müşteri üyeliği var; form
@@ -683,17 +779,38 @@ export default function TenantSettingsForm({
               autoComplete="off"
             />
           </Field>
+          <Field label="Panel adresi (subdomain)">
+            <input
+              className={inputClass}
+              value={clientForm.panelSlug}
+              onChange={(e) => onPanelSlugChange(e.target.value)}
+              required
+              autoComplete="off"
+              placeholder={tenantSlug}
+            />
+            <span className="mt-1 block text-[11px] text-zinc-500">
+              Tam adres:{" "}
+              <code className="text-zinc-600">{clientPanelHint}</code>
+            </span>
+          </Field>
           <Field label="Kullanıcı adı (e-posta)">
             <input
               className={inputClass}
               type="email"
               value={clientForm.email}
-              onChange={(e) =>
-                setClientForm((f) => ({ ...f, email: e.target.value }))
-              }
+              onChange={(e) => onClientEmailChange(e.target.value)}
               required
               autoComplete="off"
             />
+            {clientEmailMismatch ? (
+              <span className="mt-1 block text-[11px] text-amber-700">
+                Beklenen:{" "}
+                {clientEmailForPanel(
+                  clientForm.panelSlug.trim() || tenantSlug,
+                  rootDomain,
+                )}
+              </span>
+            ) : null}
           </Field>
           <div className="sm:col-span-2">
             <Field

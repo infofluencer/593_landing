@@ -63,7 +63,7 @@ export default async function BrandsPage({
           </p>
         </div>
         <div className="flex flex-wrap items-end justify-end gap-2.5 sm:gap-3">
-          <AddBrandWizard />
+          <AddBrandWizard rootDomain={root} />
           <BulkSyncToolbar />
         </div>
       </div>

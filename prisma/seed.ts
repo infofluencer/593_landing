@@ -281,16 +281,23 @@ async function main() {
   const demo = tenants.find((t) => t.slug === "demo")!;
 
   const clientHash = await bcrypt.hash("client1234", 10);
+  // Eski seed e-postasını temizle (panel slug ile hizalı hesap)
+  await prisma.user.deleteMany({
+    where: { email: { in: ["musteri@mareen.com", "musteri@demo.com"] } },
+  });
+
   const mareenClient = await prisma.user.upsert({
-    where: { email: "musteri@mareen.com" },
+    where: { email: "mareen@593emarketing.com" },
     update: {
       passwordHash: clientHash,
+      passwordPlain: "client1234",
       role: "client",
       name: "MAREEN Müşteri",
     },
     create: {
-      email: "musteri@mareen.com",
+      email: "mareen@593emarketing.com",
       passwordHash: clientHash,
+      passwordPlain: "client1234",
       name: "MAREEN Müşteri",
       role: "client",
     },
@@ -306,15 +313,17 @@ async function main() {
 
   const leadHash = await bcrypt.hash("lead1234", 10);
   const leadClient = await prisma.user.upsert({
-    where: { email: "musteri@demo.com" },
+    where: { email: "demo@593emarketing.com" },
     update: {
       passwordHash: leadHash,
+      passwordPlain: "lead1234",
       role: "client",
       name: "Demo Lead Müşteri",
     },
     create: {
-      email: "musteri@demo.com",
+      email: "demo@593emarketing.com",
       passwordHash: leadHash,
+      passwordPlain: "lead1234",
       name: "Demo Lead Müşteri",
       role: "client",
     },
@@ -334,8 +343,8 @@ async function main() {
     `demo(${demo.type})`,
     "admin@593emarketing.com / demo1234 → admin.localhost:3006",
     "team@593emarketing.com / team1234 → admin.localhost:3006",
-    "musteri@mareen.com / client1234 → mareen.localhost:3006",
-    "musteri@demo.com / lead1234 → demo.localhost:3006",
+    "mareen@593emarketing.com / client1234 → mareen.localhost:3006",
+    "demo@593emarketing.com / lead1234 → demo.localhost:3006",
   );
 }
 

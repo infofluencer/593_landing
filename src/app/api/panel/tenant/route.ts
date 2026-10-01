@@ -4,7 +4,7 @@ import type { TenantType } from "@prisma/client";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/db";
 import { deleteBrandCoverFile } from "@/lib/panel/brand-cover";
-import { RESERVED_SLUGS } from "@/lib/panel/host";
+import { validatePanelSlug } from "@/lib/panel/client-email";
 import { sanitizeMappingForDb } from "@/lib/panel/mapping-placeholders";
 
 export const runtime = "nodejs";
@@ -47,16 +47,6 @@ function normalizeMetaAccountId(
 ): string {
   if (!raw) return `act_manual_${slugFallback}`;
   return raw.startsWith("act_") ? raw : `act_${raw.replace(/^act_/, "")}`;
-}
-
-function validateSlug(slug: string): string | null {
-  if (!slug || slug.includes(".") || RESERVED_SLUGS.has(slug)) {
-    return "Geçersiz veya reserved slug";
-  }
-  if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) {
-    return "slug yalnızca a-z, 0-9 ve tire olmalı";
-  }
-  return null;
 }
 
 /** Admin/team — update tenant identity / mapping / thresholds (wizard parity). */
@@ -106,7 +96,7 @@ export async function PATCH(request: Request) {
       ? body.slug.trim().toLowerCase()
       : tenant.slug;
   if (body.slug !== undefined) {
-    const slugErr = validateSlug(nextSlug);
+    const slugErr = validatePanelSlug(nextSlug);
     if (slugErr) {
       return NextResponse.json({ error: slugErr }, { status: 400 });
     }
