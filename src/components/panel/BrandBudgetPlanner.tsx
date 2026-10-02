@@ -714,6 +714,38 @@ function GroupHeader({ label, count }: { label: string; count: number }) {
   );
 }
 
+/** API'den gelen kampanya adı: tam metin, seçilebilir + kopyala. */
+function CampaignApiName({ name }: { name: string }) {
+  const [copied, setCopied] = useState(false);
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(name);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // Pano erişimi yoksa metin yine seçilip kopyalanabilir.
+    }
+  }
+  return (
+    <div className="mt-1 flex items-start gap-1.5">
+      <p
+        className="min-w-0 flex-1 select-text break-all text-[11px] leading-snug text-zinc-500"
+        title={name}
+      >
+        <span className="font-semibold text-zinc-400">API:</span> {name}
+      </p>
+      <button
+        type="button"
+        onClick={copy}
+        title="Kampanya adını kopyala"
+        className="shrink-0 rounded border border-zinc-200 px-1.5 py-0.5 text-[10px] font-medium text-zinc-500 hover:border-zinc-300 hover:text-zinc-900"
+      >
+        {copied ? "Kopyalandı" : "Kopyala"}
+      </button>
+    </div>
+  );
+}
+
 function PlannerRow({
   row,
   plan,
@@ -739,7 +771,12 @@ function PlannerRow({
       <td className="min-w-[14rem] max-w-[20rem] px-3 py-2 align-middle">
         <input
           className={nameInputClass}
-          placeholder={row.campaignName}
+          placeholder={
+            isManualCampaignId(row.campaignId)
+              ? row.campaignName
+              : "Görünen adı özelleştir"
+          }
+          title={row.label || row.campaignName}
           disabled={!plan.canEdit}
           value={row.label}
           onChange={(e) =>
@@ -761,14 +798,8 @@ function PlannerRow({
               </button>
             ) : null}
           </div>
-        ) : row.label.trim() && row.label.trim() !== row.campaignName ? (
-          <p className="mt-0.5 truncate text-[10px] text-zinc-400">
-            API: {row.campaignName}
-          </p>
         ) : (
-          <p className="mt-0.5 text-[10px] text-zinc-400">
-            Görünen adı özelleştir
-          </p>
+          <CampaignApiName name={row.campaignName} />
         )}
       </td>
       <td className="px-3 py-2 align-middle">

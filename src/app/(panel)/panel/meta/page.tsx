@@ -254,7 +254,10 @@ function CreativeCard({
               {ad.adName}
             </p>
           )}
-          <p className="mt-0.5 line-clamp-1 text-[11px] text-zinc-500">
+          <p
+            className="mt-0.5 line-clamp-2 break-all text-[11px] text-zinc-500"
+            title={`${ad.campaignName}${ad.adsetName ? ` · ${ad.adsetName}` : ""}`}
+          >
             {ad.campaignName}
             {ad.adsetName ? ` · ${ad.adsetName}` : ""}
           </p>

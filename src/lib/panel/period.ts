@@ -27,6 +27,7 @@ export const SYNC_DAILY_GOOGLE_DAYS = 30;
 export const SYNC_AD_LEVEL_DAYS = 90;
 
 export type PanelPeriod =
+  | "today"
   | "yesterday"
   | "7d"
   | "30d"
@@ -41,6 +42,7 @@ export type PanelPeriod =
 
 /** Hazır dönem düğmeleri (PeriodFilterBar + DateRangePicker ortak). */
 export const PANEL_PERIOD_PRESETS: { period: PanelPeriod; label: string }[] = [
+  { period: "today", label: "Bugün" },
   { period: "yesterday", label: "Dün" },
   { period: "7d", label: "Son 7 gün" },
   { period: "30d", label: "Son 30 gün" },
@@ -69,6 +71,7 @@ const RELATIVE_MONTHS: Partial<Record<PanelPeriod, number>> = {
 
 export function parsePanelPeriod(raw: string | undefined | null): PanelPeriod {
   if (
+    raw === "today" ||
     raw === "yesterday" ||
     raw === "7d" ||
     raw === "30d" ||
@@ -117,6 +120,8 @@ function labelFor(
 ): string {
   const span = `${formatYmdTr(startDate)} – ${formatYmdTr(endDate)}`;
   switch (period) {
+    case "today":
+      return `Bugün · ${formatYmdTr(startDate)}`;
     case "yesterday":
       return `Dün · ${formatYmdTr(startDate)}`;
     case "7d":
@@ -195,6 +200,7 @@ export async function resolvePanelDateRange(
     return { startDate: s, endDate, period, label: labelFor(period, s, endDate) };
   };
 
+  if (period === "today") return fixed(today, today);
   if (period === "yesterday") {
     const y = addDaysYmd(today, -1);
     return fixed(y, y);
