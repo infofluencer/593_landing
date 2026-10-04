@@ -232,24 +232,14 @@ export default async function FaturalarPage({
               </td>
               <td className="px-3 py-2.5 whitespace-nowrap">
                 <div className="flex flex-wrap gap-2">
-                  {row.provider === "meta" && row.viewUrl ? (
-                    <a
-                      href={row.viewUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-sm font-medium text-[#e91825] hover:underline"
-                    >
-                      Görüntüle / indir
-                    </a>
-                  ) : null}
-                  {row.provider === "google" ? (
-                    <a
-                      href={`/api/panel/invoices/${row.id}/download`}
-                      className="text-sm font-medium text-[#e91825] hover:underline"
-                    >
-                      PDF indir
-                    </a>
-                  ) : null}
+                  <a
+                    href={`/api/panel/invoices/${row.id}/download`}
+                    target={row.provider === "meta" ? "_blank" : undefined}
+                    rel={row.provider === "meta" ? "noopener" : undefined}
+                    className="text-sm font-medium text-[#e91825] hover:underline"
+                  >
+                    PDF indir
+                  </a>
                 </div>
               </td>
             </tr>

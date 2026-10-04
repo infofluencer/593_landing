@@ -8,7 +8,7 @@ import {
   downloadGoogleInvoicePdf,
   fetchGoogleInvoicePdfUrl,
 } from "@/lib/integrations/google/billing";
-import { normalizeMetaViewUrl } from "@/lib/integrations/meta/billing";
+import { renderMetaReceiptPdf } from "@/lib/panel/meta-receipt-pdf";
 
 export const runtime = "nodejs";
 
@@ -47,20 +47,30 @@ export async function GET(
   const { id } = await ctx.params;
   const charge = await prisma.billingCharge.findFirst({
     where: { id, tenantId: tenant.id },
+    include: { tenant: { select: { metaAccountId: true } } },
   });
   if (!charge) {
     return NextResponse.json({ error: "Fatura bulunamadı" }, { status: 404 });
   }
 
   if (charge.provider === "meta") {
-    const viewUrl = normalizeMetaViewUrl(charge.viewUrl);
-    if (!viewUrl) {
-      return NextResponse.json(
-        { error: "Meta makbuz linki yok" },
-        { status: 404 },
-      );
-    }
-    return NextResponse.redirect(viewUrl);
+    const pdf = await renderMetaReceiptPdf({
+      tenantName: tenant.name,
+      metaAccountId: charge.tenant.metaAccountId,
+      transactionId: charge.externalId,
+      amount: Number(charge.amount),
+      currency: charge.currency,
+      chargedAt: charge.chargedAt,
+      timezone: tenant.timezone,
+    });
+    const filename = `meta-makbuz-${charge.externalId}.pdf`;
+    return new NextResponse(Buffer.from(pdf), {
+      status: 200,
+      headers: {
+        "Content-Type": "application/pdf",
+        "Content-Disposition": `inline; filename="${filename}"`,
+      },
+    });
   }
 
   const adsCustomerId = resolveAdsCustomerId({
