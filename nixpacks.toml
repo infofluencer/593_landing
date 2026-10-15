@@ -8,7 +8,8 @@ NIXPACKS_NO_CACHE = "1"
 nixPkgs = ["nodejs_20", "npm-9_x"]
 
 [phases.build]
-cmds = ["npm run build"]
+# TypeScript adımı varsayılan heap sınırında (~190 MB) OOM oluyordu.
+cmds = ["NODE_OPTIONS=--max-old-space-size=2048 npm run build"]
 
 [start]
 # migrate on boot so Dokploy redeploy applies schema without docker exec
