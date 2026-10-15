@@ -1,6 +1,7 @@
 import type { AlertSeverity, ConversionKind, Role, TenantType } from "@prisma/client";
 import { cache } from "react";
 import { getTenantBySlug, prisma, TenantAccessError } from "@/lib/db";
+import { withoutDisabledJobs } from "@/lib/panel/integrations";
 import { useMockPanelData } from "@/lib/integrations/tokens";
 import { deriveMetaKpis } from "@/lib/integrations/meta/insights";
 import {
@@ -116,7 +117,7 @@ function sumCampaigns(
  * Meta dönüşümü okuma anında actions'tan yeniden hesapla — kural değişince
  * (örn. lead çift sayımı düzeltmesi) tam sync beklemeden geçmiş de düzelir.
  */
-function metaConv(
+export function metaConv(
   type: TenantType,
   row: { actions?: unknown; actionValues?: unknown; conversions: unknown; convValue: unknown; spend: unknown },
 ): { conv: number; convValue: number } {
@@ -260,12 +261,17 @@ function metaConversionKinds(
     }
   }
   const out: MockConversion[] = [];
-  const add = (name: string, kind: ConversionKind, count: number) => {
+  const add = (
+    name: string,
+    kind: ConversionKind,
+    count: number,
+    primary = true,
+  ) => {
     if (count > 0) {
       out.push({
         name,
         source: "Meta Ads",
-        primary: true,
+        primary,
         count,
         kind,
         dupeFlag: false,
@@ -273,7 +279,8 @@ function metaConversionKinds(
     }
   };
   add("Meta satın alım", "sale", purchase);
-  add("Meta form lead", "form", form);
+  // Bilgi amaçlı listelenir; Meta'da lead dönüşümü yalnızca mesajlaşma.
+  add("Meta form lead", "form", form, false);
   add("Meta mesajlaşma (WhatsApp/Messenger)", "whatsapp", messaging);
   return out;
 }
@@ -354,6 +361,7 @@ export const resolvePanelTenant = cache(async function resolvePanelTenant(
     currency,
     timezone,
     mapping,
+    disabledIntegrations: dbTenant?.disabledIntegrations ?? [],
     bundle: mock ?? null,
   };
 });
@@ -364,8 +372,11 @@ function healthFromJobs(
 ): HealthStatus {
   if (openAlerts.some((a) => a.severity === "critical")) return "critical";
 
-  // Geriye dönük doldurma kaydı marka sağlığını etkilemez.
-  jobs = jobs.filter((j) => j.service !== "backfill");
+  // Geriye dönük doldurma ve oturum/kilit satırları (gerçek API çağrısı değil)
+  // marka sağlığını etkilemez — servis job'ları asıl durumu taşır.
+  jobs = jobs.filter(
+    (j) => j.service !== "backfill" && j.service !== "panel_sync" && j.service !== "cron",
+  );
 
   const hasSuccess = jobs.some((j) => j.status === "success");
   const hasError = jobs.some((j) => j.status === "error");
@@ -476,7 +487,10 @@ async function bundleFromDb(
   const metaUnknown =
     tenant.metaInsights.length === 0 &&
     (metaJob?.status === "error" || metaJob?.status !== "success");
-  const health = healthFromJobs(tenant.syncJobs, tenant.alerts);
+  const health = healthFromJobs(
+    withoutDisabledJobs(tenant.syncJobs, tenant.disabledIntegrations),
+    tenant.alerts,
+  );
 
   const from = range.from;
   const to = range.to;
@@ -779,6 +793,7 @@ async function bundleFromDb(
       currency: tenant.currency,
       visible: tenant.visible,
       coverUrl: tenant.coverUrl,
+      disabledIntegrations: tenant.disabledIntegrations,
       mapping: {
         adsCustomerId: tenant.mapping?.adsCustomerId ?? null,
         ga4PropertyId:
@@ -868,6 +883,7 @@ async function bundleFromDb(
       objective: j.objective,
       status: j.status,
       lastSuccessAt: j.lastSuccessAt?.toISOString() ?? null,
+      lastErrorAt: j.lastErrorAt?.toISOString() ?? null,
       error: j.error,
     })),
     ga4,
@@ -1028,8 +1044,9 @@ export async function listAgencyBrands(opts: {
       name: true,
       visible: true,
       coverUrl: true,
+      disabledIntegrations: true,
       syncJobs: {
-        select: { service: true, status: true, error: true },
+        select: { provider: true, service: true, status: true, error: true },
       },
       alerts: {
         where: { resolved: false },
@@ -1050,7 +1067,12 @@ export async function listAgencyBrands(opts: {
     name: t.name,
     visible: t.visible,
     coverUrl: t.coverUrl,
-    health: opts.visible ? healthFromJobs(t.syncJobs, t.alerts) : null,
+    health: opts.visible
+      ? healthFromJobs(
+          withoutDisabledJobs(t.syncJobs, t.disabledIntegrations),
+          t.alerts,
+        )
+      : null,
   }));
 }
 

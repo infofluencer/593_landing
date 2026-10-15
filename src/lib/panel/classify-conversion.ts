@@ -29,6 +29,18 @@ const LEAD_CATEGORIES = new Set([
   "OUTBOUND_CLICK",
 ]);
 
+/** Lead markasında dönüşüm sayılan kategoriler (mesaj / form / lead). */
+const COUNTED_LEAD_CATEGORIES = new Set([
+  "SUBMIT_LEAD_FORM",
+  "IMPORTED_LEAD",
+  "QUALIFIED_LEAD",
+  "CONVERTED_LEAD",
+  "CONTACT",
+  "PHONE_CALL_LEAD",
+  "BOOK_APPOINTMENT",
+  "REQUEST_QUOTE",
+]);
+
 /** Lead markasında dönüşüm sayılmayan mikro adımlar. */
 const NON_LEAD_CATEGORIES = new Set([
   "PAGE_VIEW",
@@ -43,7 +55,7 @@ const NON_LEAD_CATEGORIES = new Set([
  * Google Ads dönüşüm aksiyonu bu marka tipinde panel dönüşümü mü?
  * Kampanya KPI'sı ve dönüşüm tablosu AYNI kuralı kullanır.
  * - ecommerce: PURCHASE / STORE_SALE; kategori belirsizse satın alım adı.
- * - lead: mikro adımlar (sayfa görüntüleme, sepete ekleme…) hariç hepsi.
+ * - lead: yalnızca mesaj / form / lead aksiyonları (kategori veya isim).
  */
 export function countsAsPanelConversion(
   tenantType: "ecommerce" | "lead",
@@ -55,22 +67,10 @@ export function countsAsPanelConversion(
     if (isPurchaseCategory(c)) return true;
     return isVagueCategory(c) && isEcommerceSaleConversion(name);
   }
-  if (NON_LEAD_CATEGORIES.has(c)) return false;
-  if (isVagueCategory(c)) {
-    // İsimden açıkça mikro adım olanları ele
-    const n = normalizeConvName(name);
-    if (
-      n.includes("page_view") ||
-      n.includes("page view") ||
-      n.includes("add_to_cart") ||
-      n.includes("scroll") ||
-      n.includes("engagement") ||
-      n.includes("session_start")
-    ) {
-      return false;
-    }
-  }
-  return true;
+  if (NON_LEAD_CATEGORIES.has(c) || isPurchaseCategory(c)) return false;
+  if (COUNTED_LEAD_CATEGORIES.has(c)) return true;
+  const byName = classifyConversion(name);
+  return byName === "whatsapp" || byName === "form";
 }
 
 /** Google Ads kategori + ad → panel türü (kategori önce, sonra isim). */

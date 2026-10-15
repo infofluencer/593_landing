@@ -1,5 +1,6 @@
 import { fetchMetaPeriodReach } from "@/lib/integrations/meta/insights";
 import { useMockPanelData } from "@/lib/integrations/tokens";
+import { isIntegrationDisabled } from "@/lib/panel/integrations";
 import { resolveMetaAccountId } from "@/lib/panel/meta-ad-account-map";
 import type { MockTenantBundle } from "@/lib/panel/mock-data";
 
@@ -11,7 +12,7 @@ export async function withMetaPeriodReach(
   bundle: MockTenantBundle,
   range: { from: string; to: string },
 ): Promise<MockTenantBundle> {
-  if (useMockPanelData()) return bundle;
+  if (useMockPanelData() || isIntegrationDisabled(bundle.tenant, "meta")) return bundle;
   const metaAccountId = resolveMetaAccountId({
     slug: bundle.tenant.slug,
     name: bundle.tenant.name,

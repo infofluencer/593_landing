@@ -18,6 +18,8 @@ export type MockTenant = {
   currency: string;
   visible: boolean;
   coverUrl: string | null;
+  /** Markada kapatılan platformlar (IntegrationKey) — canlı API çağrısı yapılmaz. */
+  disabledIntegrations?: string[];
   mapping: {
     adsCustomerId: string | null;
     ga4PropertyId: string | null;
@@ -76,6 +78,7 @@ export type MockSyncJob = {
   objective?: string;
   status: SyncStatus;
   lastSuccessAt: string | null;
+  lastErrorAt?: string | null;
   error: string | null;
 };
 

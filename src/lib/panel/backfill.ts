@@ -1,13 +1,15 @@
 import { prisma } from "@/lib/db";
 import { runAgencySync, type SyncSummary } from "@/lib/panel/sync";
+import { runWithSyncContext } from "@/lib/panel/sync-context";
 import { upsertSyncJob } from "@/lib/panel/sync-job";
 
 /**
  * Dönüşüm kuralları değişince sürümü artır → tüm aktif markalar yeniden doldurulur.
  * v2: Meta lead tekilleştirme, Google aksiyon filtresi, günlük Conversion + GA4.
+ * v3: Lead markada Google yalnızca mesaj / form / lead aksiyonları.
  */
 export const BACKFILL_SERVICE = "backfill";
-export const BACKFILL_VERSION = "conversions_v2";
+export const BACKFILL_VERSION = "conversions_v3";
 
 /** Bir markada bu süreden eski "running" kaydı yarıda kalmış sayılır. */
 const STALE_RUNNING_MS = 30 * 60 * 1000;
@@ -112,11 +114,13 @@ export async function runConversionBackfill(opts?: {
     });
 
     try {
-      const summary = await runAgencySync({
-        tenantSlug: t.slug,
-        mode: "backfill",
-        providers: ["meta", "google"],
-      });
+      const summary = await runWithSyncContext({ trigger: "backfill" }, () =>
+        runAgencySync({
+          tenantSlug: t.slug,
+          mode: "backfill",
+          providers: ["meta", "google"],
+        }),
+      );
       const errors = serviceErrors(summary, t.slug);
       // Eksik eşleştirme (ör. GA4 yok) markayı "başarısız" yapmaz; ayrıntı saklanır.
       await upsertSyncJob({

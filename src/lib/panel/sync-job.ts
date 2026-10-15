@@ -1,5 +1,6 @@
 import type { Provider, SyncStatus } from "@prisma/client";
 import { prisma } from "@/lib/db";
+import { currentSyncContext } from "@/lib/panel/sync-context";
 import { IntegrationNotConfiguredError } from "@/lib/integrations/tokens";
 
 const MAX_ATTEMPTS = 3;
@@ -26,10 +27,15 @@ export async function upsertSyncJob(opts: {
   status: SyncStatus;
   error?: string | null;
   markSuccess?: boolean;
+  /** Geçmiş satırına yazılır (bitiş durumlarında). */
+  startedAt?: Date | null;
+  /** runSynced'in yaptığı toplam deneme. */
+  attempts?: number;
 }) {
   const objective = opts.objective ?? "default";
   const now = new Date();
-  return prisma.syncJob.upsert({
+  const failed = opts.status === "error";
+  const job = await prisma.syncJob.upsert({
     where: {
       tenantId_provider_service_objective: {
         tenantId: opts.tenantId,
@@ -42,6 +48,7 @@ export async function upsertSyncJob(opts: {
       status: opts.status,
       error: opts.error ?? null,
       ...(opts.markSuccess ? { lastSuccessAt: now } : {}),
+      ...(failed ? { lastErrorAt: now } : {}),
       updatedAt: now,
     },
     create: {
@@ -52,8 +59,44 @@ export async function upsertSyncJob(opts: {
       status: opts.status,
       error: opts.error ?? null,
       lastSuccessAt: opts.markSuccess ? now : null,
+      lastErrorAt: failed ? now : null,
     },
   });
+
+  if (opts.status === "success" || failed) {
+    const ctx = currentSyncContext();
+    await prisma.syncRun.create({
+      data: {
+        tenantId: opts.tenantId,
+        provider: opts.provider,
+        service: opts.service,
+        objective,
+        status: opts.status,
+        error: opts.error ?? null,
+        startedAt: opts.startedAt ?? null,
+        finishedAt: now,
+        durationMs: opts.startedAt
+          ? now.getTime() - opts.startedAt.getTime()
+          : null,
+        trigger: ctx?.trigger ?? "manual",
+        actorEmail: ctx?.actorEmail ?? null,
+        attempts: opts.attempts ?? 1,
+      },
+    });
+  }
+
+  return job;
+}
+
+const SYNC_RUN_RETENTION_DAYS = 60;
+
+/** Eski geçmiş satırlarını temizler — zamanlayıcı günde bir çağırır. */
+export async function pruneSyncRuns() {
+  const cutoff = new Date(Date.now() - SYNC_RUN_RETENTION_DAYS * 86_400_000);
+  const { count } = await prisma.syncRun.deleteMany({
+    where: { finishedAt: { lt: cutoff } },
+  });
+  return count;
 }
 
 /**
@@ -69,6 +112,7 @@ export async function runSynced<T>(
   },
   fn: () => Promise<T>,
 ): Promise<{ ok: true; data: T } | { ok: false; error: string }> {
+  const startedAt = new Date();
   await upsertSyncJob({
     ...opts,
     status: "running",
@@ -76,7 +120,9 @@ export async function runSynced<T>(
   });
 
   let lastError = "unknown";
+  let attempts = 0;
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    attempts = attempt;
     try {
       const data = await fn();
       await upsertSyncJob({
@@ -84,6 +130,8 @@ export async function runSynced<T>(
         status: "success",
         error: null,
         markSuccess: true,
+        startedAt,
+        attempts: attempt,
       });
       return { ok: true, data };
     } catch (err) {
@@ -102,6 +150,8 @@ export async function runSynced<T>(
     ...opts,
     status: "error",
     error: lastError,
+    startedAt,
+    attempts,
   });
   // Never write zero metrics on failure.
   return { ok: false, error: lastError };

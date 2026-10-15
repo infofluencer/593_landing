@@ -8,7 +8,7 @@ import SignOutButton from "@/components/panel/SignOutButton";
 import PanelShell from "@/components/panel/ds/PanelShell";
 import {
   STAFF_NAV_LINKS,
-  TENANT_NAV_LINKS,
+  tenantNavLinks,
 } from "@/components/panel/ds/nav-config";
 import { prisma } from "@/lib/db";
 import { isStaffRole } from "@/lib/panel/host";
@@ -29,43 +29,6 @@ async function canAccessTenantMembership(
     select: { id: true },
   });
   return Boolean(row);
-}
-
-function staffPageTitle(browserPath: string): string {
-  if (browserPath === "/board" || browserPath.startsWith("/board/")) {
-    return "Durum tablosu";
-  }
-  if (browserPath === "/ekip" || browserPath.startsWith("/ekip/")) {
-    return "Ekip";
-  }
-  if (browserPath === "/settings" || browserPath.startsWith("/settings")) {
-    return "Ayarlar";
-  }
-  if (browserPath === "/design" || browserPath.startsWith("/design/")) {
-    return "Tasarım sistemi";
-  }
-  if (browserPath === "/brands/sync" || browserPath.startsWith("/brands/sync/")) {
-    return "Veri çekimi";
-  }
-  if (browserPath.startsWith("/brands/")) {
-    return "Marka detayı";
-  }
-  return "Markalar";
-}
-
-function tenantPageTitle(browserPath: string, brandName: string): string {
-  const map: Record<string, string> = {
-    "/": "Sunum",
-    "/meta": "Meta",
-    "/google": "Google Ads",
-    "/ga4": "GA4",
-    "/gtm": "GTM",
-    "/budget": "Bütçe",
-    "/faturalar": "Faturalar",
-    "/search-console": "Search Console",
-  };
-  const label = map[browserPath] ?? brandName;
-  return browserPath === "/" ? brandName : label;
 }
 
 export default async function PanelLayout({
@@ -110,6 +73,7 @@ export default async function PanelLayout({
       browserPath.startsWith("/board/") ||
       browserPath === "/ekip" ||
       browserPath.startsWith("/ekip/") ||
+      browserPath === "/audit" ||
       browserPath === "/settings" ||
       browserPath.startsWith("/settings") ||
       browserPath === "/design" ||
@@ -127,7 +91,6 @@ export default async function PanelLayout({
           <PanelShell
             variant="staff"
             nav={STAFF_NAV_LINKS}
-            pageTitle={staffPageTitle(browserPath)}
             userEmail={session.user.email ?? ""}
             userRoleLabel={session.user.role}
           >
@@ -193,8 +156,7 @@ export default async function PanelLayout({
       <Suspense fallback={null}>
         <PanelShell
           variant="tenant"
-          nav={TENANT_NAV_LINKS}
-          pageTitle={tenantPageTitle(browserPath, tenant.name)}
+          nav={tenantNavLinks(tenant.disabledIntegrations)}
           brandName={tenant.name}
           brandTypeLabel={typeLabel}
           userEmail={session.user.email ?? ""}

@@ -213,6 +213,8 @@ export async function runAgencySync(opts?: {
   for (const tenant of tenants) {
     const services: SyncSummary["tenants"][number]["services"] = {};
     const mapping = tenant.mapping;
+    // Markanın kullanmadığı platformlar — çağrı yapılmaz, hata kaydı açılmaz.
+    const off = new Set(tenant.disabledIntegrations);
     let adsCustomerId = resolveAdsCustomerId(tenant);
     const mapAdsId = adsCustomerIdFromCodeMap(tenant);
 
@@ -247,7 +249,7 @@ export async function runAgencySync(opts?: {
     }
 
     // --- Meta creatives (thumbnail / link) — önce (hızlı; timeout’tan önce kalsın) ---
-    if (doMeta && !lean) {
+    if (doMeta && !lean && !off.has("meta")) {
       // Eski birleşik ads/ad_daily job’ı UI’da “reduce data” hatası olarak kalıyordu
       await prisma.syncJob.deleteMany({
         where: {
@@ -325,7 +327,7 @@ export async function runAgencySync(opts?: {
     }
 
     // --- Meta insights (paid only) ---
-    if (doMeta) {
+    if (doMeta && !off.has("meta")) {
       const meta = await runSynced(
         {
           tenantId: tenant.id,
@@ -633,7 +635,9 @@ export async function runAgencySync(opts?: {
 
     if (doGoogle) {
       // --- Google Ads ---
-      if (!adsCustomerId) {
+      if (off.has("google_ads")) {
+        // Platform bu markada kullanılmıyor.
+      } else if (!adsCustomerId) {
         await runSynced(
           {
             tenantId: tenant.id,
@@ -872,7 +876,9 @@ export async function runAgencySync(opts?: {
 
       // --- GA4 (persist, günlük satırlar) ---
       const ga4PropertyId = resolveGa4PropertyId(tenant);
-      if (!ga4PropertyId) {
+      if (off.has("ga4")) {
+        // Platform bu markada kullanılmıyor.
+      } else if (!ga4PropertyId) {
         await runSynced(
           {
             tenantId: tenant.id,
@@ -964,7 +970,9 @@ export async function runAgencySync(opts?: {
 
       // --- GTM ---
       const gtmRef = resolveGtmApiRef(tenant);
-      if (!gtmRef) {
+      if (off.has("gtm")) {
+        // Platform bu markada kullanılmıyor.
+      } else if (!gtmRef) {
         await runSynced(
           {
             tenantId: tenant.id,
@@ -1006,7 +1014,7 @@ export async function runAgencySync(opts?: {
       }
 
       // --- Search Console ---
-      if (mapping?.gscSiteUrl) {
+      if (!off.has("gsc") && mapping?.gscSiteUrl) {
         const gsc = await runSynced(
           {
             tenantId: tenant.id,

@@ -3,6 +3,9 @@ import { headers } from "next/headers";
 import { notFound, redirect } from "next/navigation";
 import { auth } from "@/auth";
 import AlertActions from "@/components/panel/AlertActions";
+import AuditLogTable from "@/components/panel/AuditLogTable";
+import BrandIntegrationToggles from "@/components/panel/BrandIntegrationToggles";
+import BrandOwnerSelect from "@/components/panel/BrandOwnerSelect";
 import BrandBudgetPlanner from "@/components/panel/BrandBudgetPlanner";
 import BrandDetailHeaderActions from "@/components/panel/BrandDetailHeaderActions";
 import BrandPanelLinkActions from "@/components/panel/BrandPanelLinkActions";
@@ -17,6 +20,9 @@ import {
 } from "@/lib/panel/brand-logos";
 import { loadBrandBudgetPlan, tenantHasBudgetPlan } from "@/lib/panel/brand-budget";
 import { getBrandMissingIntegrations } from "@/lib/panel/brand-onboarding";
+import { resolveAdsCustomerId } from "@/lib/panel/google-ads-customer-map";
+import { resolveMetaAccountId } from "@/lib/panel/meta-ad-account-map";
+import { listAuditLogs, listStaffOptions } from "@/lib/panel/audit-query";
 import { getTenantBundle } from "@/lib/panel/data";
 import { formatDateTime, formatNumber, formatTry } from "@/lib/panel/format";
 import { isStaffRole, rootDomain } from "@/lib/panel/host";
@@ -247,7 +253,23 @@ export default async function BrandDetailPage({ params, searchParams }: Props) {
         }),
       ])
     : ([true, null] as const);
+  const [ownerRow, staffOptions, recentAudit]: [
+    { ownerId: string | null; disabledIntegrations: string[] } | null,
+    Awaited<ReturnType<typeof listStaffOptions>>,
+    Awaited<ReturnType<typeof listAuditLogs>>,
+  ] = existsInDb
+    ? await Promise.all([
+        prisma.tenant.findUnique({
+          where: { id: bundle.tenant.id },
+          select: { ownerId: true, disabledIntegrations: true },
+        }),
+        listStaffOptions(),
+        listAuditLogs({ tenantId: bundle.tenant.id, take: 10 }),
+      ])
+    : [null, [], { rows: [], nextBefore: null }];
+  const disabledIntegrations = ownerRow?.disabledIntegrations ?? [];
   const missing = getBrandMissingIntegrations({
+    disabled: disabledIntegrations,
     tenant: bundle.tenant,
     clientOk,
     budgetOk,
@@ -294,6 +316,14 @@ export default async function BrandDetailPage({ params, searchParams }: Props) {
               {bundle.tenant.type === "ecommerce" ? "E-ticaret" : "Lead"}
             </span>
             <code className="text-xs text-zinc-400">{bundle.tenant.slug}</code>
+            {existsInDb ? (
+              <BrandOwnerSelect
+                tenantSlug={bundle.tenant.slug}
+                ownerId={ownerRow?.ownerId ?? null}
+                staff={staffOptions}
+                disabled={!can(session.user.role, "brands.edit")}
+              />
+            ) : null}
           </div>
           <p className="mt-3 text-xs text-zinc-500">
             <Link href="/brands" className="text-[#e91825] hover:underline">
@@ -394,6 +424,21 @@ export default async function BrandDetailPage({ params, searchParams }: Props) {
         </div>
       </div>
 
+      {existsInDb ? (
+        <BrandIntegrationToggles
+          tenantSlug={bundle.tenant.slug}
+          disabled={disabledIntegrations}
+          canEdit={can(session.user.role, "brands.edit")}
+          connections={{
+            meta: resolveMetaAccountId(bundle.tenant),
+            google_ads: resolveAdsCustomerId(bundle.tenant),
+            ga4: bundle.tenant.mapping.ga4PropertyId ?? null,
+            gtm: bundle.tenant.mapping.gtmContainerId ?? null,
+            gsc: bundle.tenant.mapping.gscSiteUrl ?? null,
+          }}
+        />
+      ) : null}
+
       <BrandBudgetPlanner plan={budgetPlan} existsInDb={existsInDb} />
 
       <section className="space-y-4 rounded-xl border border-zinc-200 bg-white p-4 sm:p-5">
@@ -480,6 +525,7 @@ export default async function BrandDetailPage({ params, searchParams }: Props) {
               "Objective",
               "Durum",
               "Son başarı",
+              "Son hata",
               "Hata",
             ]}
           >
@@ -509,14 +555,37 @@ export default async function BrandDetailPage({ params, searchParams }: Props) {
                 <td className="px-3 py-2.5 text-xs text-zinc-500 whitespace-nowrap">
                   {formatDateTime(j.lastSuccessAt)}
                 </td>
+                <td className="px-3 py-2.5 text-xs text-zinc-500 whitespace-nowrap">
+                  {j.lastErrorAt ? formatDateTime(j.lastErrorAt) : "—"}
+                </td>
                 <td className="max-w-xs px-3 py-2.5 text-xs text-rose-600">
-                  {j.error ?? "—"}
+                  {j.status === "error" ? (j.error ?? "—") : "—"}
                 </td>
               </tr>
             ))}
           </PanelTable>
         )}
       </section>
+
+      {existsInDb ? (
+        <section className="space-y-4 rounded-xl border border-zinc-200 bg-white p-4 sm:p-5">
+          <div>
+            <h3 className="text-sm font-semibold text-zinc-900">
+              Son işlemler
+            </h3>
+            <p className="mt-1 text-xs text-zinc-500">
+              Bütçe, ayar ve hesap değişiklikleri ·{" "}
+              <Link
+                href={`/audit?tenant=${encodeURIComponent(bundle.tenant.slug)}`}
+                className="text-[#e91825] hover:underline"
+              >
+                Tümü
+              </Link>
+            </p>
+          </div>
+          <AuditLogTable rows={recentAudit.rows} showTenant={false} />
+        </section>
+      ) : null}
 
       <BrandSettingsDisclosure>
         {!existsInDb ? (

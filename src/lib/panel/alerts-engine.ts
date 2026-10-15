@@ -108,7 +108,10 @@ export async function evaluateTenantAlerts(tenantId: string) {
     mtdGoogle.reduce((s, m) => s + Number(m.conversions), 0) +
     mtdMeta.reduce((s, m) => s + Number(m.conversions ?? 0), 0);
 
-  if (!tenant.mapping?.adsCustomerId) {
+  // Kullanılmayan platformlar uyarı üretmez (marka detayı → Platformlar).
+  const off = new Set(tenant.disabledIntegrations);
+
+  if (!off.has("google_ads") && !tenant.mapping?.adsCustomerId) {
     await upsertOpenAlert({
       tenantId,
       type: "missing_mapping",
@@ -120,7 +123,7 @@ export async function evaluateTenantAlerts(tenantId: string) {
   const adsJob = tenant.syncJobs.find(
     (j) => j.provider === "google" && j.service === "ads",
   );
-  if (adsJob?.status === "error") {
+  if (!off.has("google_ads") && adsJob?.status === "error") {
     await upsertOpenAlert({
       tenantId,
       type: "sync_error",
@@ -132,7 +135,7 @@ export async function evaluateTenantAlerts(tenantId: string) {
   const metaJob = tenant.syncJobs.find(
     (j) => j.provider === "meta" && j.service === "insights",
   );
-  if (metaJob?.status === "error") {
+  if (!off.has("meta") && metaJob?.status === "error") {
     await upsertOpenAlert({
       tenantId,
       type: "sync_error_meta",
@@ -144,7 +147,7 @@ export async function evaluateTenantAlerts(tenantId: string) {
   const ga4Job = tenant.syncJobs.find(
     (j) => j.provider === "google" && j.service === "ga4",
   );
-  if (ga4Job?.status === "error") {
+  if (!off.has("ga4") && ga4Job?.status === "error") {
     await upsertOpenAlert({
       tenantId,
       type: "sync_error_ga4",

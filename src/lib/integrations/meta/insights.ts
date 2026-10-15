@@ -42,7 +42,7 @@ function actId(metaAccountId: string): string {
 
 /**
  * Tenant.type → primary KPI from Meta actions / action_values.
- * ecommerce: purchase (+ value/ROAS). lead: form lead + messaging conversations.
+ * ecommerce: purchase (+ value/ROAS). lead: yalnızca başlayan mesajlaşma.
  */
 export function deriveMetaKpis(
   type: TenantType,
@@ -63,9 +63,8 @@ export function deriveMetaKpis(
     };
   }
 
-  // Lead = form lead + başlayan mesajlaşma (ikisi ayrı olaylar, örtüşmez).
-  const { form, messaging } = deriveMetaLeadParts(actions);
-  const conversions = form + messaging;
+  // Lead markada Meta dönüşümü = başlayan mesajlaşma (form lead sayılmaz).
+  const { messaging: conversions } = deriveMetaLeadParts(actions);
   return {
     conversions,
     convValue: 0,

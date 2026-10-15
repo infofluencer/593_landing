@@ -1,9 +1,15 @@
 import { istanbulYmd } from "@/lib/date/tr";
 import { runScheduledDailySync } from "@/lib/panel/daily-sync";
+import { runLockedHourlySync } from "@/lib/panel/hourly-sync";
+import { runWithSyncContext } from "@/lib/panel/sync-context";
 
 const TICK_MS = 60_000;
 const SLOT_HOURS = [9, 18] as const;
 const SLOT_WINDOW_MINUTES = 15;
+/** Saatlik bugün harcaması + ödeme durumu: her saatin 5–14. dakikası. */
+const HOURLY_MINUTE_FROM = 5;
+const HOURLY_MINUTE_TO = 15;
+const HOURLY_MIN_INTERVAL_MS = 40 * 60 * 1000;
 
 type GlobalScheduler = typeof globalThis & {
   __593DailySyncScheduler?: boolean;
@@ -33,7 +39,8 @@ function slotKey(date = new Date()): string | null {
 }
 
 /**
- * Self-host `next start` — İstanbul 09:00 ve 18:00 civarı günlük sync.
+ * Self-host `next start` — İstanbul 09:00 ve 18:00 civarı günlük sync,
+ * ayrıca her saat bugünün saatlik harcaması + hesap/ödeme durumu.
  * Üst üste binmeyi daily-sync kilit satırı engeller.
  */
 export function startDailySyncScheduler() {
@@ -43,6 +50,26 @@ export function startDailySyncScheduler() {
 
   let lastSlot: string | null = null;
   let inFlight = false;
+  let lastHourly: string | null = null;
+  let hourlyInFlight = false;
+
+  const hourlyTick = async () => {
+    const { hour, minute } = istanbulClock();
+    if (minute < HOURLY_MINUTE_FROM || minute >= HOURLY_MINUTE_TO) return;
+    const key = `${istanbulYmd()}-${hour}`;
+    if (key === lastHourly || hourlyInFlight) return;
+    hourlyInFlight = true;
+    try {
+      await runWithSyncContext({ trigger: "cron" }, () =>
+        runLockedHourlySync({ minIntervalMs: HOURLY_MIN_INTERVAL_MS }),
+      );
+      lastHourly = key;
+    } catch (err) {
+      console.error("[hourly-sync scheduler]", err);
+    } finally {
+      hourlyInFlight = false;
+    }
+  };
 
   const tick = async () => {
     const slot = slotKey();
@@ -60,7 +87,9 @@ export function startDailySyncScheduler() {
   };
 
   void tick();
+  void hourlyTick();
   setInterval(() => {
     void tick();
+    void hourlyTick();
   }, TICK_MS);
 }

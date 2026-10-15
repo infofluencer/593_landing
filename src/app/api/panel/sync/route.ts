@@ -7,6 +7,7 @@ import {
   runAgencySync,
   type SyncProvider,
 } from "@/lib/panel/sync";
+import { runWithSyncContext } from "@/lib/panel/sync-context";
 import { upsertSyncJob } from "@/lib/panel/sync-job";
 import { can } from "@/lib/panel/permissions";
 
@@ -38,13 +39,17 @@ export async function POST(request: Request) {
   let tenantSlug: string | undefined;
   let siteVerify: boolean | undefined;
   let providers: SyncProvider[] | undefined;
+  let retry = false;
   try {
     const body = (await request.json()) as {
       tenantSlug?: string;
       siteVerify?: boolean;
       providers?: unknown;
       provider?: unknown;
+      /** "Yeniden dene" butonundan geldiyse log'da ayrı görünür. */
+      trigger?: unknown;
     };
+    retry = body.trigger === "retry";
     tenantSlug = body.tenantSlug?.trim() || undefined;
     siteVerify = body.siteVerify;
     if (body.provider === "meta" || body.provider === "google") {
@@ -91,7 +96,12 @@ export async function POST(request: Request) {
     }
   }
 
-  after(async () => {
+  const syncCtx = {
+    trigger: retry ? ("retry" as const) : ("manual" as const),
+    actorEmail: session.user.email?.trim().toLowerCase() || null,
+  };
+
+  after(() => runWithSyncContext(syncCtx, async () => {
     try {
       const summary = await runAgencySync({
         tenantSlug,
@@ -135,7 +145,7 @@ export async function POST(request: Request) {
         }
       }
     }
-  });
+  }));
 
   return NextResponse.json({
     ok: true,

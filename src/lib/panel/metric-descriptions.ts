@@ -26,13 +26,13 @@ export const METRIC_DESCRIPTIONS = {
   conversions: {
     title: "Dönüşüm",
     description:
-      "E-ticaret: yalnızca satın alım (Meta purchase; Google Ads PURCHASE kategorisi). Lead: Meta form lead + başlayan mesajlaşma; Google Ads birincil dönüşümler (sayfa görüntüleme, sepete ekleme gibi mikro adımlar hariç). Meta atıfı reklam setinin kendi ayarıyla; Google tıklama tarihine yazılır, son 30 gün sonradan artabilir.",
+      "E-ticaret: yalnızca satın alım (Meta purchase; Google Ads PURCHASE kategorisi). Lead: Meta'da yalnızca başlayan mesajlaşma; Google Ads'te mesaj, form ve lead aksiyonları (sayfa görüntüleme, tıklama, yol tarifi gibi adımlar hariç). Meta atıfı reklam setinin kendi ayarıyla; Google tıklama tarihine yazılır, son 30 gün sonradan artabilir.",
     formula: "Platformda sayılan dönüşüm adedi (kanal düz toplamı)",
   },
   conv: {
     title: "Dönüşüm",
     description:
-      "E-ticaret: yalnızca satın alım (Meta purchase; Google Ads PURCHASE kategorisi). Lead: Meta form lead + başlayan mesajlaşma; Google Ads birincil dönüşümler (sayfa görüntüleme, sepete ekleme gibi mikro adımlar hariç). Meta atıfı reklam setinin kendi ayarıyla; Google tıklama tarihine yazılır, son 30 gün sonradan artabilir.",
+      "E-ticaret: yalnızca satın alım (Meta purchase; Google Ads PURCHASE kategorisi). Lead: Meta'da yalnızca başlayan mesajlaşma; Google Ads'te mesaj, form ve lead aksiyonları (sayfa görüntüleme, tıklama, yol tarifi gibi adımlar hariç). Meta atıfı reklam setinin kendi ayarıyla; Google tıklama tarihine yazılır, son 30 gün sonradan artabilir.",
     formula: "Platformda sayılan dönüşüm adedi",
   },
   cpl: {

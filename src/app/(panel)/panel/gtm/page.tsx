@@ -9,6 +9,7 @@ import { PanelTable } from "@/components/panel/ui";
 import { requireBundle } from "@/lib/panel/data";
 import { fetchGtmSnapshotResolved } from "@/lib/integrations/google/gtm";
 import { resolveGtmApiRef, resolveGtmPublicId } from "@/lib/panel/gtm-container-map";
+import { isIntegrationDisabled } from "@/lib/panel/integrations";
 import { useMockPanelData } from "@/lib/integrations/tokens";
 import { formatDateTime } from "@/lib/panel/format";
 import { prisma } from "@/lib/db";
@@ -52,7 +53,7 @@ async function GtmConfigSection({
   let liveError: string | null = null;
   let mode: "mock" | "live" | "empty" = useMockPanelData() ? "mock" : "empty";
 
-  if (!useMockPanelData() && gtmRef) {
+  if (!useMockPanelData() && gtmRef && !isIntegrationDisabled(tenant, "gtm")) {
     try {
       const { snapshot, path } = await fetchGtmSnapshotResolved(gtmRef);
       publicId = snapshot.publicId || expectedPublicId || gtmRef;

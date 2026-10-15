@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { audit } from "@/lib/panel/audit";
 import { requirePermissionApi, resolveStaffUserId } from "@/lib/panel/staff-auth";
 
 export const runtime = "nodejs";
@@ -15,7 +16,7 @@ export async function DELETE(
   const { id } = await ctx.params;
   const user = await prisma.user.findFirst({
     where: { id, role: { in: ["admin", "team"] } },
-    select: { id: true, role: true },
+    select: { id: true, role: true, email: true, name: true },
   });
   if (!user) {
     return NextResponse.json({ error: "Kullanıcı bulunamadı" }, { status: 404 });
@@ -40,5 +41,12 @@ export async function DELETE(
   }
 
   await prisma.user.delete({ where: { id: user.id } });
+  await audit(session, {
+    action: "user.delete",
+    entity: "user",
+    entityId: user.id,
+    summary: `${user.email} (${user.role}) silindi`,
+    before: { email: user.email, name: user.name, role: user.role },
+  });
   return NextResponse.json({ ok: true });
 }

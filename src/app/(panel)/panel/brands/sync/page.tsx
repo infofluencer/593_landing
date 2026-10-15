@@ -3,6 +3,7 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { BackfillPanel } from "@/components/panel/BackfillPanel";
+import SyncButton from "@/components/panel/SyncButton";
 import { PanelTable } from "@/components/panel/ui";
 import { formatDate, formatDateTime, formatNumber } from "@/lib/panel/format";
 import { isStaffRole } from "@/lib/panel/host";
@@ -79,8 +80,8 @@ export default async function BrandSyncAuditPage() {
         </h2>
         <p className="mt-1 max-w-2xl text-sm text-zinc-500">
           Meta Graph ve Google Ads API çağrılarının kaydı. Logolu markalarda
-          günde iki kez otomatik (09:00 / 18:00 İstanbul); kanıt satır sayısı
-          ve son metrik günü.
+          günde iki kez otomatik (09:00 / 18:00 İstanbul); kanıt satır sayısı,
+          son metrik günü ve son 7 günün hatalı çekimleri.
         </p>
       </div>
 
@@ -220,6 +221,45 @@ export default async function BrandSyncAuditPage() {
             )}
           </section>
 
+          {audit.recentFailures.length > 0 ? (
+            <section className="space-y-3 rounded-xl border border-rose-200 bg-white p-4 sm:p-5">
+              <div>
+                <h3 className="text-sm font-semibold text-zinc-900">
+                  Son hatalı çekimler
+                </h3>
+                <p className="mt-1 text-xs text-zinc-500">
+                  Son 7 gün · sonradan düzelmiş olanlar dahil
+                </p>
+              </div>
+              <PanelTable headers={["Zaman", "Marka", "API", "Çağrı", "Hata"]}>
+                {audit.recentFailures.map((f) => (
+                  <tr key={f.id} className="text-zinc-700">
+                    <td className="px-3 py-2.5 text-xs whitespace-nowrap text-zinc-500">
+                      {formatDateTime(f.finishedAt)}
+                    </td>
+                    <td className="px-3 py-2.5">
+                      <Link
+                        href={`/brands/${encodeURIComponent(f.slug)}`}
+                        className="text-sm font-medium text-zinc-900 hover:underline"
+                      >
+                        {f.brand}
+                      </Link>
+                    </td>
+                    <td className="px-3 py-2.5 text-xs font-medium text-zinc-800">
+                      {f.api}
+                    </td>
+                    <td className="px-3 py-2.5 font-mono text-[11px] text-zinc-600">
+                      {f.call}
+                    </td>
+                    <td className="max-w-md px-3 py-2.5 text-xs text-rose-600">
+                      {f.error ?? "—"}
+                    </td>
+                  </tr>
+                ))}
+              </PanelTable>
+            </section>
+          ) : null}
+
           <section className="space-y-3 rounded-xl border border-zinc-200 bg-white p-4 sm:p-5">
             <div>
               <h3 className="text-sm font-semibold text-zinc-900">
@@ -243,7 +283,9 @@ export default async function BrandSyncAuditPage() {
                   "Çağrı",
                   "Durum",
                   "Son başarı",
+                  "Son hata",
                   "Hata",
+                  "",
                 ]}
               >
                 {audit.calls.map((c) => (
@@ -276,8 +318,22 @@ export default async function BrandSyncAuditPage() {
                     <td className="px-3 py-2.5 text-xs whitespace-nowrap text-zinc-500">
                       {formatDateTime(c.lastSuccessAt)}
                     </td>
+                    <td className="px-3 py-2.5 text-xs whitespace-nowrap text-zinc-500">
+                      {c.lastErrorAt ? formatDateTime(c.lastErrorAt) : "—"}
+                    </td>
                     <td className="max-w-xs px-3 py-2.5 text-xs text-rose-600">
-                      {c.error ?? "—"}
+                      {c.status === "error" ? (c.error ?? "—") : "—"}
+                    </td>
+                    <td className="px-3 py-2.5">
+                      {c.status === "error" && c.service !== "cron" ? (
+                        <SyncButton
+                          provider={c.provider}
+                          tenantSlug={c.slug}
+                          label="Yeniden dene"
+                          retry
+                          compact
+                        />
+                      ) : null}
                     </td>
                   </tr>
                 ))}

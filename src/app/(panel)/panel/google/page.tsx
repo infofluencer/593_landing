@@ -22,6 +22,7 @@ import {
 import { useMockPanelData } from "@/lib/integrations/tokens";
 import { requireBundle } from "@/lib/panel/data";
 import { resolveAdsCustomerId } from "@/lib/panel/google-ads-customer-map";
+import { isIntegrationDisabled } from "@/lib/panel/integrations";
 import { resolvePanelDateRange } from "@/lib/panel/period";
 import { buildPresentation } from "@/lib/panel/presentation";
 import {
@@ -256,12 +257,14 @@ export default async function GooglePage({
     mapping: bundle.tenant.mapping,
   });
 
+  const adsDisabled = isIntegrationDisabled(bundle.tenant, "google_ads");
   const live = await loadLiveAdsDetail(
-    adsCustomerId,
+    adsDisabled ? null : adsCustomerId,
     range.startDate,
     range.endDate,
     bundle.tenant.type,
   );
+  if (adsDisabled) live.skippedReason = "Google Ads bu markada kapalı";
 
   const chartData = ch.campaigns.map((c) => ({
     name: c.campaign.length > 22 ? `${c.campaign.slice(0, 20)}…` : c.campaign,

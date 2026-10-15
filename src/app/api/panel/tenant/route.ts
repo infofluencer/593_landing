@@ -1,11 +1,19 @@
 import { NextResponse } from "next/server";
 import { headers } from "next/headers";
-import type { TenantType } from "@prisma/client";
+import type { Prisma, TenantType } from "@prisma/client";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/db";
+import { resolveAlert } from "@/lib/panel/alerts-engine";
+import { audit, diffFields } from "@/lib/panel/audit";
 import { deleteBrandCoverFile } from "@/lib/panel/brand-cover";
 import { validatePanelSlug } from "@/lib/panel/client-email";
 import { sanitizeMappingForDb } from "@/lib/panel/mapping-placeholders";
+import {
+  ALERT_TYPES_BY_INTEGRATION,
+  integrationForJob,
+  isIntegrationKey,
+  type IntegrationKey,
+} from "@/lib/panel/integrations";
 import { can } from "@/lib/panel/permissions";
 
 export const runtime = "nodejs";
@@ -22,6 +30,10 @@ type PatchBody = {
   timezone?: string;
   currency?: string;
   visible?: boolean;
+  /** Ajans içi sorumlu (staff User.id); null = kaldır. */
+  ownerId?: string | null;
+  /** Markanın kullanmadığı platformlar (bkz. lib/panel/integrations). */
+  disabledIntegrations?: string[];
   mapping?: {
     adsCustomerId?: string | null;
     ga4PropertyId?: string | null;
@@ -48,6 +60,78 @@ function normalizeMetaAccountId(
 ): string {
   if (!raw) return `act_manual_${slugFallback}`;
   return raw.startsWith("act_") ? raw : `act_${raw.replace(/^act_/, "")}`;
+}
+
+/**
+ * Kapatılan platformun eski hata izlerini temizler: SyncJob satırları,
+ * hesap/ödeme durumu ve açık alarmlar. Geçmiş SyncRun logu korunur.
+ */
+async function cleanupDisabledIntegrations(
+  tenantId: string,
+  keys: IntegrationKey[],
+  by: string,
+) {
+  const jobs = await prisma.syncJob.findMany({
+    where: { tenantId },
+    select: { id: true, provider: true, service: true },
+  });
+  const jobIds = jobs
+    .filter((j) => {
+      const key = integrationForJob(j.provider, j.service);
+      return key && keys.includes(key);
+    })
+    .map((j) => j.id);
+  if (jobIds.length) {
+    await prisma.syncJob.deleteMany({ where: { id: { in: jobIds } } });
+  }
+  const providers = [
+    ...(keys.includes("meta") ? (["meta"] as const) : []),
+    ...(keys.includes("google_ads") ? (["google"] as const) : []),
+  ];
+  if (providers.length) {
+    await prisma.accountHealth.deleteMany({
+      where: { tenantId, provider: { in: [...providers] } },
+    });
+  }
+  const alertTypes = keys.flatMap((k) => ALERT_TYPES_BY_INTEGRATION[k]);
+  if (alertTypes.length) {
+    const open = await prisma.alert.findMany({
+      where: { tenantId, resolved: false, type: { in: alertTypes } },
+      select: { id: true },
+    });
+    for (const a of open) {
+      await resolveAlert({ alertId: a.id, by, note: "Platform bu markada kullanılmıyor" });
+    }
+  }
+}
+
+type TenantWithSettings = Prisma.TenantGetPayload<{
+  include: { mapping: true; thresholds: true };
+}>;
+
+/** Audit için düz alanlar — id/zaman damgaları hariç. */
+function auditSnapshot(t: TenantWithSettings | null): Record<string, unknown> {
+  if (!t) return {};
+  return {
+    name: t.name,
+    slug: t.slug,
+    type: t.type,
+    website: t.website,
+    metaAccountId: t.metaAccountId,
+    timezone: t.timezone,
+    currency: t.currency,
+    visible: t.visible,
+    ownerId: t.ownerId,
+    disabledIntegrations: t.disabledIntegrations.join(", ") || null,
+    adsCustomerId: t.mapping?.adsCustomerId ?? null,
+    ga4PropertyId: t.mapping?.ga4PropertyId ?? null,
+    gtmContainerId: t.mapping?.gtmContainerId ?? null,
+    gscSiteUrl: t.mapping?.gscSiteUrl ?? null,
+    merchantId: t.mapping?.merchantId ?? null,
+    budgetPaceWarnPct: t.thresholds?.budgetPaceWarnPct ?? null,
+    convDropoutDays: t.thresholds?.convDropoutDays ?? null,
+    minSpendForAlert: t.thresholds?.minSpendForAlert?.toString() ?? null,
+  };
 }
 
 /** Admin/team — update tenant identity / mapping / thresholds (wizard parity). */
@@ -143,6 +227,37 @@ export async function PATCH(request: Request) {
     }
   }
 
+  let nextDisabled = tenant.disabledIntegrations;
+  if (body.disabledIntegrations !== undefined) {
+    if (
+      !Array.isArray(body.disabledIntegrations) ||
+      !body.disabledIntegrations.every(isIntegrationKey)
+    ) {
+      return NextResponse.json({ error: "Geçersiz platform" }, { status: 400 });
+    }
+    nextDisabled = Array.from(new Set(body.disabledIntegrations)).sort();
+  }
+  const newlyDisabled = nextDisabled.filter(
+    (k) => !tenant.disabledIntegrations.includes(k),
+  ) as IntegrationKey[];
+
+  let nextOwnerId = tenant.ownerId;
+  if (body.ownerId !== undefined) {
+    nextOwnerId = emptyToNull(body.ownerId);
+    if (nextOwnerId) {
+      const owner = await prisma.user.findFirst({
+        where: { id: nextOwnerId, role: { in: ["admin", "team"] } },
+        select: { id: true },
+      });
+      if (!owner) {
+        return NextResponse.json(
+          { error: "Sorumlu yalnızca ajans kullanıcısı olabilir" },
+          { status: 400 },
+        );
+      }
+    }
+  }
+
   try {
     await prisma.$transaction(async (tx) => {
       await tx.tenant.update({
@@ -164,6 +279,10 @@ export async function PATCH(request: Request) {
           ...(body.timezone ? { timezone: body.timezone } : {}),
           ...(body.currency ? { currency: body.currency } : {}),
           ...(typeof body.visible === "boolean" ? { visible: body.visible } : {}),
+          ...(body.ownerId !== undefined ? { ownerId: nextOwnerId } : {}),
+          ...(body.disabledIntegrations !== undefined
+            ? { disabledIntegrations: nextDisabled }
+            : {}),
         },
       });
 
@@ -245,10 +364,26 @@ export async function PATCH(request: Request) {
       }
     });
 
+    if (newlyDisabled.length) {
+      await cleanupDisabledIntegrations(tenant.id, newlyDisabled, session.user.email ?? "panel");
+    }
+
     const updated = await prisma.tenant.findUnique({
       where: { id: tenant.id },
       include: { mapping: true, thresholds: true },
     });
+
+    const changes = diffFields(auditSnapshot(tenant), auditSnapshot(updated));
+    if (changes) {
+      await audit(session, {
+        action: "tenant.update",
+        entity: "tenant",
+        entityId: tenant.id,
+        tenantId: tenant.id,
+        summary: `${tenant.name} ayarları: ${Object.keys(changes.after).join(", ")}`,
+        ...changes,
+      });
+    }
 
     return NextResponse.json({
       ok: true,
@@ -312,6 +447,13 @@ export async function DELETE(request: Request) {
 
     await prisma.tenant.delete({ where: { id: tenant.id } });
     await deleteBrandCoverFile(tenant.id);
+    await audit(session, {
+      action: "tenant.delete",
+      entity: "tenant",
+      entityId: tenant.id,
+      summary: `${tenant.name} (${tenant.slug}) silindi`,
+      before: tenant,
+    });
 
     // Yalnızca bu markaya bağlı kalan client kullanıcıları temizle
     if (memberUserIds.length) {

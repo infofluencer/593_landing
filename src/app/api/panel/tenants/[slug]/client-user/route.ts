@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/db";
+import { audit } from "@/lib/panel/audit";
 import {
   assertClientEmailForPanel,
   normalizePanelSlug,
@@ -191,6 +192,19 @@ export async function POST(
       },
       update: {},
       create: { userId: user.id, tenantId: tenant.id },
+    });
+
+    // Şifre değeri asla loglanmaz — yalnızca değişti bilgisi.
+    await audit(session, {
+      action: membershipUser || emailOwner ? "client_user.update" : "client_user.create",
+      entity: "user",
+      entityId: user.id,
+      tenantId: tenant.id,
+      summary: `${tenant.name} müşteri hesabı: ${email}${passwordHash ? " · şifre güncellendi" : ""}${slugChanged ? ` · panel adresi ${tenant.slug} → ${nextPanelSlug}` : ""}`,
+      before: membershipUser
+        ? { email: membershipUser.email, name: membershipUser.name, slug: tenant.slug }
+        : undefined,
+      after: { email, name: user.name, slug: nextPanelSlug, passwordChanged: Boolean(passwordHash) },
     });
 
     return NextResponse.json({

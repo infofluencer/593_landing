@@ -3,11 +3,18 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import AddBrandWizard from "@/components/panel/AddBrandWizard";
+import AgencyBrandTable from "@/components/panel/AgencyBrandTable";
 import AgencyBrandGrid, {
   AgencyBrandArrangeProvider,
   AgencyBrandEditButton,
 } from "@/components/panel/AgencyBrandGrid";
 import { BulkSyncToolbar } from "@/components/panel/SyncButton";
+import { btnSecondary, chipClass } from "@/components/panel/ds/buttons";
+import { listStaffOptions } from "@/lib/panel/audit-query";
+import { formatBudgetMonthLabel } from "@/lib/panel/brand-budget";
+import { loadAgencyResults } from "@/lib/panel/agency-results";
+import { loadBrandTable } from "@/lib/panel/brand-table";
+import { getHourlySyncState } from "@/lib/panel/hourly-sync";
 import { countAgencyBrands, listAgencyBrands } from "@/lib/panel/data";
 import { isStaffRole, rootDomain } from "@/lib/panel/host";
 import { can } from "@/lib/panel/permissions";
@@ -19,7 +26,7 @@ import { can } from "@/lib/panel/permissions";
 export default async function BrandsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ status?: string }>;
+  searchParams: Promise<{ status?: string; view?: string }>;
 }) {
   const session = await auth();
   if (!session?.user) redirect("/login");
@@ -36,19 +43,45 @@ export default async function BrandsPage({
   const root = rootDomain();
   const sp = await searchParams;
   const showInactive = sp.status === "inactive";
+  const tableView = sp.view === "table";
   const access = {
     role: session.user.role,
     tenantIds: session.user.tenantIds,
     hostSlug: "admin",
   };
 
-  const [brands, counts] = await Promise.all([
-    listAgencyBrands({
-      ...access,
-      visible: !showInactive,
-    }),
+  const [brands, counts, table, staff, hourlySync] = await Promise.all([
+    tableView
+      ? Promise.resolve([])
+      : listAgencyBrands({
+          ...access,
+          visible: !showInactive,
+        }),
     countAgencyBrands(access),
+    tableView ? loadBrandTable({ ...access, visible: !showInactive }) : null,
+    tableView ? listStaffOptions() : Promise.resolve([]),
+    tableView
+      ? getHourlySyncState()
+      : Promise.resolve({ running: false, lastSuccessAt: null, lastError: null }),
   ]);
+
+  const results = table
+    ? await loadAgencyResults({
+        tenants: table.rows,
+        today: table.today,
+        month: table.month,
+      })
+    : null;
+
+  /** Durum + görünüm parametrelerini koruyarak link üretir. */
+  const brandsHref = (next: { inactive?: boolean; table?: boolean }) => {
+    const q = new URLSearchParams();
+    if (next.inactive ?? showInactive) q.set("status", "inactive");
+    if (next.table ?? tableView) q.set("view", "table");
+    const qs = q.toString();
+    return qs ? `/brands?${qs}` : "/brands";
+  };
+  const toggleClass = chipClass;
 
   return (
     <AgencyBrandArrangeProvider enabled={brands.length > 0}>
@@ -72,37 +105,62 @@ export default async function BrandsPage({
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex flex-wrap gap-1.5">
-          <Link
-            href="/brands/sync"
-            className="rounded-md border border-zinc-200 bg-white px-2.5 py-1 text-xs font-medium text-zinc-600 transition hover:border-zinc-300 hover:text-zinc-900"
-          >
+        <div className="flex flex-wrap gap-2">
+          <Link href="/brands/sync" className={btnSecondary}>
             Veri çekimi
           </Link>
           <Link
-            href="/brands"
-            className={`rounded-md border px-2.5 py-1 text-xs font-medium transition ${
-              !showInactive
-                ? "border-[#e91825]/40 bg-[#e91825]/10 text-[#e91825]"
-                : "border-zinc-200 bg-white text-zinc-600 hover:border-zinc-300 hover:text-zinc-900"
-            }`}
+            href={brandsHref({ inactive: false })}
+            className={toggleClass(!showInactive)}
           >
             Aktif ({counts.active})
           </Link>
           <Link
-            href="/brands?status=inactive"
-            className={`rounded-md border px-2.5 py-1 text-xs font-medium transition ${
-              showInactive
-                ? "border-[#e91825]/40 bg-[#e91825]/10 text-[#e91825]"
-                : "border-zinc-200 bg-white text-zinc-600 hover:border-zinc-300 hover:text-zinc-900"
-            }`}
+            href={brandsHref({ inactive: true })}
+            className={toggleClass(showInactive)}
           >
             Devre dışı ({counts.inactive})
           </Link>
         </div>
-        <AgencyBrandEditButton />
+        <div className="flex flex-wrap items-center gap-1.5">
+          <div
+            className="flex gap-2"
+            role="group"
+            aria-label="Görünüm"
+          >
+            <Link
+              href={brandsHref({ table: false })}
+              aria-current={!tableView ? "page" : undefined}
+              className={toggleClass(!tableView)}
+            >
+              Kart
+            </Link>
+            <Link
+              href={brandsHref({ table: true })}
+              aria-current={tableView ? "page" : undefined}
+              className={toggleClass(tableView)}
+            >
+              Tablo
+            </Link>
+          </div>
+          {tableView ? null : <AgencyBrandEditButton />}
+        </div>
       </div>
 
+      {table && results ? (
+        <AgencyBrandTable
+          rows={table.rows}
+          monthLabel={formatBudgetMonthLabel(table.month)}
+          today={table.today}
+          daysInMonth={table.daysInMonth}
+          currentHour={table.currentHour}
+          hourlySync={hourlySync}
+          results={results}
+          staff={staff}
+        />
+      ) : null}
+
+      {tableView ? null : (
       <ol className="rounded-lg border border-zinc-200 bg-zinc-50/80 px-4 py-3 text-xs leading-relaxed text-zinc-600">
         <li>
           1. Meta’da hesap BM’de olsun · system user’a varlık ata (
@@ -130,8 +188,9 @@ export default async function BrandsPage({
           ile müşteri girişini doğrula · eksikler için Ayarlar.
         </li>
       </ol>
+      )}
 
-      {brands.length === 0 ? (
+      {tableView ? null : brands.length === 0 ? (
         <p className="rounded-xl border border-dashed border-zinc-300 bg-white px-4 py-10 text-center text-sm text-zinc-500">
           {showInactive
             ? "Devre dışı marka yok."

@@ -81,7 +81,7 @@ function formatAdsHttpError(
   );
 }
 
-async function adsSearch(opts: {
+export async function adsSearch(opts: {
   customerId: string;
   query: string;
 }): Promise<{ json: AdsErrorJson & { results?: unknown[] } }> {
@@ -158,7 +158,7 @@ export type AdsConversionDayRow = {
  * Harcama·gösterim·tıklama tüm kampanyadan. conv/convValue aksiyon segmentinden,
  * marka tipine göre süzülür (countsAsPanelConversion):
  * - ecommerce: yalnızca satın alım (PURCHASE / STORE_SALE / satın alım adı)
- * - lead: sayfa görüntüleme / sepete ekleme gibi mikro adımlar hariç birincil aksiyonlar
+ * - lead: yalnızca mesaj / form / lead aksiyonları
  * Kaldırılmış (REMOVED) kampanyalar da çekilir — geçmiş harcama eksilmesin.
  */
 export async function fetchGoogleAdsCampaignMetrics(opts: {

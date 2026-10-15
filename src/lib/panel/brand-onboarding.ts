@@ -6,8 +6,11 @@ export function getBrandMissingIntegrations(opts: {
   tenant: MockTenant;
   clientOk: boolean;
   budgetOk?: boolean;
+  /** Markanın kullanmadığı platformlar — eksik sayılmaz. */
+  disabled?: readonly string[];
 }): string[] {
   const { tenant, clientOk } = opts;
+  const off = new Set(opts.disabled ?? []);
   const adsOk = Boolean(
     resolveAdsCustomerId({
       slug: tenant.slug,
@@ -27,11 +30,11 @@ export function getBrandMissingIntegrations(opts: {
   const gscOk = Boolean(tenant.mapping.gscSiteUrl);
 
   const missing: string[] = [];
-  if (!metaOk) missing.push("Meta");
-  if (!adsOk) missing.push("Ads");
-  if (!ga4Ok) missing.push("GA4");
-  if (!gtmOk) missing.push("GTM");
-  if (!gscOk) missing.push("GSC");
+  if (!metaOk && !off.has("meta")) missing.push("Meta");
+  if (!adsOk && !off.has("google_ads")) missing.push("Ads");
+  if (!ga4Ok && !off.has("ga4")) missing.push("GA4");
+  if (!gtmOk && !off.has("gtm")) missing.push("GTM");
+  if (!gscOk && !off.has("gsc")) missing.push("GSC");
   if (!clientOk) missing.push("müşteri");
   if (opts.budgetOk === false) missing.push("bütçe");
   return missing;

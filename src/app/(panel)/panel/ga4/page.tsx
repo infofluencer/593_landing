@@ -5,6 +5,7 @@ import { StatusBadge } from "@/components/panel/StatusBadge";
 import { KPICard, DataTable } from "@/components/panel/ds";
 import { requireBundle } from "@/lib/panel/data";
 import { resolveGa4PropertyId } from "@/lib/panel/ga4-property-map";
+import { isIntegrationDisabled } from "@/lib/panel/integrations";
 import { resolvePanelDateRange } from "@/lib/panel/period";
 import {
   fetchGa4Snapshot,
@@ -116,7 +117,7 @@ export default async function Ga4Page({
     ? "mock"
     : "empty";
 
-  if (!useMockPanelData() && ga4Property) {
+  if (!useMockPanelData() && ga4Property && !isIntegrationDisabled(tenant, "ga4")) {
     try {
       const snap = await fetchGa4Snapshot({
         propertyId: ga4Property,

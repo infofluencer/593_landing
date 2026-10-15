@@ -1,7 +1,8 @@
 import { prisma } from "@/lib/db";
 import { hasBrandLogo } from "@/lib/panel/brand-logos";
 import { runAgencySync, type SyncSummary } from "@/lib/panel/sync";
-import { upsertSyncJob } from "@/lib/panel/sync-job";
+import { runWithSyncContext } from "@/lib/panel/sync-context";
+import { pruneSyncRuns, upsertSyncJob } from "@/lib/panel/sync-job";
 import { syncEnvProblems } from "@/lib/integrations/tokens";
 
 const LOCK_SERVICE = "cron";
@@ -91,11 +92,13 @@ export async function runScheduledDailySync(): Promise<DailySyncResult> {
   }
 
   try {
-    const summary = await runAgencySync({
-      mode: "daily",
-      logoOnly: true,
-      providers: ["meta", "google"],
-    });
+    const summary = await runWithSyncContext({ trigger: "cron" }, () =>
+      runAgencySync({
+        mode: "daily",
+        logoOnly: true,
+        providers: ["meta", "google"],
+      }),
+    );
 
     for (const t of tenants) {
       for (const provider of ["meta", "google"] as const) {
@@ -143,6 +146,10 @@ export async function runScheduledDailySync(): Promise<DailySyncResult> {
           .join(" · ") || null,
       markSuccess: true,
     });
+
+    await pruneSyncRuns().catch((err) =>
+      console.error("[daily sync] SyncRun temizliği", err),
+    );
 
     return { slugs: tenants.map((t) => t.slug), summary };
   } catch (err) {

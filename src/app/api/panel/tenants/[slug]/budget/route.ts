@@ -6,6 +6,7 @@ import {
   saveBrandBudgetYear,
   type BudgetProvider,
 } from "@/lib/panel/brand-budget";
+import { audit, diffFields } from "@/lib/panel/audit";
 import { requireStaffApi } from "@/lib/panel/staff-auth";
 
 export const runtime = "nodejs";
@@ -46,8 +47,41 @@ async function findTenant(ctx: { params: Promise<{ slug: string }> }) {
   const slug = raw.trim().toLowerCase();
   return prisma.tenant.findUnique({
     where: { slug },
-    select: { id: true },
+    select: { id: true, name: true },
   });
+}
+
+/** Audit için ay bazında plan özeti — `YYYY-MM` / `YYYY-MM:provider:campaignId` anahtarlı. */
+async function budgetSnapshot(
+  tenantId: string,
+  months: string[],
+): Promise<Record<string, unknown>> {
+  const [plans, campaigns] = await Promise.all([
+    prisma.tenantBudget.findMany({
+      where: { tenantId, month: { in: months } },
+    }),
+    prisma.campaignBudget.findMany({
+      where: { tenantId, month: { in: months } },
+    }),
+  ]);
+  const out: Record<string, unknown> = {};
+  for (const p of plans) {
+    out[p.month] = {
+      monthly: p.monthlyBudget?.toString() ?? null,
+      daily: p.dailyBudget?.toString() ?? null,
+      google: p.googleBudget?.toString() ?? null,
+      meta: p.metaBudget?.toString() ?? null,
+      note: p.note,
+    };
+  }
+  for (const c of campaigns) {
+    out[`${c.month}:${c.provider}:${c.campaignId}`] = {
+      name: c.campaignName,
+      monthly: c.monthlyBudget?.toString() ?? null,
+      daily: c.dailyBudget?.toString() ?? null,
+    };
+  }
+  return out;
 }
 
 /** Admin/team — marka + kampanya bütçe planı (İstanbul ayı). */
@@ -55,7 +89,7 @@ export async function PATCH(
   request: Request,
   ctx: { params: Promise<{ slug: string }> },
 ) {
-  const { error } = await requireStaffApi();
+  const { session, error } = await requireStaffApi();
   if (error) return error;
 
   const tenant = await findTenant(ctx);
@@ -75,6 +109,7 @@ export async function PATCH(
     return NextResponse.json({ error: "Ay gerekli" }, { status: 400 });
   }
 
+  const before = await budgetSnapshot(tenant.id, [month]);
   try {
     const campaigns = Array.isArray(body.campaigns) ? body.campaigns : [];
     await saveBrandBudgetPlan(tenant.id, {
@@ -106,6 +141,18 @@ export async function PATCH(
     return NextResponse.json({ error: message }, { status: 400 });
   }
 
+  const changes = diffFields(before, await budgetSnapshot(tenant.id, [month]));
+  if (changes) {
+    await audit(session, {
+      action: "budget.update",
+      entity: "budget",
+      entityId: month,
+      tenantId: tenant.id,
+      summary: `${tenant.name} · ${month} bütçe planı`,
+      ...changes,
+    });
+  }
+
   return NextResponse.json({ ok: true });
 }
 
@@ -114,7 +161,7 @@ export async function PUT(
   request: Request,
   ctx: { params: Promise<{ slug: string }> },
 ) {
-  const { error } = await requireStaffApi();
+  const { session, error } = await requireStaffApi();
   if (error) return error;
 
   const tenant = await findTenant(ctx);
@@ -135,6 +182,8 @@ export async function PUT(
     return NextResponse.json({ error: "En fazla 24 ay" }, { status: 400 });
   }
 
+  const months = body.months.map((row) => row.month?.trim() ?? "");
+  const before = await budgetSnapshot(tenant.id, months);
   try {
     await saveBrandBudgetYear(
       tenant.id,
@@ -148,6 +197,17 @@ export async function PUT(
   } catch (err) {
     const message = err instanceof Error ? err.message : "Kaydedilemedi";
     return NextResponse.json({ error: message }, { status: 400 });
+  }
+
+  const changes = diffFields(before, await budgetSnapshot(tenant.id, months));
+  if (changes) {
+    await audit(session, {
+      action: "budget.year_update",
+      entity: "budget",
+      tenantId: tenant.id,
+      summary: `${tenant.name} · yıllık plan (${Object.keys(changes.after).join(", ")})`,
+      ...changes,
+    });
   }
 
   return NextResponse.json({ ok: true });

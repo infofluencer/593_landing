@@ -95,9 +95,15 @@ model Tenant {
   coverUrl      String?
   /// Ajans marka ızgarası sırası (küçük = önce)
   sortOrder     Int        @default(0)
+  /// Markanın ajans içi sorumlusu (tablo filtresi + bildirim alıcısı).
+  ownerId       String?
+  /// Markanın kullanmadığı platformlar (meta | google_ads | ga4 | gtm | gsc) —
+  /// senkron atlar, eksik eşleşme/hata uyarı sayılmaz.
+  disabledIntegrations String[] @default([])
   createdAt     DateTime   @default(now())
   updatedAt     DateTime   @updatedAt
 
+  owner           User?      @relation("TenantOwner", fields: [ownerId], references: [id], onDelete: SetNull)
   mapping         TenantMapping?
   thresholds      TenantThreshold?
   siteVerification SiteVerification?
@@ -117,6 +123,12 @@ model Tenant {
   budgets         TenantBudget[]
   campaignBudgets CampaignBudget[]
   campaignAliases CampaignAlias[]
+  syncRuns        SyncRun[]
+  auditLogs       AuditLog[]
+  hourlySpend     HourlySpend[]
+  accountHealth   AccountHealth[]
+
+  @@index([ownerId])
 }
 
 /// Marka aylık / günlük plan (İstanbul takvim ayı). Kampanya satırları ayrı.
@@ -243,6 +255,8 @@ model User {
   cardAssignments  BoardCardAssignee[]
   createdCards     BoardCard[]  @relation("CardCreator")
   cardActivities   BoardCardActivity[]
+  ownedTenants     Tenant[]     @relation("TenantOwner")
+  auditLogs        AuditLog[]
 }
 
 /// Ajans içi sabit ekip (src/lib/panel/teams.ts). Üye çoka-çok (TeamMember).
@@ -676,6 +690,7 @@ model SyncJob {
   objective     String     @default("default")
   status        SyncStatus @default(pending)
   lastSuccessAt DateTime?
+  lastErrorAt   DateTime?
   error         String?
   createdAt     DateTime   @default(now())
   updatedAt     DateTime   @updatedAt
@@ -684,4 +699,97 @@ model SyncJob {
 
   @@unique([tenantId, provider, service, objective])
   @@index([tenantId, status])
+}
+
+/// Senkron birimi geçmişi — SyncJob yalnızca son durumu tutar.
+model SyncRun {
+  id         String     @id @default(cuid())
+  tenantId   String
+  provider   Provider
+  service    String
+  objective  String     @default("default")
+  status     SyncStatus
+  error      String?
+  startedAt  DateTime?
+  finishedAt DateTime   @default(now())
+  durationMs Int?
+  /// manual | retry | cron | backfill
+  trigger    String     @default("manual")
+  /// Manuel / yeniden dene tetikleyen kullanıcı (cron'da boş).
+  actorEmail String?
+  /// Geçici hatada yeniden deneme dahil toplam deneme.
+  attempts   Int        @default(1)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, finishedAt])
+  @@index([finishedAt])
+  @@index([status, finishedAt])
+}
+
+/// Kim, neyi, ne zaman değiştirdi (bütçe, plan, marka, kullanıcı, ekip).
+model AuditLog {
+  id         String   @id @default(cuid())
+  actorId    String?
+  /// Kullanıcı silinse de iz kalsın.
+  actorEmail String?
+  /// örn. budget.update, tenant.update, user.delete
+  action     String
+  /// tenant | budget | campaign_budget | user | team | board_card
+  entity     String
+  entityId   String?
+  tenantId   String?
+  summary    String   @default("")
+  before     Json?
+  after      Json?
+  createdAt  DateTime @default(now())
+
+  actor  User?   @relation(fields: [actorId], references: [id], onDelete: SetNull)
+  tenant Tenant? @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt])
+  @@index([tenantId, createdAt])
+  @@index([actorId, createdAt])
+  @@index([entity, entityId])
+}
+
+/// Bugünün saatlik harcaması (Meta: reklamveren saat dilimi, Google: hesap saat dilimi).
+/// Saatlik senkron günü baştan yazar; geçmiş günler için günlük tablolar esastır.
+model HourlySpend {
+  id          String   @id @default(cuid())
+  tenantId    String
+  provider    Provider
+  date        DateTime @db.Date
+  /// 0–23
+  hour        Int
+  spend       Decimal  @default(0) @db.Decimal(14, 2)
+  impressions Int      @default(0)
+  clicks      Int      @default(0)
+  updatedAt   DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, provider, date, hour])
+  @@index([date])
+}
+
+/// Reklam hesabı / ödeme durumu — saatlik kontrol, son durum.
+model AccountHealth {
+  id        String   @id @default(cuid())
+  tenantId  String
+  provider  Provider
+  /// ok | warn | critical | unknown
+  status    String
+  /// Kısa Türkçe etiket (ör. "Ödenmemiş bakiye")
+  label     String
+  detail    String?
+  /// Ham API alanları (account_status, disable_reason, bütçe vb.)
+  raw       Json     @default("{}")
+  checkedAt DateTime @default(now())
+  /// Durum en son ne zaman değişti (bildirim tekrarını önlemek için).
+  changedAt DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, provider])
 }

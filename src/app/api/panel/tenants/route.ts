@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import type { TenantType } from "@prisma/client";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/db";
+import { audit } from "@/lib/panel/audit";
 import { slugifyTr } from "@/lib/integrations/slugify";
 import { validatePanelSlug } from "@/lib/panel/client-email";
 import { sanitizeMappingForDb } from "@/lib/panel/mapping-placeholders";
@@ -111,6 +112,15 @@ export async function POST(request: Request) {
         thresholds: { create: {} },
       },
       include: { mapping: true, thresholds: true },
+    });
+
+    await audit(session, {
+      action: "tenant.create",
+      entity: "tenant",
+      entityId: tenant.id,
+      tenantId: tenant.id,
+      summary: `${tenant.name} (${tenant.slug}) eklendi`,
+      after: { name, slug, type, metaAccountId, mapping: m },
     });
 
     return NextResponse.json({ ok: true, tenant }, { status: 201 });

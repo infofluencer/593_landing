@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import type { BoardCardPriority, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
+import { audit } from "@/lib/panel/audit";
 import {
   boardCardInclude,
   serializeBoardCard,
@@ -379,7 +380,7 @@ export async function DELETE(
   _request: Request,
   ctx: { params: Promise<{ id: string }> },
 ) {
-  const { error } = await requirePermissionApi("board.deleteCards");
+  const { session, error } = await requirePermissionApi("board.deleteCards");
   if (error) return error;
 
   const { id } = await ctx.params;
@@ -401,6 +402,21 @@ export async function DELETE(
         data: { position: i },
       });
     }
+  });
+
+  await audit(session, {
+    action: "board_card.delete",
+    entity: "board_card",
+    entityId: existing.id,
+    tenantId: existing.tenantId,
+    summary: `Kart silindi: ${existing.title}`,
+    before: {
+      title: existing.title,
+      description: existing.description,
+      columnId: existing.columnId,
+      teamId: existing.teamId,
+      priority: existing.priority,
+    },
   });
 
   return NextResponse.json({ ok: true });

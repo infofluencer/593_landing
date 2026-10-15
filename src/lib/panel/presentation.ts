@@ -348,7 +348,7 @@ export function buildPresentation(
 export const METRIC_HELP = {
   spend: "Reklama harcanan tutar",
   clicks: "Reklama tıklayan kişi sayısı",
-  conv: "E-ticarette yalnızca Satın alım ücreti; lead’de form / WhatsApp",
+  conv: "E-ticarette yalnızca satın alım; lead’de Meta mesajlaşma + Google mesaj / form / lead",
   roas: "Her 1 TL harcamaya karşılık gelen ciro",
   cpa: "Bir satışın ortalama maliyeti",
   cpl: "Bir lead’in ortalama maliyeti",

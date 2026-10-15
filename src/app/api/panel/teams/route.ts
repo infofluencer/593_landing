@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/db";
+import { audit } from "@/lib/panel/audit";
 import { can } from "@/lib/panel/permissions";
 import { requirePermissionApi, requireStaffApi } from "@/lib/panel/staff-auth";
 import {
@@ -43,7 +44,7 @@ type CreateMemberBody = {
 
 /** POST — yeni staff kullanıcı (yalnızca admin). Ekipler sabittir. */
 export async function POST(request: Request) {
-  const { error } = await requirePermissionApi("users.manage");
+  const { session, error } = await requirePermissionApi("users.manage");
   if (error) return error;
 
   let body: CreateMemberBody;
@@ -113,6 +114,14 @@ export async function POST(request: Request) {
           : undefined,
     },
     select: staffSelect(true),
+  });
+
+  await audit(session, {
+    action: "user.create",
+    entity: "user",
+    entityId: user.id,
+    summary: `${email} (${role}) eklendi`,
+    after: { email, name, role, teamIds },
   });
 
   return NextResponse.json({ user }, { status: 201 });

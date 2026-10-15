@@ -16,8 +16,21 @@ export type SyncAuditCall = {
   objective: string;
   status: "pending" | "running" | "success" | "error";
   lastSuccessAt: string | null;
+  lastErrorAt: string | null;
   updatedAt: string;
   error: string | null;
+};
+
+/** SyncRun geçmişinden hatalı çekim satırı. */
+export type SyncAuditFailure = {
+  id: string;
+  slug: string;
+  brand: string;
+  provider: "meta" | "google";
+  api: string;
+  call: string;
+  error: string | null;
+  finishedAt: string;
 };
 
 export type SyncAuditBrand = {
@@ -47,10 +60,13 @@ export type SyncAudit = {
   cron: SyncAuditCron | null;
   brands: SyncAuditBrand[];
   calls: SyncAuditCall[];
+  recentFailures: SyncAuditFailure[];
   todaySuccess: number;
   errorCount: number;
   logoCount: number;
 };
+
+const RECENT_FAILURE_MS = 7 * 24 * 60 * 60 * 1000;
 
 const STATUS = new Set(["pending", "running", "success", "error"]);
 
@@ -63,7 +79,7 @@ function ymdOf(date: Date | null | undefined): string | null {
   return date.toISOString().slice(0, 10);
 }
 
-function describeCall(
+export function describeCall(
   provider: "meta" | "google",
   service: string,
   objective: string,
@@ -73,6 +89,22 @@ function describeCall(
       api: "Sistem",
       call: "Otomatik günlük sync (09:00 / 18:00 İstanbul)",
     };
+  }
+  if (service === "cron" && objective === "hourly_sync") {
+    return { api: "Sistem", call: "Saatlik bugün harcaması + ödeme durumu" };
+  }
+  if (service === "hourly") {
+    return provider === "meta"
+      ? { api: "Meta Graph", call: "GET /{act_id}/insights · bugün · saatlik" }
+      : { api: "Google Ads", call: "GAQL · bugün · segments.hour" };
+  }
+  if (service === "account_status") {
+    return provider === "meta"
+      ? { api: "Meta Graph", call: "GET /{act_id} · hesap / ödeme durumu" }
+      : { api: "Google Ads", call: "GAQL · hesap + faturalama durumu" };
+  }
+  if (service === "backfill") {
+    return { api: "Sistem", call: "Geçmiş dönüşüm doldurma (backfill)" };
   }
   if (service === "panel_sync") {
     return {
@@ -138,6 +170,7 @@ export async function loadSyncAudit(): Promise<SyncAudit> {
       cron: null,
       brands: [],
       calls: [],
+      recentFailures: [],
       todaySuccess: 0,
       errorCount: 0,
       logoCount: 0,
@@ -269,6 +302,7 @@ export async function loadSyncAudit(): Promise<SyncAudit> {
         objective: job.objective,
         status,
         lastSuccessAt,
+        lastErrorAt: job.lastErrorAt?.toISOString() ?? null,
         updatedAt: job.updatedAt.toISOString(),
         error: job.error,
       });
@@ -294,11 +328,38 @@ export async function loadSyncAudit(): Promise<SyncAudit> {
 
   calls.sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1));
 
+  const failureRows = tenantIds.length
+    ? await prisma.syncRun.findMany({
+        where: {
+          tenantId: { in: tenantIds },
+          status: "error",
+          finishedAt: { gte: new Date(Date.now() - RECENT_FAILURE_MS) },
+        },
+        orderBy: { finishedAt: "desc" },
+        take: 50,
+      })
+    : [];
+  const tenantById = new Map(tenants.map((t) => [t.id, t]));
+  const recentFailures: SyncAuditFailure[] = failureRows.map((row) => {
+    const provider = row.provider === "google" ? "google" : "meta";
+    const tenant = tenantById.get(row.tenantId);
+    return {
+      id: row.id,
+      slug: tenant?.slug ?? "",
+      brand: tenant?.name ?? "",
+      provider,
+      ...describeCall(provider, row.service, row.objective),
+      error: row.error,
+      finishedAt: row.finishedAt.toISOString(),
+    };
+  });
+
   return {
     mock: false,
     cron,
     brands,
     calls,
+    recentFailures,
     todaySuccess,
     errorCount,
     logoCount,

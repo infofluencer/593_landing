@@ -12,6 +12,7 @@ import {
 import {
   Building2,
   ClipboardList,
+  History,
   LayoutDashboard,
   LogOut,
   Menu,
@@ -24,7 +25,11 @@ import {
 } from "lucide-react";
 import { signOut } from "next-auth/react";
 import { BrandNavIcon, isBrandNavHref } from "./BrandMarks";
-import type { PanelNavLink } from "./nav-config";
+import {
+  staffPageTitle,
+  tenantPageTitle,
+  type PanelNavLink,
+} from "./nav-config";
 import { PeriodNavIndicator } from "../period-nav/PeriodNavUi";
 
 const PERIOD_KEYS = ["period", "start", "end", "compare"] as const;
@@ -36,6 +41,7 @@ const NAV_ICONS: Record<string, LucideIcon> = {
   "/brands": Building2,
   "/board": ClipboardList,
   "/ekip": Users,
+  "/audit": History,
   "/settings": Settings,
   "/design": Palette,
 };
@@ -47,7 +53,6 @@ function iconFor(href: string): LucideIcon {
 type ShellProps = {
   variant: "staff" | "tenant";
   nav: PanelNavLink[];
-  pageTitle: string;
   brandName?: string;
   brandTypeLabel?: string;
   userEmail: string;
@@ -59,7 +64,6 @@ type ShellProps = {
 export default function PanelShell({
   variant,
   nav,
-  pageTitle,
   brandName,
   brandTypeLabel,
   userEmail,
@@ -70,6 +74,11 @@ export default function PanelShell({
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
   const drawerId = useId();
+  // Layout client geçişlerinde yeniden render edilmez — başlık burada, URL'den.
+  const pageTitle =
+    variant === "staff"
+      ? staffPageTitle(pathname)
+      : tenantPageTitle(pathname, brandName ?? "");
 
   const close = useCallback(() => setOpen(false), []);
 
