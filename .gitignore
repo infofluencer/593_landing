@@ -17,11 +17,9 @@
 /.next/
 /out/
 
-# uploaded brand covers
+# uploaded brand covers — uploads/brands/ repoda tutulur (deploy'da kaybolmasın)
 /public/uploads/brands/*
 !/public/uploads/brands/.gitkeep
-/uploads/brands/*
-!/uploads/brands/.gitkeep
 
 # production
 /build
