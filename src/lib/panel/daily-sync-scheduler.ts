@@ -1,5 +1,6 @@
 import { istanbulYmd } from "@/lib/date/tr";
 import { runScheduledDailySync } from "@/lib/panel/daily-sync";
+import { runScheduledReports } from "@/lib/panel/brand-report";
 import { runLockedHourlySync } from "@/lib/panel/hourly-sync";
 import { runWithSyncContext } from "@/lib/panel/sync-context";
 
@@ -79,6 +80,13 @@ export function startDailySyncScheduler() {
       const result = await runScheduledDailySync();
       if (!result.skipped) lastSlot = slot;
       else if (result.reason === "Bu slot zaten çekildi.") lastSlot = slot;
+      if (!result.skipped) {
+        // Haftalık (Pazartesi) / aylık (ayın 1'i) müşteri raporları — tekrarı
+        // BrandReport kaydı engeller.
+        await runScheduledReports().catch((err) =>
+          console.error("[report scheduler]", err),
+        );
+      }
     } catch (err) {
       console.error("[daily-sync scheduler]", err);
     } finally {

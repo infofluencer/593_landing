@@ -1,4 +1,5 @@
 import { getMetaSystemUserToken } from "@/lib/integrations/tokens";
+import { graphFetch } from "@/lib/integrations/meta/graph";
 
 const GRAPH = "https://graph.facebook.com/v21.0";
 
@@ -57,8 +58,8 @@ function ymdToUnixEnd(ymd: string): number {
 }
 
 async function graphGet<T>(url: string): Promise<GraphPage<T>> {
-  const res = await fetch(url, { method: "GET" });
-  const json = (await res.json()) as GraphPage<T>;
+  const { res, json: rawJson } = await graphFetch(url, { method: "GET" });
+  const json = rawJson as GraphPage<T>;
   if (!res.ok || json.error) {
     throw new Error(
       json.error?.message || `Meta Graph error ${res.status} on activities`,

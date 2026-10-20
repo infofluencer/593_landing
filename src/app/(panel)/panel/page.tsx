@@ -10,6 +10,7 @@ import { requireBundle } from "@/lib/panel/data";
 import { withMetaPeriodReach } from "@/lib/panel/meta-reach";
 import { resolvePanelDateRange } from "@/lib/panel/period";
 import { buildPresentation } from "@/lib/panel/presentation";
+import { loadTenantStatus } from "@/lib/panel/tenant-status";
 
 /**
  * Marka paneli ana sayfa — yalnızca host subdomain markasının üyesi.
@@ -29,35 +30,40 @@ export default async function PanelHomePage({
 
   const sp = await searchParams;
   const range = await resolvePanelDateRange(sp);
-  const bundle = await withMetaPeriodReach(
-    await requireBundle(hostSlug, {
+  const [bundle, budgetPlan] = await Promise.all([
+    withMetaPeriodReach(
+      await requireBundle(hostSlug, {
+        from: range.startDate,
+        to: range.endDate,
+      }),
+      { from: range.startDate, to: range.endDate },
+    ),
+    loadBrandBudgetPlan(hostSlug, {
       from: range.startDate,
       to: range.endDate,
     }),
-    { from: range.startDate, to: range.endDate },
-  );
-  const model = buildPresentation(bundle, range.label);
-  const budgetPlan = await loadBrandBudgetPlan(hostSlug, {
-    from: range.startDate,
-    to: range.endDate,
-  });
+  ]);
+  const status = await loadTenantStatus(bundle, budgetPlan);
+  const model = buildPresentation(bundle, range.label, status);
 
   return (
     <div className="space-y-6">
-      <div className="rounded-panel-md border border-panel-ok/25 bg-panel-ok-bg px-3 py-2 text-xs leading-5 text-panel-ok">
-        Bu ekran <strong className="font-semibold">{model.brand}</strong>{" "}
-        markasına özeldir. Başka firmanın verisi burada görünmez.
-      </div>
-
       <Suspense fallback={null}>
         <DateRangePicker label={range.label} showCompare={false} />
       </Suspense>
 
-      {budgetPlan ? (
-        <BudgetPlanVsActual plan={budgetPlan} variant="compact" />
-      ) : null}
-
-      <PresentationDashboard model={model} />
+      <PresentationDashboard
+        model={model}
+        budget={
+          budgetPlan ? (
+            <BudgetPlanVsActual
+              plan={budgetPlan}
+              variant="compact"
+              statusReasons={status.budget.reasons.map((r) => r.text)}
+            />
+          ) : undefined
+        }
+      />
     </div>
   );
 }

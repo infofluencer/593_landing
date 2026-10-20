@@ -1,34 +1,37 @@
 import { headers } from "next/headers";
 import { Suspense } from "react";
-import {
-  CampaignBarChart,
-  MetaDailyChart,
-} from "@/components/panel/charts";
 import BudgetPlanVsActual from "@/components/panel/BudgetPlanVsActual";
 import PeriodFilterBar from "@/components/panel/PeriodFilterBar";
 import { TimezoneNotice } from "@/components/panel/TimezoneNotice";
 import { StatusBadge } from "@/components/panel/StatusBadge";
-import { KPICard, DataTable } from "@/components/panel/ds";
-import { Delta } from "@/components/panel/ui";
+import { DataTable } from "@/components/panel/ds";
+import { DeltaCell } from "@/components/panel/ds/DeltaCell";
+import {
+  CompareBarChart,
+  CompareTrendChart,
+  DonutChart,
+  LabeledBarChart,
+  StatTile,
+  type ComparePoint,
+} from "@/components/panel/ds/viz";
+import { META_COLOR, deltaPct } from "@/components/panel/ds/chart-theme";
 import { loadBrandBudgetPlan } from "@/lib/panel/brand-budget";
 import { requireBundle } from "@/lib/panel/data";
 import { withMetaPeriodReach } from "@/lib/panel/meta-reach";
 import { resolvePanelDateRange } from "@/lib/panel/period";
 import {
-  CHANNEL_BRAND,
+  bucketSeries,
   buildPresentation,
+  type SeriesPoint,
 } from "@/lib/panel/presentation";
+import { loadTenantStatus } from "@/lib/panel/tenant-status";
 import {
-  deltaPct,
   derivedMetrics,
-  type MockCampaignMetric,
   type MockMetaAdPerformance,
   type MockMetaAdsetPerformance,
   type MockMetaBreakdownRow,
 } from "@/lib/panel/mock-data";
 import { formatNumber, formatTry } from "@/lib/panel/format";
-
-const META_COLOR = CHANNEL_BRAND.meta;
 
 function statusTr(raw: string): string {
   switch (raw.toUpperCase()) {
@@ -78,61 +81,6 @@ function breakdownKeyTr(
     return map[key] || key;
   }
   return key;
-}
-
-function MetricRow({
-  label,
-  current,
-  previous,
-  currency,
-  ecommerce,
-}: {
-  label: string;
-  current: MockCampaignMetric;
-  previous: MockCampaignMetric | undefined;
-  currency: string;
-  ecommerce: boolean;
-}) {
-  const c = derivedMetrics(current);
-  const p = previous ? derivedMetrics(previous) : null;
-
-  return (
-    <tr {...(label === "Toplam" ? { "data-total": true } : {})}>
-      <td className="font-medium text-panel-fg">{label}</td>
-      <td className="num">
-        {formatTry(current.spend, currency)}
-        <div>
-          <Delta
-            value={p ? deltaPct(current.spend, previous!.spend) : null}
-            invert
-          />
-        </div>
-      </td>
-      <td className="num">
-        {current.reach != null ? formatNumber(current.reach) : "—"}
-      </td>
-      <td className="num">{formatNumber(current.impr)}</td>
-      <td className="num">{formatNumber(current.clicks)}</td>
-      <td className="num">{formatNumber(c.ctr, 2)}%</td>
-      <td className="num">{formatNumber(current.conv, 1)}</td>
-      {ecommerce ? (
-        <>
-          <td className="num">
-            {current.spend > 0 && current.convValue > 0
-              ? `${formatNumber(c.roas, 2)}x`
-              : "—"}
-          </td>
-          <td className="num">
-            {current.conv > 0 ? formatTry(c.cpa, currency) : "—"}
-          </td>
-        </>
-      ) : (
-        <td className="num">
-          {current.conv > 0 ? formatTry(c.cpa, currency) : "—"}
-        </td>
-      )}
-    </tr>
-  );
 }
 
 function rollupAdsetsFromAds(
@@ -185,11 +133,10 @@ function CreativeCard({
     conv: ad.conv,
     convValue: ad.convValue,
   });
-  // Prefer full imageUrl; thumbnail_url is often tiny and looks blurry in cards
+  // Tam boy görsel yoksa 720px küçük resim (senkronda büyük istenir).
   const thumb = ad.imageUrl || ad.thumbnailUrl;
   const publishedUrl = ad.permalinkUrl;
   const destinationUrl = ad.linkUrl;
-  const isActive = ad.effectiveStatus === "ACTIVE";
   return (
     <article className="overflow-hidden rounded-xl border border-zinc-200 bg-white">
       <div className="relative aspect-[4/3] bg-zinc-100">
@@ -228,13 +175,7 @@ function CreativeCard({
             Görsel yok
           </div>
         )}
-        <span
-          className={`pointer-events-none absolute left-2 top-2 rounded-md px-2 py-0.5 text-[10px] font-medium ${
-            isActive
-              ? "bg-emerald-600 text-white"
-              : "bg-zinc-800/80 text-white"
-          }`}
-        >
+        <span className="pointer-events-none absolute left-2 top-2 rounded-md bg-emerald-600 px-2 py-0.5 text-[10px] font-medium text-white">
           {statusTr(ad.effectiveStatus)}
         </span>
       </div>
@@ -326,75 +267,25 @@ function CreativeCard({
   );
 }
 
-function BreakdownTable({
-  title,
-  hint,
-  rows,
-  kind,
-  currency,
-  ecommerce,
-  resultLabel,
-}: {
-  title: string;
-  hint: string;
-  rows: MockMetaBreakdownRow[];
-  kind: MockMetaBreakdownRow["breakdown"];
-  currency: string;
-  ecommerce: boolean;
-  resultLabel: string;
-}) {
-  const filtered = rows
+function cmp(
+  cur: SeriesPoint[],
+  prev: SeriesPoint[],
+  key: keyof Omit<SeriesPoint, "label">,
+): ComparePoint[] {
+  return cur.map((p, i) => ({
+    label: p.label,
+    current: p[key],
+    previous: prev[i] ? prev[i]![key] : null,
+  }));
+}
+
+function breakdownRows(
+  rows: MockMetaBreakdownRow[],
+  kind: MockMetaBreakdownRow["breakdown"],
+): Array<{ name: string; value: number }> {
+  return rows
     .filter((r) => r.breakdown === kind)
-    .sort((a, b) => b.spend - a.spend);
-  if (!filtered.length) return null;
-  return (
-    <div className="space-y-2">
-      <div>
-        <h3 className="text-sm font-semibold text-zinc-800">{title}</h3>
-        <p className="mt-1 text-[11px] text-zinc-500">{hint}</p>
-      </div>
-      <DataTable
-        headers={[
-          "Kırılım",
-          "Harcama",
-          "Tıklama",
-          resultLabel,
-          ecommerce ? "Getiri" : "Maliyet",
-        ]}
-        numericCols={[1, 2, 3, 4]}
-      >
-        {filtered.map((row) => {
-          const d = derivedMetrics({
-            campaign: row.key,
-            spend: row.spend,
-            impr: row.impr,
-            clicks: row.clicks,
-            conv: row.conv,
-            convValue: row.convValue,
-          });
-          return (
-            <tr key={`${row.breakdown}-${row.key}`}>
-              <td className="font-medium text-panel-fg">
-                {breakdownKeyTr(kind, row.key)}
-              </td>
-              <td className="num">{formatTry(row.spend, currency)}</td>
-              <td className="num">{formatNumber(row.clicks)}</td>
-              <td className="num">{formatNumber(row.conv, 1)}</td>
-              <td className="num">
-                {ecommerce
-                  ? row.spend > 0
-                    ? `${formatNumber(d.roas, 2)}x`
-                    : "—"
-                  : row.conv > 0
-                    ? formatTry(d.cpa, currency)
-                    : "—"}
-              </td>
-            </tr>
-          );
-        })}
-      </DataTable>
-    </div>
-  );
+    .map((r) => ({ name: breakdownKeyTr(kind, r.key), value: Math.round(r.spend) }));
 }
 
 export default async function MetaPage({
@@ -406,104 +297,79 @@ export default async function MetaPage({
   const slug = h.get("x-tenant-slug")!;
   const sp = await searchParams;
   const range = await resolvePanelDateRange(sp);
-  const bundle = await withMetaPeriodReach(
-    await requireBundle(slug, {
-      from: range.startDate,
-      to: range.endDate,
-    }),
-    { from: range.startDate, to: range.endDate },
-  );
-  const model = buildPresentation(bundle, range.label);
-  const budgetPlan = await loadBrandBudgetPlan(slug, {
-    from: range.startDate,
-    to: range.endDate,
-  });
+  const [bundle, budgetPlan] = await Promise.all([
+    withMetaPeriodReach(
+      await requireBundle(slug, { from: range.startDate, to: range.endDate }),
+      { from: range.startDate, to: range.endDate },
+    ),
+    loadBrandBudgetPlan(slug, { from: range.startDate, to: range.endDate }),
+  ]);
+  const status = await loadTenantStatus(bundle, budgetPlan);
+  const model = buildPresentation(bundle, range.label, status);
   const ch = model.meta;
   const ecommerce = model.tenantType === "ecommerce";
-  const metaAds = bundle.metaAds;
   const { metaCurrent, metaPrevious } = bundle;
+  const cur = metaCurrent.account;
+  const prev = metaPrevious.account;
   const currency = model.currency;
+  const unknown = ch.status === "unknown";
+  const d = derivedMetrics(cur);
+  const dPrev = derivedMetrics(prev);
 
-  const chartData = ch.campaigns.map((c) => ({
-    name: c.campaign.length > 22 ? `${c.campaign.slice(0, 20)}…` : c.campaign,
-    harcama: c.spend,
-  }));
+  const series = bucketSeries(bundle.metaDaily, range.startDate, range.endDate);
+  const prevSeries = bucketSeries(
+    bundle.prevDaily?.meta ?? [],
+    metaPrevious.from,
+    metaPrevious.to,
+  );
 
+  // Yalnızca yayındaki reklamlar / kampanyalar listelenir.
+  const activeAds = bundle.metaAds
+    .filter((a) => a.effectiveStatus === "ACTIVE")
+    .sort((a, b) => b.spend - a.spend);
+  const activeCampaignIds = new Set(
+    activeAds.map((a) => a.campaignId).filter((x): x is string => Boolean(x)),
+  );
+  const activeCampaignNames = new Set(activeAds.map((a) => a.campaignName));
+  const hasActiveInfo = activeAds.length > 0;
+  const campaigns = metaCurrent.campaigns.filter((c) =>
+    hasActiveInfo
+      ? (c.campaignId != null && activeCampaignIds.has(c.campaignId)) ||
+        activeCampaignNames.has(c.campaign)
+      : c.spend > 0,
+  );
   const prevByName = new Map(
     metaPrevious.campaigns.map((c) => [c.campaignId ?? c.campaign, c] as const),
+  );
+  const adsetsAll =
+    bundle.metaAdsets.length > 0
+      ? bundle.metaAdsets
+      : rollupAdsetsFromAds(bundle.metaAds);
+  const adsets = adsetsAll.filter((row) =>
+    hasActiveInfo ? activeCampaignNames.has(row.campaignName) : row.spend > 0,
   );
 
   const formLeads = bundle.conversions
     .filter((c) => c.kind === "form" && c.source.toLowerCase().includes("meta"))
     .reduce((s, c) => s + c.count, 0);
   const waLeads = bundle.conversions
-    .filter(
-      (c) => c.kind === "whatsapp" && c.source.toLowerCase().includes("meta"),
-    )
+    .filter((c) => c.kind === "whatsapp" && c.source.toLowerCase().includes("meta"))
     .reduce((s, c) => s + c.count, 0);
-
-  const adsets =
-    bundle.metaAdsets.length > 0
-      ? bundle.metaAdsets
-      : rollupAdsetsFromAds(metaAds);
-  const activeAds = metaAds.filter((a) => a.effectiveStatus === "ACTIVE");
-  const pastAds = metaAds.filter((a) => a.effectiveStatus !== "ACTIVE");
 
   const funnel = bundle.metaFunnel;
   const video = bundle.metaVideo;
   const hasFunnel =
     ecommerce &&
-    (funnel.viewContent > 0 ||
-      funnel.addToCart > 0 ||
-      funnel.checkout > 0 ||
-      funnel.purchase > 0);
+    (funnel.viewContent > 0 || funnel.addToCart > 0 || funnel.checkout > 0 || funnel.purchase > 0);
   const hasVideo =
     video.plays > 0 || video.thruplay > 0 || video.p25 > 0 || video.p100 > 0;
 
-  const dailyChart = bundle.metaDaily.map((d) => ({
-    label: d.date.slice(5),
-    spend: Math.round(d.spend),
-    conv: Number(d.conv.toFixed(1)),
-  }));
-
   const resultLabel = ecommerce ? "Satış" : "Lead";
   const costLabel = ecommerce ? "Satış maliyeti" : "Lead maliyeti";
-  const unknown = ch.status === "unknown";
+  const reasons = ch.reasons;
 
-  const campaignHeaders = ecommerce
-    ? [
-        "Kampanya",
-        "Harcama",
-        "Erişim",
-        "Gösterim",
-        "Tıklama",
-        "Tıklama %",
-        resultLabel,
-        "Getiri",
-        costLabel,
-      ]
-    : [
-        "Kampanya",
-        "Harcama",
-        "Erişim",
-        "Gösterim",
-        "Tıklama",
-        "Tıklama %",
-        resultLabel,
-        costLabel,
-      ];
-
-  const adsetHeaders = ecommerce
-    ? ["Kampanya", "Reklam grubu", "Harcama", "Tıklama", resultLabel, "Getiri"]
-    : ["Kampanya", "Reklam grubu", "Harcama", "Tıklama", resultLabel, costLabel];
-
-  const funnelMax = Math.max(
-    funnel.viewContent,
-    funnel.addToCart,
-    funnel.checkout,
-    funnel.purchase,
-    1,
-  );
+  const cplDelta =
+    cur.conv > 0 && prev.conv > 0 ? deltaPct(d.cpa, dPrev.cpa) : null;
 
   return (
     <div className="space-y-6">
@@ -519,10 +385,10 @@ export default async function MetaPage({
             {ch.sectionTitle}
           </h2>
           <p className="mt-1 text-sm text-zinc-500">
-            Seçilen dönem: {range.label} · önceki dönemle karşılaştırma
+            {range.label} · önceki dönemle karşılaştırma
           </p>
         </div>
-        <StatusBadge status={ch.status} />
+        <StatusBadge status={ch.status} reasons={reasons} />
       </div>
 
       <Suspense fallback={null}>
@@ -531,218 +397,199 @@ export default async function MetaPage({
 
       <TimezoneNotice platform="Meta reklam" timeZone={bundle.tenant.timezone} />
 
+      {reasons.length > 0 && ch.status !== "ok" ? (
+        <ul className="space-y-1 rounded-panel-md border border-panel-warn/30 bg-panel-warn-bg px-4 py-3 text-sm text-panel-fg">
+          {reasons.map((r) => (
+            <li key={r}>• {r}</li>
+          ))}
+        </ul>
+      ) : null}
+
       {budgetPlan ? (
-        <BudgetPlanVsActual plan={budgetPlan} provider="meta" />
+        <BudgetPlanVsActual
+          plan={budgetPlan}
+          provider="meta"
+          variant="compact"
+          statusReasons={status.meta.reasons.map((r) => r.text)}
+        />
       ) : null}
 
-      {ch.status === "unknown" ? (
+      {unknown ? (
         <div className="rounded-lg border border-zinc-200 bg-zinc-100 px-4 py-3 text-sm text-zinc-700">
-          Meta verisi alınamadı. Rakamlar kasıtlı olarak boş bırakıldı.
+          Meta verisi şu an alınamıyor. Rakamlar kasıtlı olarak boş bırakıldı.
         </div>
-      ) : null}
-
-      {/* Tier 1 — kuzey yıldızı */}
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <KPICard
-          tier={1}
-          metricKey="spend"
-          kind="money"
-          accent="var(--panel-meta)"
-          value={unknown ? null : formatTry(metaCurrent.account.spend, currency)}
-          delta={
-            unknown
-              ? null
-              : deltaPct(
-                  metaCurrent.account.spend,
-                  metaPrevious.account.spend,
-                )
-          }
-          goodDirection="down"
-        />
-        <KPICard
-          tier={1}
-          metricKey="conversions"
-          kind="count"
-          label={resultLabel}
-          accent="var(--panel-meta)"
-          value={
-            unknown ? null : formatNumber(metaCurrent.account.conv, 1)
-          }
-          delta={
-            unknown
-              ? null
-              : deltaPct(metaCurrent.account.conv, metaPrevious.account.conv)
-          }
-          goodDirection="up"
-        />
-        {ecommerce ? (
-          <KPICard
-            tier={1}
-            metricKey="roas"
-            kind="multiplier"
-            accent="var(--panel-meta)"
-            value={
-              unknown
-                ? null
-                : `${formatNumber(derivedMetrics(metaCurrent.account).roas, 2)}x`
-            }
-            goodDirection="up"
-          />
-        ) : (
-          <KPICard
-            tier={1}
-            metricKey="cpl"
-            kind="money"
-            label={costLabel}
-            accent="var(--panel-meta)"
-            value={
-              unknown || metaCurrent.account.conv <= 0
-                ? null
-                : formatTry(
-                    derivedMetrics(metaCurrent.account).cpa,
-                    currency,
-                  )
-            }
-            goodDirection="down"
-          />
-        )}
-        {ecommerce ? (
-          <KPICard
-            tier={1}
-            metricKey="cpa"
-            kind="money"
-            label={costLabel}
-            accent="var(--panel-meta)"
-            value={
-              unknown || metaCurrent.account.conv <= 0
-                ? null
-                : formatTry(
-                    derivedMetrics(metaCurrent.account).cpa,
-                    currency,
-                  )
-            }
-            goodDirection="down"
-          />
-        ) : (
-          <KPICard
-            tier={1}
-            metricKey="clicks"
-            kind="count"
-            accent="var(--panel-meta)"
-            value={
-              unknown ? null : formatNumber(metaCurrent.account.clicks)
-            }
-            delta={
-              unknown
-                ? null
-                : deltaPct(
-                    metaCurrent.account.clicks,
-                    metaPrevious.account.clicks,
-                  )
-            }
-            goodDirection="up"
-          />
-        )}
-      </div>
-
-      {!unknown ? (
+      ) : (
         <>
-          {/* Tier 2 — destekleyici */}
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
-            <KPICard
-              tier={2}
-              metricKey="impressions"
-              kind="count"
-              value={formatNumber(metaCurrent.account.impr)}
-              goodDirection="neutral"
-            />
-            <KPICard
-              tier={2}
-              metricKey="reach"
-              kind="count"
-              value={
-                metaCurrent.account.reach != null
-                  ? formatNumber(metaCurrent.account.reach)
-                  : null
-              }
-              goodDirection="up"
-            />
-            <KPICard
-              tier={2}
-              metricKey="ctr"
-              kind="rate"
-              value={`${formatNumber(derivedMetrics(metaCurrent.account).ctr, 2)}%`}
-              goodDirection="up"
-            />
-            {ecommerce ? (
-              <KPICard
-                tier={2}
-                metricKey="clicks"
-                kind="count"
-                value={formatNumber(metaCurrent.account.clicks)}
-                delta={deltaPct(
-                  metaCurrent.account.clicks,
-                  metaPrevious.account.clicks,
-                )}
-                goodDirection="up"
+          <div className="grid gap-4 lg:grid-cols-5">
+            <div className="lg:col-span-3">
+              <CompareTrendChart
+                title="Harcama trendi"
+                data={cmp(series, prevSeries, "spend")}
+                format="money"
+                currency={currency}
+                total={cur.spend}
+                delta={deltaPct(cur.spend, prev.spend)}
+                invert
+                variant="navy"
               />
-            ) : null}
-            <KPICard
-              tier={2}
-              metricKey="frequency"
-              kind="count"
-              value={
-                ch.frequency != null ? formatNumber(ch.frequency, 1) : null
-              }
-              goodDirection="neutral"
-            />
-            <KPICard
-              tier={2}
-              metricKey="cpc"
-              kind="money"
-              value={
-                metaCurrent.account.clicks > 0
-                  ? formatTry(
-                      derivedMetrics(metaCurrent.account).cpc,
-                      currency,
-                    )
-                  : null
-              }
-              goodDirection="down"
-            />
-            {!ecommerce ? (
-              <>
-                <KPICard
-                  tier={2}
-                  metricKey="formLeads"
-                  kind="count"
-                  value={formatNumber(formLeads)}
-                  goodDirection="up"
-                />
-                <KPICard
-                  tier={2}
-                  metricKey="whatsappLeads"
-                  kind="count"
-                  value={formatNumber(waLeads)}
-                  goodDirection="up"
-                />
-              </>
-            ) : null}
+            </div>
+            <div className="lg:col-span-2">
+              <DonutChart
+                title="Yerleşime göre harcama"
+                data={breakdownRows(bundle.metaBreakdowns, "placement")}
+                centerLabel="Harcama"
+                format="money"
+                currency={currency}
+                variant="dark"
+              />
+            </div>
           </div>
 
-          {dailyChart.length > 1 ? (
-            <div className="rounded-xl border border-zinc-200 bg-white p-4">
-              <h3 className="text-sm font-semibold text-zinc-800">
-                Günlük harcama & sonuç
-              </h3>
-              <p className="mt-1 text-[11px] text-zinc-500">
-                Seçilen dönem içindeki günlük Meta performansı
-              </p>
-              <div className="mt-3">
-                <MetaDailyChart data={dailyChart} />
-              </div>
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            <StatTile
+              label="Harcama"
+              value={formatTry(cur.spend, currency)}
+              delta={deltaPct(cur.spend, prev.spend)}
+              invert
+              values={series.map((p) => p.spend)}
+              color={META_COLOR}
+            />
+            <StatTile
+              label={resultLabel}
+              value={formatNumber(cur.conv, 1)}
+              delta={deltaPct(cur.conv, prev.conv)}
+              values={series.map((p) => p.conv)}
+              color={META_COLOR}
+            />
+            {ecommerce ? (
+              <StatTile
+                label="Getiri (ROAS)"
+                value={cur.spend > 0 ? `${formatNumber(d.roas, 2)}x` : "—"}
+                delta={cur.spend > 0 && prev.spend > 0 ? deltaPct(d.roas, dPrev.roas) : null}
+                values={series.map((p) => (p.spend > 0 ? p.convValue / p.spend : 0))}
+                color={META_COLOR}
+              />
+            ) : (
+              <StatTile
+                label={costLabel}
+                value={cur.conv > 0 ? formatTry(d.cpa, currency) : "—"}
+                delta={cplDelta}
+                invert
+                values={series.map((p) => (p.conv > 0 ? p.spend / p.conv : 0))}
+                color={META_COLOR}
+              />
+            )}
+            <StatTile
+              label="Tıklama"
+              value={formatNumber(cur.clicks)}
+              delta={deltaPct(cur.clicks, prev.clicks)}
+              values={series.map((p) => p.clicks)}
+              color={META_COLOR}
+            />
+            <StatTile
+              label="Gösterim"
+              value={formatNumber(cur.impr)}
+              delta={deltaPct(cur.impr, prev.impr)}
+              values={series.map((p) => p.impr)}
+              color={META_COLOR}
+            />
+            <StatTile
+              label="Erişim"
+              value={cur.reach != null ? formatNumber(cur.reach) : "—"}
+              delta={
+                cur.reach != null && prev.reach != null
+                  ? deltaPct(cur.reach, prev.reach)
+                  : null
+              }
+              values={series.map((p) => p.reach)}
+              color={META_COLOR}
+            />
+            <StatTile
+              label="Tıklama oranı"
+              value={`${formatNumber(d.ctr, 2)}%`}
+              delta={deltaPct(d.ctr, dPrev.ctr)}
+              values={series.map((p) => (p.impr > 0 ? (p.clicks / p.impr) * 100 : 0))}
+              color={META_COLOR}
+            />
+            <StatTile
+              label="Sıklık"
+              value={ch.frequency != null ? formatNumber(ch.frequency, 1) : "—"}
+              hint="Bir kişinin reklamı ortalama görme sayısı"
+            />
+            <StatTile
+              label="Tıklama maliyeti"
+              value={cur.clicks > 0 ? formatTry(d.cpc, currency) : "—"}
+              delta={cur.clicks > 0 && prev.clicks > 0 ? deltaPct(d.cpc, dPrev.cpc) : null}
+              invert
+              values={series.map((p) => (p.clicks > 0 ? p.spend / p.clicks : 0))}
+              color={META_COLOR}
+            />
+            {ecommerce ? (
+              <StatTile
+                label={costLabel}
+                value={cur.conv > 0 ? formatTry(d.cpa, currency) : "—"}
+                delta={cplDelta}
+                invert
+                values={series.map((p) => (p.conv > 0 ? p.spend / p.conv : 0))}
+                color={META_COLOR}
+              />
+            ) : (
+              <>
+                <StatTile label="Form lead" value={formatNumber(formLeads)} />
+                <StatTile label="WhatsApp lead" value={formatNumber(waLeads)} />
+              </>
+            )}
+          </div>
+
+          <div className="grid gap-4 lg:grid-cols-5">
+            <div className="lg:col-span-3">
+              <CompareBarChart
+                title={`Günlük ${resultLabel.toLowerCase()}`}
+                data={cmp(series, prevSeries, "conv")}
+                format="count1"
+                total={cur.conv}
+                delta={deltaPct(cur.conv, prev.conv)}
+                variant="dark"
+                color={META_COLOR}
+              />
             </div>
-          ) : null}
+            <div className="lg:col-span-2">
+              <DonutChart
+                title="Cihaza göre harcama"
+                data={breakdownRows(bundle.metaBreakdowns, "device")}
+                centerLabel="Harcama"
+                format="money"
+                currency={currency}
+                variant="dark"
+              />
+            </div>
+          </div>
+
+          <div className={`grid gap-4 ${campaigns.length > 1 ? "lg:grid-cols-2" : ""}`}>
+            <LabeledBarChart
+              title="Yaş gruplarına göre harcama"
+              data={breakdownRows(bundle.metaBreakdowns, "age").sort((a, b) =>
+                a.name.localeCompare(b.name),
+              )}
+              format="money"
+              currency={currency}
+              variant="dark"
+              color={META_COLOR}
+              max={8}
+            />
+            {campaigns.length > 1 ? (
+              <LabeledBarChart
+                title="Aktif kampanyalara göre harcama"
+                data={campaigns.map((c) => ({ name: c.campaign, value: Math.round(c.spend) }))}
+                format="money"
+                currency={currency}
+                variant="navy"
+                color="#8fb3ff"
+                layout="horizontal"
+                max={8}
+              />
+            ) : null}
+          </div>
 
           {hasFunnel ? (
             <div className="rounded-xl border border-zinc-200 bg-white p-4">
@@ -760,23 +607,26 @@ export default async function MetaPage({
                     ["Ödeme başlatma", funnel.checkout],
                     ["Satış", funnel.purchase],
                   ] as const
-                ).map(([label, value]) => (
-                  <div key={label}>
-                    <p className="text-[11px] text-zinc-500">{label}</p>
-                    <p className="mt-0.5 text-lg font-semibold tabular-nums text-zinc-900">
-                      {formatNumber(value)}
-                    </p>
-                    <div className="mt-2 h-1.5 overflow-hidden rounded bg-zinc-100">
-                      <div
-                        className="h-full rounded"
-                        style={{
-                          width: `${Math.max(4, (value / funnelMax) * 100)}%`,
-                          background: META_COLOR,
-                        }}
-                      />
+                ).map(([label, value]) => {
+                  const max = Math.max(funnel.viewContent, funnel.addToCart, funnel.checkout, funnel.purchase, 1);
+                  return (
+                    <div key={label}>
+                      <p className="text-[11px] text-zinc-500">{label}</p>
+                      <p className="mt-0.5 text-lg font-semibold tabular-nums text-zinc-900">
+                        {formatNumber(value)}
+                      </p>
+                      <div className="mt-2 h-1.5 overflow-hidden rounded bg-zinc-100">
+                        <div
+                          className="h-full rounded"
+                          style={{
+                            width: `${Math.max(4, (value / max) * 100)}%`,
+                            background: META_COLOR,
+                          }}
+                        />
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
               {funnel.purchaseValue > 0 ? (
                 <p className="mt-3 text-[12px] text-zinc-600">
@@ -790,259 +640,142 @@ export default async function MetaPage({
           ) : null}
 
           {hasVideo ? (
-            <details className="group rounded-xl border border-zinc-200 bg-white p-4 open:shadow-sm">
-              <summary className="cursor-pointer list-none text-sm font-semibold text-zinc-800 marker:content-none [&::-webkit-details-marker]:hidden">
-                <span className="inline-flex items-center gap-2">
-                  Video detayları
-                  <span className="text-xs font-normal text-zinc-500 group-open:hidden">
-                    · göster
-                  </span>
-                  <span className="hidden text-xs font-normal text-zinc-500 group-open:inline">
-                    · gizle
-                  </span>
-                </span>
-              </summary>
-              <div className="mt-4 grid gap-2 sm:grid-cols-3 lg:grid-cols-6">
-                <KPICard
-                  tier={3}
-                  metricKey="videoViews"
-                  kind="count"
-                  value={formatNumber(video.plays)}
-                />
-                <KPICard
-                  tier={3}
-                  metricKey="thruplay"
-                  kind="count"
-                  value={formatNumber(video.thruplay)}
-                />
-                <KPICard
-                  tier={3}
-                  metricKey="videoP25"
-                  kind="count"
-                  value={formatNumber(video.p25)}
-                />
-                <KPICard
-                  tier={3}
-                  metricKey="videoP50"
-                  kind="count"
-                  value={formatNumber(video.p50)}
-                />
-                <KPICard
-                  tier={3}
-                  metricKey="videoP75"
-                  kind="count"
-                  value={formatNumber(video.p75)}
-                />
-                <KPICard
-                  tier={3}
-                  metricKey="videoP100"
-                  kind="count"
-                  value={formatNumber(video.p100)}
-                />
-              </div>
-            </details>
-          ) : null}
-
-          {chartData.length > 0 ? (
-            <div className="rounded-xl border border-zinc-200 bg-white p-4">
-              <h3 className="text-sm font-semibold text-zinc-800">
-                Kampanyalara göre harcama
-              </h3>
-              <p className="mt-1 text-[11px] text-zinc-500">
-                Hangi kampanyaya ne kadar bütçe gittiği
-              </p>
-              <div className="mt-3">
-                <CampaignBarChart data={chartData} color={META_COLOR} />
-              </div>
-            </div>
+            <LabeledBarChart
+              title="Video izlenme hunisi"
+              data={[
+                { name: "Oynatma", value: video.plays },
+                { name: "ThruPlay", value: video.thruplay },
+                { name: "%25", value: video.p25 },
+                { name: "%50", value: video.p50 },
+                { name: "%75", value: video.p75 },
+                { name: "%100", value: video.p100 },
+              ]}
+              variant="light"
+              color={META_COLOR}
+              max={6}
+            />
           ) : null}
 
           <div className="space-y-2">
             <div>
               <h3 className="text-sm font-semibold text-zinc-800">
-                Kampanya performansı
+                Aktif kampanyalar
               </h3>
               <p className="mt-1 text-[11px] text-zinc-500">
-                Altındaki küçük oklar önceki döneme göre değişimi gösterir
+                Rozetler önceki döneme göre değişimi gösterir · kapalı
+                kampanyalar listelenmez
               </p>
             </div>
-            <DataTable
-              headers={campaignHeaders}
-              numericCols={
-                ecommerce ? [1, 2, 3, 4, 5, 6, 7, 8] : [1, 2, 3, 4, 5, 6, 7]
-              }
-            >
-              <MetricRow
-                label="Toplam"
-                current={metaCurrent.account}
-                previous={metaPrevious.account}
-                currency={currency}
-                ecommerce={ecommerce}
-              />
-              {metaCurrent.campaigns.map((c) => (
-                <MetricRow
-                  key={c.campaign}
-                  label={c.campaign}
-                  current={c}
-                  previous={prevByName.get(c.campaignId ?? c.campaign)}
-                  currency={currency}
-                  ecommerce={ecommerce}
-                />
-              ))}
-            </DataTable>
-          </div>
-
-          {adsets.length > 0 ? (
-            <div className="space-y-2">
-              <div>
-                <h3 className="text-sm font-semibold text-zinc-800">
-                  Reklam grupları
-                </h3>
-                <p className="mt-1 text-[11px] text-zinc-500">
-                  Kampanya içindeki hedef kitle / yerleşim grupları
-                </p>
-              </div>
+            {campaigns.length === 0 ? (
+              <p className="rounded-lg border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-600">
+                Bu dönemde aktif kampanya yok.
+              </p>
+            ) : (
               <DataTable
-                headers={adsetHeaders}
-                numericCols={[2, 3, 4, 5]}
+                headers={[
+                  "Kampanya",
+                  "Harcama",
+                  "Erişim",
+                  "Tıklama",
+                  resultLabel,
+                  ecommerce ? "Getiri" : costLabel,
+                ]}
+                numericCols={[1, 2, 3, 4, 5]}
               >
-                {adsets.map((row) => {
-                  const d = derivedMetrics({
-                    campaign: row.adsetName,
-                    spend: row.spend,
-                    impr: row.impr,
-                    clicks: row.clicks,
-                    conv: row.conv,
-                    convValue: row.convValue,
-                  });
+                {campaigns.map((c) => {
+                  const p = prevByName.get(c.campaignId ?? c.campaign);
+                  const cd = derivedMetrics(c);
+                  const pd = p ? derivedMetrics(p) : null;
                   return (
-                    <tr key={row.adsetId}>
-                      <td className="text-xs text-panel-fg-secondary">
-                        {row.campaignName}
-                      </td>
-                      <td className="font-medium text-panel-fg">
-                        {row.adsetName}
+                    <tr key={c.campaignId ?? c.campaign}>
+                      <td className="font-medium text-panel-fg">{c.campaign}</td>
+                      <td className="num">
+                        <DeltaCell
+                          value={formatTry(c.spend, currency)}
+                          delta={p ? deltaPct(c.spend, p.spend) : null}
+                          invert
+                        />
                       </td>
                       <td className="num">
-                        {formatTry(row.spend, currency)}
+                        {c.reach != null ? formatNumber(c.reach) : "—"}
                       </td>
-                      <td className="num">{formatNumber(row.clicks)}</td>
-                      <td className="num">{formatNumber(row.conv, 1)}</td>
-                      {ecommerce ? (
-                        <td className="num">
-                          {row.spend > 0
-                            ? `${formatNumber(d.roas, 2)}x`
-                            : "—"}
-                        </td>
-                      ) : (
-                        <td className="num">
-                          {row.conv > 0
-                            ? formatTry(d.cpa, currency)
-                            : "—"}
-                        </td>
-                      )}
+                      <td className="num">
+                        <DeltaCell
+                          value={formatNumber(c.clicks)}
+                          delta={p ? deltaPct(c.clicks, p.clicks) : null}
+                        />
+                      </td>
+                      <td className="num">
+                        <DeltaCell
+                          value={formatNumber(c.conv, 1)}
+                          delta={p ? deltaPct(c.conv, p.conv) : null}
+                        />
+                      </td>
+                      <td className="num">
+                        {ecommerce ? (
+                          <DeltaCell
+                            value={c.spend > 0 ? `${formatNumber(cd.roas, 2)}x` : "—"}
+                            delta={pd && c.spend > 0 && p!.spend > 0 ? deltaPct(cd.roas, pd.roas) : null}
+                          />
+                        ) : (
+                          <DeltaCell
+                            value={c.conv > 0 ? formatTry(cd.cpa, currency) : "—"}
+                            delta={pd && c.conv > 0 && p!.conv > 0 ? deltaPct(cd.cpa, pd.cpa) : null}
+                            invert
+                          />
+                        )}
+                      </td>
                     </tr>
                   );
                 })}
               </DataTable>
-            </div>
-          ) : null}
-
-          <div className="grid gap-6 lg:grid-cols-3">
-            <BreakdownTable
-              title="Yerleşim"
-              hint="Facebook / Instagram / Network"
-              rows={bundle.metaBreakdowns}
-              kind="placement"
-              currency={currency}
-              ecommerce={ecommerce}
-              resultLabel={resultLabel}
-            />
-            <BreakdownTable
-              title="Cihaz"
-              hint="Mobil / masaüstü kırılımı"
-              rows={bundle.metaBreakdowns}
-              kind="device"
-              currency={currency}
-              ecommerce={ecommerce}
-              resultLabel={resultLabel}
-            />
-            <BreakdownTable
-              title="Yaş"
-              hint="Hedef kitle yaş dilimleri"
-              rows={bundle.metaBreakdowns}
-              kind="age"
-              currency={currency}
-              ecommerce={ecommerce}
-              resultLabel={resultLabel}
-            />
+            )}
           </div>
-        </>
-      ) : null}
 
-      {metaAds.length > 0 ? (
-        <div className="space-y-6 border-t border-zinc-100 pt-6">
+          {adsets.length > 0 ? (
+            <LabeledBarChart
+              title="Reklam gruplarına göre harcama"
+              data={adsets.map((r) => ({ name: r.adsetName, value: Math.round(r.spend) }))}
+              format="money"
+              currency={currency}
+              variant="light"
+              color={META_COLOR}
+              layout="horizontal"
+              max={10}
+            />
+          ) : null}
+        </>
+      )}
+
+      {activeAds.length > 0 ? (
+        <div className="space-y-4 border-t border-zinc-100 pt-6">
           <div>
             <h3 className="text-sm font-semibold text-zinc-800">
-              Reklam görselleri
+              Yayındaki reklamlar
             </h3>
             <p className="mt-1 text-[11px] text-zinc-500">
-              {activeAds.length} aktif · {pastAds.length} geçmiş ·{" "}
-              {metaAds.length} toplam · thumbnail, link ve dönem performansı
+              {activeAds.length} aktif reklam · görsel, bağlantı ve dönem performansı
             </p>
           </div>
-
-          {activeAds.length > 0 ? (
-            <div className="space-y-3">
-              <h4 className="text-xs font-semibold uppercase tracking-wide text-emerald-700">
-                Aktif reklamlar
-              </h4>
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                {activeAds.map((ad) => (
-                  <CreativeCard
-                    key={ad.adId}
-                    ad={ad}
-                    currency={currency}
-                    ecommerce={ecommerce}
-                    resultLabel={resultLabel}
-                    costLabel={costLabel}
-                  />
-                ))}
-              </div>
-            </div>
-          ) : null}
-
-          {pastAds.length > 0 ? (
-            <div className="space-y-3">
-              <h4 className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
-                Geçmiş / duraklatılmış
-              </h4>
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                {pastAds.map((ad) => (
-                  <CreativeCard
-                    key={ad.adId}
-                    ad={ad}
-                    currency={currency}
-                    ecommerce={ecommerce}
-                    resultLabel={resultLabel}
-                    costLabel={costLabel}
-                  />
-                ))}
-              </div>
-            </div>
-          ) : null}
-
-          <p className="text-[11px] text-zinc-500">
-            Yalnızca bu reklam hesabında görünen reklamlar listelenir. Başka
-            hesapta, paylaşılmadan yayınlananlar buraya gelmez.
-          </p>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {activeAds.map((ad) => (
+              <CreativeCard
+                key={ad.adId}
+                ad={ad}
+                currency={currency}
+                ecommerce={ecommerce}
+                resultLabel={resultLabel}
+                costLabel={costLabel}
+              />
+            ))}
+          </div>
         </div>
-      ) : ch.status !== "unknown" ? (
+      ) : !unknown ? (
         <div className="rounded-lg border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-600">
-          Bu dönem için reklam / görsel kaydı yok. Meta sync sonrası kreatifler
-          burada görünür.
+          Şu an yayında reklam yok.
         </div>
       ) : null}
+
     </div>
   );
 }

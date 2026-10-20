@@ -4,7 +4,12 @@ import {
   fetchAdsCustomerTimeZone,
   fetchGoogleAdsCampaignMetrics,
 } from "@/lib/integrations/google/ads";
-import { addDaysYmd, ymdInTimeZone, ymdToUtcDate } from "@/lib/date/tr";
+import {
+  addDaysYmd,
+  istanbulYmd,
+  ymdInTimeZone,
+  ymdToUtcDate,
+} from "@/lib/date/tr";
 import { fetchGoogleSuccessfulInvoices } from "@/lib/integrations/google/billing";
 import { fetchGa4Daily } from "@/lib/integrations/google/ga4";
 import { fetchGtmSnapshotResolved } from "@/lib/integrations/google/gtm";
@@ -27,6 +32,7 @@ import {
   getMetaSystemUserToken,
 } from "@/lib/integrations/tokens";
 import { evaluateTenantAlerts } from "@/lib/panel/alerts-engine";
+import { runSetupChecks } from "@/lib/panel/setup-checks";
 import { hasBrandLogo } from "@/lib/panel/brand-logos";
 import { resolveAdsCustomerId, adsCustomerIdFromCodeMap } from "@/lib/panel/google-ads-customer-map";
 import {
@@ -41,6 +47,7 @@ import {
 import { resolveGa4PropertyId } from "@/lib/panel/ga4-property-map";
 import { resolveGtmApiRef } from "@/lib/panel/gtm-container-map";
 import {
+  SYNC_AD_LEVEL_DAYS,
   syncAdLevelLookbackRange,
   syncDailyLookbackRange,
   syncLookbackRange,
@@ -51,6 +58,36 @@ import { classifyConversionAction } from "@/lib/panel/classify-conversion";
 
 function maxYmd(a: string, b: string): string {
   return a > b ? a : b;
+}
+
+/**
+ * Günlük modda reklam düzeyi penceresi: son başarılı reklam çekiminden 3 gün
+ * öncesi (Meta atıf düzeltmeleri) — kaçırılan günler kendiliğinden dolar.
+ * En az kısa pencere, en fazla SYNC_AD_LEVEL_DAYS.
+ */
+async function adLevelRangeFor(
+  tenantId: string,
+  base: { from: string; to: string },
+  isDaily: boolean,
+): Promise<{ from: string; to: string }> {
+  if (!isDaily) return base;
+  const job = await prisma.syncJob.findUnique({
+    where: {
+      tenantId_provider_service_objective: {
+        tenantId,
+        provider: "meta",
+        service: "ad_insights",
+        objective: "ad_daily",
+      },
+    },
+    select: { lastSuccessAt: true },
+  });
+  const floor = addDaysYmd(base.to, -SYNC_AD_LEVEL_DAYS);
+  const resume = job?.lastSuccessAt
+    ? addDaysYmd(istanbulYmd(job.lastSuccessAt), -3)
+    : floor;
+  const from = [base.from, resume < floor ? floor : resume].sort()[0]!;
+  return { from, to: base.to };
 }
 
 function chunk<T>(items: T[], size: number): T[][] {
@@ -119,9 +156,9 @@ async function ensureMetaConnection() {
  */
 export type SyncProvider = "meta" | "google";
 
-/** full = 720g + kreatif/fatura/GA4; daily = son 3 gün kampanya metrikleri. */
 /**
- * full: her şey (720g). daily: son günler, kampanya düzeyi.
+ * full: her şey (720g). daily: son günler — kampanya + reklam düzeyi, kreatif,
+ * fatura, GA4, GTM, GSC (provision / site testi yok).
  * backfill: 720g kampanya metrikleri + dönüşümler + GA4 — kreatif / reklam düzeyi /
  * fatura / GTM / GSC / provision atlanır (geriye dönük doldurma).
  */
@@ -151,8 +188,12 @@ export async function runAgencySync(opts?: {
   const doMeta = providers.has("meta");
   const doGoogle = providers.has("google");
   const isDaily = opts?.mode === "daily";
-  // Ağır / dönüşümle ilgisiz adımları atla (günlük + backfill).
+  // BM provision + site testi yalnızca tam sync'te (günlük + backfill atlar).
   const lean = isDaily || opts?.mode === "backfill";
+  // Kreatif, reklam düzeyi, fatura, GTM, GSC: günlük otomatik çekimde de
+  // (kısa pencereyle) çalışır — yalnızca backfill atlar. Aksi halde kreatif
+  // görsel linkleri (fbcdn imzası ~4 gün) ve faturalar bayatlıyordu.
+  const extras = opts?.mode !== "backfill";
 
   if (doGoogle) await ensureGoogleConnection();
   if (doMeta) await ensureMetaConnection();
@@ -205,6 +246,10 @@ export async function runAgencySync(opts?: {
   const metaRange = dailyRanges?.meta ?? fullRange!;
   const googleRange = dailyRanges?.google ?? fullRange!;
   const { from, to } = googleRange;
+  // Fatura penceresi: günlükte son 45 gün (Google aylık faturası ay başında düşer).
+  const billingRange = isDaily
+    ? { from: addDaysYmd(googleRange.to, -45), to: googleRange.to }
+    : googleRange;
   const adLevel = isDaily
     ? metaRange
     : await syncAdLevelLookbackRange();
@@ -249,7 +294,7 @@ export async function runAgencySync(opts?: {
     }
 
     // --- Meta creatives (thumbnail / link) — önce (hızlı; timeout’tan önce kalsın) ---
-    if (doMeta && !lean && !off.has("meta")) {
+    if (doMeta && extras && !off.has("meta")) {
       // Eski birleşik ads/ad_daily job’ı UI’da “reduce data” hatası olarak kalıyordu
       await prisma.syncJob.deleteMany({
         where: {
@@ -295,6 +340,7 @@ export async function runAgencySync(opts?: {
                 imageUrl: ad.imageUrl,
                 permalinkUrl: ad.permalinkUrl,
                 linkUrl: ad.linkUrl,
+                urlTags: ad.urlTags,
                 objectType: ad.objectType,
                 syncedAt,
               },
@@ -313,6 +359,7 @@ export async function runAgencySync(opts?: {
                 imageUrl: ad.imageUrl,
                 permalinkUrl: ad.permalinkUrl,
                 linkUrl: ad.linkUrl,
+                urlTags: ad.urlTags,
                 objectType: ad.objectType,
                 syncedAt,
               },
@@ -398,7 +445,7 @@ export async function runAgencySync(opts?: {
       );
       services.meta = meta.ok ? { ok: true } : { ok: false, error: meta.error };
 
-      if (!lean) {
+      if (extras) {
       const metaAdPerf = await runSynced(
         {
           tenantId: tenant.id,
@@ -413,10 +460,11 @@ export async function runAgencySync(opts?: {
             );
           }
 
+          const adRange = await adLevelRangeFor(tenant.id, adLevel, isDaily);
           const adRows = await fetchMetaAdInsights({
             metaAccountId,
-            from: adLevel.from,
-            to: adLevel.to,
+            from: adRange.from,
+            to: adRange.to,
             tenantType: tenant.type as TenantType,
           });
 
@@ -475,8 +523,8 @@ export async function runAgencySync(opts?: {
 
           const adsetRows = await fetchMetaAdsetInsights({
             metaAccountId,
-            from: adLevel.from,
-            to: adLevel.to,
+            from: adRange.from,
+            to: adRange.to,
             tenantType: tenant.type as TenantType,
           });
           for (const row of adsetRows) {
@@ -530,8 +578,8 @@ export async function runAgencySync(opts?: {
 
           const breakdownRows = await fetchMetaBreakdownInsights({
             metaAccountId,
-            from: adLevel.from,
-            to: adLevel.to,
+            from: adRange.from,
+            to: adRange.to,
             tenantType: tenant.type as TenantType,
           });
           for (const row of breakdownRows) {
@@ -593,8 +641,8 @@ export async function runAgencySync(opts?: {
           }
           const rows = await fetchMetaSuccessfulCharges({
             metaAccountId,
-            from,
-            to,
+            from: billingRange.from,
+            to: billingRange.to,
           });
           for (const row of rows) {
             await prisma.billingCharge.upsert({
@@ -804,7 +852,7 @@ export async function runAgencySync(opts?: {
         );
         services.ads = ads.ok ? { ok: true } : { ok: false, error: ads.error };
 
-        if (!lean) {
+        if (extras) {
         const googleBilling = await runSynced(
           {
             tenantId: tenant.id,
@@ -827,8 +875,8 @@ export async function runAgencySync(opts?: {
             }
             const result = await fetchGoogleSuccessfulInvoices({
               customerId: resolvedId,
-              from,
-              to,
+              from: billingRange.from,
+              to: billingRange.to,
             });
             for (const row of result.charges) {
               await prisma.billingCharge.upsert({
@@ -966,7 +1014,7 @@ export async function runAgencySync(opts?: {
         services.ga4 = ga4.ok ? { ok: true } : { ok: false, error: ga4.error };
       }
 
-      if (!lean) {
+      if (extras) {
 
       // --- GTM ---
       const gtmRef = resolveGtmApiRef(tenant);
@@ -1081,6 +1129,12 @@ export async function runAgencySync(opts?: {
     }
 
     await evaluateTenantAlerts(tenant.id);
+    if (extras) {
+      // Kurulum kontrolü (UTM, Pixel/CAPI, GA4 key event, Ads dönüşüm) — asla fırlatmaz.
+      await runSetupChecks(tenant.id).catch((err) =>
+        console.error("[setup-checks]", tenant.slug, err),
+      );
+    }
     summary.push({ slug: tenant.slug, services });
   }
 

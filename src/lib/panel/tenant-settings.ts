@@ -65,6 +65,9 @@ export async function loadTenantSettingsInitial(
               ? Number(db.thresholds.minSpendForAlert)
               : 100,
           ),
+          cplTarget: db.thresholds?.cplTarget
+            ? String(Number(db.thresholds.cplTarget))
+            : "",
         },
         clientUsers,
       },
@@ -94,6 +97,7 @@ export async function loadTenantSettingsInitial(
         budgetPaceWarnPct: String(bundle.thresholds.budgetPaceWarnPct),
         convDropoutDays: String(bundle.thresholds.convDropoutDays),
         minSpendForAlert: String(bundle.thresholds.minSpendForAlert),
+        cplTarget: bundle.thresholds.cplTarget != null ? String(bundle.thresholds.cplTarget) : "",
       },
       clientUsers: [],
     },

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/db";
 import { audit } from "@/lib/panel/audit";
+import { normalizePhone } from "@/lib/panel/notify";
 import { can } from "@/lib/panel/permissions";
 import { requirePermissionApi, requireStaffApi } from "@/lib/panel/staff-auth";
 import {
@@ -38,6 +39,8 @@ type CreateMemberBody = {
   email?: string;
   password?: string;
   name?: string | null;
+  /** WhatsApp bildirimi için telefon (E.164'e çevrilir). */
+  phone?: string | null;
   role?: "admin" | "team";
   teamIds?: string[];
 };
@@ -60,6 +63,14 @@ export async function POST(request: Request) {
   const password = String(body.password ?? "");
   const name = body.name?.trim() || null;
   const role = body.role === "admin" ? "admin" : "team";
+  const phoneRaw = body.phone?.trim() || null;
+  const phone = phoneRaw ? normalizePhone(phoneRaw) : null;
+  if (phoneRaw && !phone) {
+    return NextResponse.json(
+      { error: "Telefon +90… biçiminde olmalı" },
+      { status: 400 },
+    );
+  }
 
   if (!email || !email.includes("@")) {
     return NextResponse.json(
@@ -107,6 +118,7 @@ export async function POST(request: Request) {
       passwordHash,
       passwordPlain: password,
       name,
+      phone,
       role,
       teamMemberships:
         teamIds.length > 0

@@ -16,6 +16,8 @@ type StaffUser = {
   id: string;
   name: string | null;
   email: string;
+  /** WhatsApp bildirimi için (E.164). */
+  phone?: string | null;
   role: string;
   teamMemberships: Array<{
     teamId: string;
@@ -97,6 +99,7 @@ export default function TeamManager({
 
   const [memberEmail, setMemberEmail] = useState("");
   const [memberName, setMemberName] = useState("");
+  const [memberPhone, setMemberPhone] = useState("");
   const [memberPassword, setMemberPassword] = useState("");
   const [memberRole, setMemberRole] = useState<"team" | "admin">("team");
   const [memberTeamIds, setMemberTeamIds] = useState<string[]>([]);
@@ -141,6 +144,7 @@ export default function TeamManager({
         email: memberEmail,
         password: memberPassword,
         name: memberName || null,
+        phone: memberPhone || null,
         role: memberRole,
         teamIds: memberTeamIds,
       }),
@@ -154,10 +158,30 @@ export default function TeamManager({
     }
     setMemberEmail("");
     setMemberName("");
+    setMemberPhone("");
     setMemberPassword("");
     setMemberRole("team");
     setMemberTeamIds([]);
     setOk("Kullanıcı oluşturuldu");
+    await refresh();
+  }
+
+  async function updatePhone(u: StaffUser) {
+    const next = prompt("WhatsApp bildirimi için telefon (+90 5xx xxx xx xx). Boş = kaldır.", u.phone ?? "");
+    if (next === null) return;
+    setError(null);
+    setOk(null);
+    const res = await fetch(`/api/panel/users/${u.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ phone: next.trim() || null }),
+    });
+    const j = (await res.json().catch(() => null)) as { error?: string } | null;
+    if (!res.ok) {
+      setError(j?.error || "Telefon kaydedilemedi");
+      return;
+    }
+    setOk("Telefon güncellendi");
     await refresh();
   }
 
@@ -370,6 +394,18 @@ export default function TeamManager({
                         ) : null}
                       </p>
                       <p className="text-xs text-zinc-500">{u.email}</p>
+                      <p className="text-xs text-zinc-500">
+                        {u.phone ? u.phone : <span className="text-amber-700">Telefon yok — WhatsApp bildirimi gitmez</span>}
+                        {canManageUsers || isSelf ? (
+                          <button
+                            type="button"
+                            onClick={() => void updatePhone(u)}
+                            className="ml-2 text-[11px] font-medium text-[#e91825] hover:underline"
+                          >
+                            {u.phone ? "değiştir" : "ekle"}
+                          </button>
+                        ) : null}
+                      </p>
                     </td>
                     <td className="px-4 py-3">
                       <RoleBadge role={u.role} />
@@ -491,6 +527,13 @@ export default function TeamManager({
                 onChange={(e) => setMemberEmail(e.target.value)}
                 placeholder="E-posta"
                 type="email"
+                className="rounded-md border border-zinc-200 px-3 py-2 text-sm outline-none focus:border-[#e91825]"
+              />
+              <input
+                value={memberPhone}
+                onChange={(e) => setMemberPhone(e.target.value)}
+                placeholder="Telefon (WhatsApp bildirimi) +90 5xx…"
+                type="tel"
                 className="rounded-md border border-zinc-200 px-3 py-2 text-sm outline-none focus:border-[#e91825]"
               />
               <input

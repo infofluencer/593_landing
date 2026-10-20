@@ -40,6 +40,8 @@ export type TenantSettingsInitial = {
     budgetPaceWarnPct: string;
     convDropoutDays: string;
     minSpendForAlert: string;
+    /** CPL / CPA hedefi (boş = hedef yok). */
+    cplTarget: string;
   };
   clientUsers: Array<{
     id: string;
@@ -154,6 +156,9 @@ export default function TenantSettingsForm({
             budgetPaceWarnPct: Number(form.thresholds.budgetPaceWarnPct) || 85,
             convDropoutDays: Number(form.thresholds.convDropoutDays) || 3,
             minSpendForAlert: Number(form.thresholds.minSpendForAlert) || 100,
+            cplTarget: form.thresholds.cplTarget.trim()
+              ? Number(form.thresholds.cplTarget)
+              : null,
           },
         }),
       });
@@ -630,6 +635,21 @@ export default function TenantSettingsForm({
                   setField("thresholds", {
                     ...form.thresholds,
                     minSpendForAlert: e.target.value,
+                  })
+                }
+              />
+            </Field>
+            <Field label="Lead / satış maliyeti hedefi (aşılınca uyarı)">
+              <input
+                className={inputClass}
+                type="number"
+                min={0}
+                placeholder="Boş = hedef yok"
+                value={form.thresholds.cplTarget}
+                onChange={(e) =>
+                  setField("thresholds", {
+                    ...form.thresholds,
+                    cplTarget: e.target.value,
                   })
                 }
               />

@@ -8,6 +8,7 @@ import {
   mergeVideoActions,
 } from "@/lib/integrations/meta/metrics";
 import { getMetaSystemUserToken } from "@/lib/integrations/tokens";
+import { graphFetch } from "@/lib/integrations/meta/graph";
 
 const GRAPH = "https://graph.facebook.com/v21.0";
 
@@ -132,8 +133,8 @@ async function fetchMetaCampaignInsightsChunk(opts: {
   let url: string | null = `${GRAPH}/${account}/insights?${params}`;
 
   while (url) {
-    const res = await fetch(url);
-    const json = (await res.json()) as {
+    const { res, json: rawJson } = await graphFetch(url);
+    const json = rawJson as {
       data?: Array<{
         date_start?: string;
         campaign_id?: string;
@@ -242,8 +243,8 @@ export async function fetchMetaPeriodReach(opts: {
     const out: Array<{ campaign_id?: string; reach?: string; frequency?: string }> = [];
     let url: string | null = `${GRAPH}/${account}/insights?${params}`;
     while (url) {
-      const res = await fetch(url);
-      const json = (await res.json()) as {
+      const { res, json: rawJson } = await graphFetch(url);
+      const json = rawJson as {
         data?: Array<{ campaign_id?: string; reach?: string; frequency?: string }>;
         paging?: { next?: string };
         error?: { message?: string };

@@ -690,7 +690,7 @@ export async function fetchAdsCampaignLostShare(opts: {
       metrics.cost_micros
     FROM campaign
     WHERE segments.date BETWEEN '${opts.from}' AND '${opts.to}'
-      AND campaign.status != 'REMOVED'
+      AND campaign.status = 'ENABLED'
     ORDER BY metrics.cost_micros DESC
   `;
 

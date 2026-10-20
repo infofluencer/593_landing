@@ -11,6 +11,7 @@ import {
 } from "react";
 import {
   Building2,
+  CalendarDays,
   ClipboardList,
   History,
   LayoutDashboard,
@@ -40,6 +41,7 @@ const NAV_ICONS: Record<string, LucideIcon> = {
   "/faturalar": Receipt,
   "/brands": Building2,
   "/board": ClipboardList,
+  "/takvim": CalendarDays,
   "/ekip": Users,
   "/audit": History,
   "/settings": Settings,

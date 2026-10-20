@@ -3,12 +3,15 @@ import { Suspense } from "react";
 import BudgetPlanVsActual from "@/components/panel/BudgetPlanVsActual";
 import PeriodFilterBar from "@/components/panel/PeriodFilterBar";
 import { StatusBadge } from "@/components/panel/StatusBadge";
-import { KPICard } from "@/components/panel/ds";
-import { PanelTable } from "@/components/panel/ui";
+import { ChartCard } from "@/components/panel/ds";
+import { StatTile } from "@/components/panel/ds/viz";
+import { SpendTrendChart } from "@/components/panel/charts";
 import { loadBrandBudgetPlan } from "@/lib/panel/brand-budget";
 import { requireBundle } from "@/lib/panel/data";
-import { formatDate, formatTry } from "@/lib/panel/format";
+import { formatTry } from "@/lib/panel/format";
 import { resolvePanelDateRange } from "@/lib/panel/period";
+import { bucketSeries } from "@/lib/panel/presentation";
+import { loadTenantStatus } from "@/lib/panel/tenant-status";
 
 export default async function BudgetPage({
   searchParams,
@@ -19,36 +22,42 @@ export default async function BudgetPage({
   const slug = h.get("x-tenant-slug")!;
   const sp = await searchParams;
   const range = await resolvePanelDateRange(sp);
-  const bundle = await requireBundle(slug, {
-    from: range.startDate,
-    to: range.endDate,
-  });
-  const { tenant, periodSpend, health, current, metaCurrent, dailySpend } =
-    bundle;
+  const [bundle, budgetPlan] = await Promise.all([
+    requireBundle(slug, { from: range.startDate, to: range.endDate }),
+    loadBrandBudgetPlan(slug, { from: range.startDate, to: range.endDate }),
+  ]);
+  const status = await loadTenantStatus(bundle, budgetPlan);
+  const { tenant, periodSpend, current, metaCurrent } = bundle;
   const googleSpend = current.account.spend;
   const metaSpend = metaCurrent.account.spend;
-  const budgetPlan = await loadBrandBudgetPlan(slug, {
-    from: range.startDate,
-    to: range.endDate,
-  });
 
   // Harcama varsa göster — Meta/GTM hatası bütçeyi kilitlemez.
   const spent =
     periodSpend > 0 || googleSpend > 0 || metaSpend > 0 ? periodSpend : null;
+  const reasons = status.overall.reasons.map((r) => r.text);
+  const gSeries = bucketSeries(bundle.googleDaily ?? [], range.startDate, range.endDate);
+  const mSeries = bucketSeries(bundle.metaDaily, range.startDate, range.endDate);
+  const daily = gSeries.map((g, i) => ({
+    label: g.label,
+    googleSpend: g.spend,
+    metaSpend: mSeries[i]?.spend ?? 0,
+    googleConv: g.conv,
+    metaConv: mSeries[i]?.conv ?? 0,
+  }));
 
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h2 className="text-lg font-semibold tracking-tight">
-            Bütçe incelemesi
-          </h2>
+          <h2 className="text-lg font-semibold tracking-tight">Bütçe</h2>
           <p className="mt-1 text-sm text-zinc-500">
-            Planlanan bütçe ajans tarafından belirlenir · burada yalnızca
-            izlenir
+            Planlanan bütçe ajans tarafından belirlenir · burada yalnızca izlenir
           </p>
         </div>
-        <StatusBadge status={spent === null ? "unknown" : health} />
+        <StatusBadge
+          status={spent === null ? "unknown" : status.overall.status}
+          reasons={reasons}
+        />
       </div>
 
       <Suspense fallback={null}>
@@ -57,97 +66,47 @@ export default async function BudgetPage({
 
       {spent === null ? (
         <div className="rounded-lg border border-zinc-200 bg-zinc-100 px-4 py-3 text-sm text-zinc-700">
-          Harcama verisi alınamadı — durum:{" "}
-          <strong>Kontrol edilemedi</strong> (sıfır yazılmadı).
+          Harcama verisi alınamadı — durum: <strong>Kontrol edilemedi</strong>{" "}
+          (sıfır yazılmadı).
         </div>
       ) : null}
 
       {budgetPlan ? (
-        <BudgetPlanVsActual plan={budgetPlan} />
+        <BudgetPlanVsActual
+          plan={budgetPlan}
+          statusReasons={status.budget.reasons.map((r) => r.text)}
+        />
       ) : (
-        <div className="max-w-md">
-          <KPICard
-            tier={1}
-            metricKey="spend"
-            kind="money"
-            label="Gerçekleşen"
-            accent="var(--panel-accent)"
-            value={
-              spent === null ? null : formatTry(spent, tenant.currency)
-            }
-            hint={
-              spent !== null ? (
-                <span className="text-[11px] text-panel-fg-secondary">
-                  {range.label}
-                </span>
-              ) : null
-            }
-            goodDirection="neutral"
+        <div className="grid gap-4 sm:grid-cols-3">
+          <StatTile
+            label="Harcanan"
+            value={spent === null ? null : formatTry(spent, tenant.currency)}
+            hint={range.label}
+            variant="navy"
+          />
+          <StatTile
+            label="Google Ads"
+            value={spent === null ? null : formatTry(googleSpend, tenant.currency)}
+            color="#E37400"
+            values={gSeries.map((p) => p.spend)}
+          />
+          <StatTile
+            label="Meta Ads"
+            value={spent === null ? null : formatTry(metaSpend, tenant.currency)}
+            color="#0866FF"
+            values={mSeries.map((p) => p.spend)}
           />
         </div>
       )}
 
       {spent !== null ? (
-        <>
-          {!budgetPlan ? (
-            <div className="grid gap-3 sm:grid-cols-2">
-              <KPICard
-                tier={2}
-                metricKey="spend"
-                kind="money"
-                label="Google Ads"
-                accent="var(--panel-google-blue)"
-                value={formatTry(googleSpend, tenant.currency)}
-                goodDirection="neutral"
-              />
-              <KPICard
-                tier={2}
-                metricKey="spend"
-                kind="money"
-                label="Meta Ads"
-                accent="var(--panel-meta)"
-                value={formatTry(metaSpend, tenant.currency)}
-                goodDirection="neutral"
-              />
-            </div>
-          ) : null}
-
-          <div>
-            <div className="mb-2 flex flex-wrap items-end justify-between gap-2">
-              <h3 className="text-sm font-semibold text-zinc-900">
-                Günlük harcama
-              </h3>
-              <p className="text-xs text-zinc-500">{range.label}</p>
-            </div>
-            {dailySpend.length === 0 ? (
-              <div className="rounded-lg border border-zinc-200 bg-zinc-100 px-4 py-3 text-sm text-zinc-700">
-                Bu dönem için günlük harcama satırı yok.
-              </div>
-            ) : (
-              <PanelTable
-                headers={["Tarih", "Google Ads", "Meta Ads", "Toplam"]}
-                numericCols={[1, 2, 3]}
-              >
-                {dailySpend.map((row) => (
-                  <tr key={row.date}>
-                    <td className="font-medium text-panel-fg whitespace-nowrap">
-                      {formatDate(row.date)}
-                    </td>
-                    <td className="num">
-                      {formatTry(row.google, tenant.currency)}
-                    </td>
-                    <td className="num">
-                      {formatTry(row.meta, tenant.currency)}
-                    </td>
-                    <td className="num font-medium">
-                      {formatTry(row.total, tenant.currency)}
-                    </td>
-                  </tr>
-                ))}
-              </PanelTable>
-            )}
-          </div>
-        </>
+        <ChartCard
+          title="Günlük harcama · Meta ve Google"
+          description={range.label}
+          empty={daily.length === 0}
+        >
+          <SpendTrendChart data={daily} />
+        </ChartCard>
       ) : null}
     </div>
   );

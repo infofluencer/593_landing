@@ -1,4 +1,5 @@
 import { getMetaSystemUserToken } from "@/lib/integrations/tokens";
+import { graphFetch } from "@/lib/integrations/meta/graph";
 
 const GRAPH = "https://graph.facebook.com/v21.0";
 
@@ -29,8 +30,8 @@ export async function fetchMetaHourlySpend(opts: {
     fields: "spend,impressions,clicks",
     limit: "100",
   });
-  const res = await fetch(`${GRAPH}/${actId(opts.metaAccountId)}/insights?${params}`);
-  const json = (await res.json()) as {
+  const { res, json: rawJson } = await graphFetch(`${GRAPH}/${actId(opts.metaAccountId)}/insights?${params}`);
+  const json = rawJson as {
     data?: Array<{
       hourly_stats_aggregated_by_advertiser_time_zone?: string;
       spend?: string;
@@ -87,6 +88,26 @@ export type AccountHealthResult = {
   raw: Record<string, unknown>;
 };
 
+/** Yayındaki kampanya sayısı (harcama yoksa sebep için); hata → null. */
+async function countMetaActiveCampaigns(
+  metaAccountId: string,
+): Promise<number | null> {
+  try {
+    const params = new URLSearchParams({
+      access_token: getMetaSystemUserToken(),
+      fields: "id",
+      effective_status: JSON.stringify(["ACTIVE"]),
+      limit: "200",
+    });
+    const { res, json: rawJson } = await graphFetch(`${GRAPH}/${actId(metaAccountId)}/campaigns?${params}`);
+    const json = rawJson as { data?: unknown[]; error?: unknown };
+    if (!res.ok || json.error) return null;
+    return json.data?.length ?? 0;
+  } catch {
+    return null;
+  }
+}
+
 /** Reklam hesabı durumu — ödenmemiş / askıda / harcama limiti. */
 export async function fetchMetaAccountHealth(
   metaAccountId: string,
@@ -95,8 +116,8 @@ export async function fetchMetaAccountHealth(
     access_token: getMetaSystemUserToken(),
     fields: "account_status,disable_reason,spend_cap,amount_spent,balance,currency,is_prepay_account",
   });
-  const res = await fetch(`${GRAPH}/${actId(metaAccountId)}?${params}`);
-  const json = (await res.json()) as {
+  const { res, json: rawJson } = await graphFetch(`${GRAPH}/${actId(metaAccountId)}?${params}`);
+  const json = rawJson as {
     account_status?: number;
     disable_reason?: number;
     spend_cap?: string;
@@ -111,7 +132,10 @@ export async function fetchMetaAccountHealth(
     throw new Error(`${json.error?.message ?? `Meta HTTP ${res.status}`}${code}`);
   }
 
-  const raw = { ...json } as Record<string, unknown>;
+  const raw = {
+    ...json,
+    activeCampaigns: await countMetaActiveCampaigns(metaAccountId),
+  } as Record<string, unknown>;
   const st = json.account_status != null ? ACCOUNT_STATUS[json.account_status] : undefined;
   const reason =
     json.disable_reason && json.disable_reason > 0

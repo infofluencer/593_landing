@@ -30,8 +30,9 @@ export type DailySyncResult = {
 };
 
 /**
- * Logolu görünür markalar — son 3 gün Meta + Google kampanya metrikleri.
- * Tam 720g / kreatif / fatura / GA4 çekilmez.
+ * Logolu görünür markalar — kısa pencereyle Meta + Google kampanya ve reklam
+ * metrikleri, kreatifler, faturalar, GA4, GTM, GSC. Tam 720g / BM provision
+ * çekilmez.
  */
 export async function runScheduledDailySync(): Promise<DailySyncResult> {
   const tenants = await listLogoTenants();

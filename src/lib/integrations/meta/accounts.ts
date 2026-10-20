@@ -1,3 +1,4 @@
+import { graphFetch } from "@/lib/integrations/meta/graph";
 import {
   getMetaBusinessId,
   getMetaSystemUserToken,
@@ -32,8 +33,8 @@ async function graphGet<T>(
     url.searchParams.set("access_token", token);
   }
 
-  const res = await fetch(url.toString(), { method: "GET" });
-  const json = (await res.json()) as GraphPage<T>;
+  const { res, json: rawJson } = await graphFetch(url.toString(), { method: "GET" });
+  const json = rawJson as GraphPage<T>;
   if (!res.ok || json.error) {
     throw new Error(
       json.error?.message || `Meta Graph error ${res.status} on ${path}`,

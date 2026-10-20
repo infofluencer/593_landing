@@ -67,6 +67,37 @@ enum BoardCardPriority {
   urgent
 }
 
+/// Marka notu türü — toplantı isteği "Göreve çevir" ile panoya düşer.
+enum BrandNoteKind {
+  general
+  meeting
+  request
+  document
+  link
+}
+
+/// Sosyal medya içerik kartı akışı.
+enum ContentPostStatus {
+  draft
+  design
+  review
+  published
+}
+
+/// Otomatik müşteri raporu sıklığı.
+enum ReportFrequency {
+  none
+  weekly
+  monthly
+}
+
+/// Toplantı durumu.
+enum MeetingStatus {
+  planned
+  done
+  cancelled
+}
+
 /// Agency-level OAuth / system-user (one row per provider).
 /// Tokens NEVER stored raw — secret-store reference only.
 model AgencyConnection {
@@ -82,51 +113,60 @@ model AgencyConnection {
 /// Brand sourced from Meta BM ad accounts (metaAccountId = source of truth).
 /// type drives conversion model + which sections render.
 model Tenant {
-  id            String     @id @default(cuid())
-  slug          String     @unique
-  name          String
-  website       String?
-  metaAccountId String     @unique
-  type          TenantType @default(lead)
-  timezone      String     @default("Europe/Istanbul")
-  currency      String     @default("TRY")
-  visible       Boolean    @default(true)
+  id                   String          @id @default(cuid())
+  slug                 String          @unique
+  name                 String
+  website              String?
+  metaAccountId        String          @unique
+  type                 TenantType      @default(lead)
+  timezone             String          @default("Europe/Istanbul")
+  currency             String          @default("TRY")
+  visible              Boolean         @default(true)
   /// Kare kapak — `/uploads/brands/{id}.webp`
-  coverUrl      String?
+  coverUrl             String?
   /// Ajans marka ızgarası sırası (küçük = önce)
-  sortOrder     Int        @default(0)
+  sortOrder            Int             @default(0)
   /// Markanın ajans içi sorumlusu (tablo filtresi + bildirim alıcısı).
-  ownerId       String?
+  ownerId              String?
   /// Markanın kullanmadığı platformlar (meta | google_ads | ga4 | gtm | gsc) —
   /// senkron atlar, eksik eşleşme/hata uyarı sayılmaz.
-  disabledIntegrations String[] @default([])
-  createdAt     DateTime   @default(now())
-  updatedAt     DateTime   @updatedAt
+  disabledIntegrations String[]        @default([])
+  /// Otomatik PDF/e-posta rapor sıklığı (alıcılar: reportEmails, yoksa müşteri kullanıcıları).
+  reportFrequency      ReportFrequency @default(none)
+  reportEmails         String[]        @default([])
+  createdAt            DateTime        @default(now())
+  updatedAt            DateTime        @updatedAt
 
-  owner           User?      @relation("TenantOwner", fields: [ownerId], references: [id], onDelete: SetNull)
-  mapping         TenantMapping?
-  thresholds      TenantThreshold?
-  siteVerification SiteVerification?
-  memberships     Membership[]
-  metaInsights    MetaInsight[]
-  metaAds         MetaAd[]
-  metaAdInsights  MetaAdInsight[]
+  owner             User?                  @relation("TenantOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  mapping           TenantMapping?
+  thresholds        TenantThreshold?
+  siteVerification  SiteVerification?
+  memberships       Membership[]
+  metaInsights      MetaInsight[]
+  metaAds           MetaAd[]
+  metaAdInsights    MetaAdInsight[]
   metaAdsetInsights MetaAdsetInsight[]
-  metaBreakdowns  MetaBreakdownInsight[]
-  googleAdsMetrics GoogleAdsMetric[]
-  billingCharges  BillingCharge[]
-  ga4Metrics      Ga4Metric[]
-  conversions     Conversion[]
-  alerts          Alert[]
-  syncJobs        SyncJob[]
-  boardCards      BoardCard[]
-  budgets         TenantBudget[]
-  campaignBudgets CampaignBudget[]
-  campaignAliases CampaignAlias[]
-  syncRuns        SyncRun[]
-  auditLogs       AuditLog[]
-  hourlySpend     HourlySpend[]
-  accountHealth   AccountHealth[]
+  metaBreakdowns    MetaBreakdownInsight[]
+  googleAdsMetrics  GoogleAdsMetric[]
+  billingCharges    BillingCharge[]
+  ga4Metrics        Ga4Metric[]
+  conversions       Conversion[]
+  alerts            Alert[]
+  syncJobs          SyncJob[]
+  boardCards        BoardCard[]
+  budgets           TenantBudget[]
+  campaignBudgets   CampaignBudget[]
+  campaignAliases   CampaignAlias[]
+  syncRuns          SyncRun[]
+  auditLogs         AuditLog[]
+  hourlySpend       HourlySpend[]
+  accountHealth     AccountHealth[]
+  notes             BrandNote[]
+  contentPosts      ContentPost[]
+  setupChecks       SetupCheck[]
+  reports           BrandReport[]
+  notificationLogs  NotificationLog[]
+  meetings          Meeting[]
 
   @@index([ownerId])
 }
@@ -200,6 +240,8 @@ model TenantThreshold {
   budgetPaceWarnPct Int      @default(85)
   convDropoutDays   Int      @default(3)
   minSpendForAlert  Decimal  @default(100) @db.Decimal(14, 2)
+  /// Ay içi CPL (lead) / CPA (e-ticaret) hedefi — aşılınca uyarı.
+  cplTarget         Decimal? @db.Decimal(14, 2)
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
@@ -239,24 +281,34 @@ model TenantMapping {
 }
 
 model User {
-  id           String   @id @default(cuid())
-  email        String   @unique
-  passwordHash String
+  id            String   @id @default(cuid())
+  email         String   @unique
+  passwordHash  String
   /// Staff-only recoverable copy for agency settings (auth still uses passwordHash).
   passwordPlain String?
-  name         String?
-  role         Role
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  name          String?
+  /// WhatsApp bildirimi için E.164 (ör. +905321234567).
+  phone         String?
+  role          Role
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
-  memberships      Membership[]
-  assignedAlerts   Alert[]      @relation("AlertAssignee")
-  teamMemberships  TeamMember[]
-  cardAssignments  BoardCardAssignee[]
-  createdCards     BoardCard[]  @relation("CardCreator")
-  cardActivities   BoardCardActivity[]
-  ownedTenants     Tenant[]     @relation("TenantOwner")
-  auditLogs        AuditLog[]
+  memberships        Membership[]
+  assignedAlerts     Alert[]             @relation("AlertAssignee")
+  teamMemberships    TeamMember[]
+  cardAssignments    BoardCardAssignee[]
+  createdCards       BoardCard[]         @relation("CardCreator")
+  cardActivities     BoardCardActivity[]
+  ownedTenants       Tenant[]            @relation("TenantOwner")
+  auditLogs          AuditLog[]
+  brandNotes         BrandNote[]         @relation("NoteAuthor")
+  contentAssigned    ContentPost[]       @relation("ContentAssignee")
+  contentDesigned    ContentPost[]       @relation("ContentDesigner")
+  contentCreated     ContentPost[]       @relation("ContentCreator")
+  reportsCreated     BrandReport[]
+  meetingsCreated    Meeting[]           @relation("MeetingCreator")
+  meetingAttendances MeetingAttendee[]
+  actionItems        MeetingActionItem[] @relation("ActionItemAssignee")
 }
 
 /// Ajans içi sabit ekip (src/lib/panel/teams.ts). Üye çoka-çok (TeamMember).
@@ -272,8 +324,10 @@ model Team {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  members TeamMember[]
-  cards   BoardCard[]
+  members  TeamMember[]
+  cards    BoardCard[]
+  notes    BrandNote[]
+  meetings Meeting[]
 }
 
 /// TeamMembership — bir kullanıcı birden fazla takımda olabilir.
@@ -301,7 +355,7 @@ model Board {
 }
 
 model BoardColumn {
-  id       String @id @default(cuid())
+  id       String  @id @default(cuid())
   boardId  String
   name     String
   position Int
@@ -338,6 +392,9 @@ model BoardCard {
   sourceAlert Alert?              @relation(fields: [sourceAlertId], references: [id], onDelete: SetNull)
   assignees   BoardCardAssignee[]
   activities  BoardCardActivity[]
+  sourceNote  BrandNote?
+  contentPost ContentPost?
+  actionItem  MeetingActionItem?
 
   @@index([columnId, position])
   @@index([teamId])
@@ -391,33 +448,33 @@ model Membership {
 
 /// Meta Marketing API insights (paid only — no Instagram organic).
 model MetaInsight {
-  id          String   @id @default(cuid())
-  tenantId    String
-  date        DateTime @db.Date
-  campaignId  String   @default("")
-  campaignName String  @default("")
-  objective   String   @default("")
-  spend       Decimal  @default(0) @db.Decimal(14, 2)
-  impressions Int      @default(0)
-  reach       Int      @default(0)
-  frequency   Decimal? @db.Decimal(10, 4)
-  clicks      Int      @default(0)
-  ctr         Decimal? @db.Decimal(10, 6)
-  cpc         Decimal? @db.Decimal(14, 4)
+  id           String       @id @default(cuid())
+  tenantId     String
+  date         DateTime     @db.Date
+  campaignId   String       @default("")
+  campaignName String       @default("")
+  objective    String       @default("")
+  spend        Decimal      @default(0) @db.Decimal(14, 2)
+  impressions  Int          @default(0)
+  reach        Int          @default(0)
+  frequency    Decimal?     @db.Decimal(10, 4)
+  clicks       Int          @default(0)
+  ctr          Decimal?     @db.Decimal(10, 6)
+  cpc          Decimal?     @db.Decimal(14, 4)
   /// action_type → count map (purchase, lead, messaging_…, etc.)
-  actions     Json     @default("{}")
+  actions      Json         @default("{}")
   /// action_type → value map (purchase value etc.)
-  actionValues Json    @default("{}")
-  conversions Decimal? @db.Decimal(14, 4)
-  convValue   Decimal? @db.Decimal(14, 2)
-  cpa         Decimal? @db.Decimal(14, 4)
-  roas        Decimal? @db.Decimal(14, 4)
-  ctrOrigin   MetricOrigin @default(provider)
-  cpcOrigin   MetricOrigin @default(provider)
-  cpaOrigin   MetricOrigin @default(derived)
-  roasOrigin  MetricOrigin @default(provider)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  actionValues Json         @default("{}")
+  conversions  Decimal?     @db.Decimal(14, 4)
+  convValue    Decimal?     @db.Decimal(14, 2)
+  cpa          Decimal?     @db.Decimal(14, 4)
+  roas         Decimal?     @db.Decimal(14, 4)
+  ctrOrigin    MetricOrigin @default(provider)
+  cpcOrigin    MetricOrigin @default(provider)
+  cpaOrigin    MetricOrigin @default(derived)
+  roasOrigin   MetricOrigin @default(provider)
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
@@ -444,6 +501,8 @@ model MetaAd {
   permalinkUrl    String?
   /// Destination / CTA link from creative
   linkUrl         String?
+  /// Kreatif url_tags (UTM parametreleri) — kurulum kontrolü.
+  urlTags         String?
   objectType      String?
   syncedAt        DateTime @default(now())
   createdAt       DateTime @default(now())
@@ -457,29 +516,29 @@ model MetaAd {
 
 /// Meta ad-level daily insights (paid). Joined with MetaAd for creative UI.
 model MetaAdInsight {
-  id          String   @id @default(cuid())
-  tenantId    String
-  date        DateTime @db.Date
-  adId        String
-  adName      String   @default("")
-  campaignId  String   @default("")
-  campaignName String  @default("")
-  adsetId     String   @default("")
-  adsetName   String   @default("")
-  spend       Decimal  @default(0) @db.Decimal(14, 2)
-  impressions Int      @default(0)
-  reach       Int      @default(0)
-  clicks      Int      @default(0)
-  ctr         Decimal? @db.Decimal(10, 6)
-  cpc         Decimal? @db.Decimal(14, 4)
-  actions     Json     @default("{}")
-  actionValues Json    @default("{}")
-  conversions Decimal? @db.Decimal(14, 4)
-  convValue   Decimal? @db.Decimal(14, 2)
-  cpa         Decimal? @db.Decimal(14, 4)
-  roas        Decimal? @db.Decimal(14, 4)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id           String   @id @default(cuid())
+  tenantId     String
+  date         DateTime @db.Date
+  adId         String
+  adName       String   @default("")
+  campaignId   String   @default("")
+  campaignName String   @default("")
+  adsetId      String   @default("")
+  adsetName    String   @default("")
+  spend        Decimal  @default(0) @db.Decimal(14, 2)
+  impressions  Int      @default(0)
+  reach        Int      @default(0)
+  clicks       Int      @default(0)
+  ctr          Decimal? @db.Decimal(10, 6)
+  cpc          Decimal? @db.Decimal(14, 4)
+  actions      Json     @default("{}")
+  actionValues Json     @default("{}")
+  conversions  Decimal? @db.Decimal(14, 4)
+  convValue    Decimal? @db.Decimal(14, 2)
+  cpa          Decimal? @db.Decimal(14, 4)
+  roas         Decimal? @db.Decimal(14, 4)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
@@ -577,28 +636,28 @@ model BillingCharge {
 
 /// Google Ads GAQL metrics (account/campaign rows).
 model GoogleAdsMetric {
-  id           String   @id @default(cuid())
-  tenantId     String
-  date         DateTime @db.Date
-  campaignId   String   @default("")
-  campaignName String   @default("")
-  cost         Decimal  @default(0) @db.Decimal(14, 2)
-  impressions  Int      @default(0)
-  clicks       Int      @default(0)
-  ctr          Decimal? @db.Decimal(10, 6)
-  cpc          Decimal? @db.Decimal(14, 4)
-  conversions  Decimal  @default(0) @db.Decimal(14, 4)
-  convValue    Decimal  @default(0) @db.Decimal(14, 2)
+  id             String       @id @default(cuid())
+  tenantId       String
+  date           DateTime     @db.Date
+  campaignId     String       @default("")
+  campaignName   String       @default("")
+  cost           Decimal      @default(0) @db.Decimal(14, 2)
+  impressions    Int          @default(0)
+  clicks         Int          @default(0)
+  ctr            Decimal?     @db.Decimal(10, 6)
+  cpc            Decimal?     @db.Decimal(14, 4)
+  conversions    Decimal      @default(0) @db.Decimal(14, 4)
+  convValue      Decimal      @default(0) @db.Decimal(14, 2)
   /// metrics.all_conversions — ikincil aksiyonlar dahil (teşhis; KPI'ya girmez).
-  allConversions Decimal @default(0) @db.Decimal(14, 4)
-  cpa          Decimal? @db.Decimal(14, 4)
-  roas         Decimal? @db.Decimal(14, 4)
-  ctrOrigin    MetricOrigin @default(provider)
-  cpcOrigin    MetricOrigin @default(provider)
-  cpaOrigin    MetricOrigin @default(provider)
-  roasOrigin   MetricOrigin @default(derived)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  allConversions Decimal      @default(0) @db.Decimal(14, 4)
+  cpa            Decimal?     @db.Decimal(14, 4)
+  roas           Decimal?     @db.Decimal(14, 4)
+  ctrOrigin      MetricOrigin @default(provider)
+  cpcOrigin      MetricOrigin @default(provider)
+  cpaOrigin      MetricOrigin @default(provider)
+  roasOrigin     MetricOrigin @default(derived)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
@@ -608,24 +667,24 @@ model GoogleAdsMetric {
 
 /// GA4 Data API runReport rows (one dimension breakout per row).
 model Ga4Metric {
-  id             String   @id @default(cuid())
-  tenantId       String
-  date           DateTime @db.Date
-  dimensionType  String
-  dimensionValue String   @default("")
-  totalUsers     Int?
-  sessions       Int?
-  averageSessionDuration Decimal? @db.Decimal(14, 4)
-  bounceRate     Decimal? @db.Decimal(10, 6)
+  id                        String   @id @default(cuid())
+  tenantId                  String
+  date                      DateTime @db.Date
+  dimensionType             String
+  dimensionValue            String   @default("")
+  totalUsers                Int?
+  sessions                  Int?
+  averageSessionDuration    Decimal? @db.Decimal(14, 4)
+  bounceRate                Decimal? @db.Decimal(10, 6)
   screenPageViewsPerSession Decimal? @db.Decimal(10, 4)
-  sessionConversionRate Decimal? @db.Decimal(10, 6)
-  purchaseRevenue Decimal? @db.Decimal(14, 2)
-  transactions   Int?
-  ecommercePurchases Int?
+  sessionConversionRate     Decimal? @db.Decimal(10, 6)
+  purchaseRevenue           Decimal? @db.Decimal(14, 2)
+  transactions              Int?
+  ecommercePurchases        Int?
   /// GA4 anahtar etkinlik adedi (eski adıyla conversions)
-  keyEvents      Decimal? @db.Decimal(14, 4)
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  keyEvents                 Decimal? @db.Decimal(14, 4)
+  createdAt                 DateTime @default(now())
+  updatedAt                 DateTime @updatedAt
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
@@ -661,20 +720,24 @@ model Conversion {
 }
 
 model Alert {
-  id         String        @id @default(cuid())
-  tenantId   String
-  type       String
-  severity   AlertSeverity
-  message    String?
-  assigneeId String?
-  resolved   Boolean       @default(false)
-  history    Json          @default("[]")
-  createdAt  DateTime      @default(now())
-  updatedAt  DateTime      @updatedAt
+  id               String         @id @default(cuid())
+  tenantId         String
+  type             String
+  severity         AlertSeverity
+  message          String?
+  assigneeId       String?
+  resolved         Boolean        @default(false)
+  history          Json           @default("[]")
+  /// Son bildirim (WhatsApp / e-posta) — aynı seviyede tekrar gönderilmez.
+  notifiedAt       DateTime?
+  notifiedSeverity AlertSeverity?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
 
-  tenant    Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  assignee  User?       @relation("AlertAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
-  boardCards BoardCard[]
+  tenant        Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  assignee      User?             @relation("AlertAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  boardCards    BoardCard[]
+  notifications NotificationLog[]
 
   @@index([tenantId, resolved])
   @@index([tenantId, severity])
@@ -792,4 +855,195 @@ model AccountHealth {
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@unique([tenantId, provider])
+}
+
+/// Marka notları — toplantı notu, anlık istek, doküman / URL. Tüm ekip görür.
+model BrandNote {
+  id          String        @id @default(cuid())
+  tenantId    String
+  authorId    String?
+  /// Kullanıcı silinse de yazar kalsın.
+  authorEmail String?
+  kind        BrandNoteKind @default(general)
+  title       String        @default("")
+  body        String        @default("")
+  url         String?
+  /// Toplantı notunun ait olduğu toplantı tarihi.
+  meetingAt   DateTime?
+  /// İstek hangi ekibi ilgilendiriyor ("Göreve çevir" kartı bu ekibe düşer).
+  teamId      String?
+  /// "Göreve çevir" ile açılan Durum kartı.
+  boardCardId String?       @unique
+  pinned      Boolean       @default(false)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  tenant    Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  author    User?      @relation("NoteAuthor", fields: [authorId], references: [id], onDelete: SetNull)
+  team      Team?      @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  boardCard BoardCard? @relation(fields: [boardCardId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, createdAt])
+}
+
+/// Sosyal medya yayın takvimi kartı — Grafik Tasarım + Sosyal Medya aynı kartta.
+/// Ajans toplantısı. tenantId dolu → marka toplantısı; teamId dolu → ekip
+/// toplantısı; ikisi de boş → ajans geneli. Katılımcı ve not yazarı yalnızca
+/// staff (admin/team) — müşteri kullanıcıları dahil edilmez.
+model Meeting {
+  id          String        @id @default(cuid())
+  title       String
+  tenantId    String?
+  teamId      String?
+  startsAt    DateTime
+  endsAt      DateTime?
+  /// Google Meet linki, ofis, vb.
+  location    String?
+  status      MeetingStatus @default(planned)
+  /// Gündem (markdown / düz metin).
+  agenda      String        @default("")
+  /// Toplantı notları.
+  notes       String        @default("")
+  /// Alınan kararlar.
+  decisions   String        @default("")
+  createdById String?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  tenant      Tenant?             @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  team        Team?               @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  createdBy   User?               @relation("MeetingCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  attendees   MeetingAttendee[]
+  actionItems MeetingActionItem[]
+
+  @@index([tenantId, startsAt])
+  @@index([teamId, startsAt])
+  @@index([startsAt])
+}
+
+/// Toplantı katılımcısı — yalnızca staff kullanıcı.
+model MeetingAttendee {
+  id        String   @id @default(cuid())
+  meetingId String
+  userId    String
+  createdAt DateTime @default(now())
+
+  meeting Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([meetingId, userId])
+  @@index([userId])
+}
+
+/// Toplantıda çıkan aksiyon maddesi; "Göreve çevir" ile Durum panosu kartına bağlanır.
+model MeetingActionItem {
+  id          String    @id @default(cuid())
+  meetingId   String
+  text        String
+  assigneeId  String?
+  dueAt       DateTime?
+  done        Boolean   @default(false)
+  position    Int       @default(0)
+  boardCardId String?   @unique
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  meeting   Meeting    @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  assignee  User?      @relation("ActionItemAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  boardCard BoardCard? @relation(fields: [boardCardId], references: [id], onDelete: SetNull)
+
+  @@index([meetingId, position])
+  @@index([assigneeId])
+}
+
+model ContentPost {
+  id          String            @id @default(cuid())
+  tenantId    String
+  title       String            @default("")
+  /// instagram | facebook | tiktok | linkedin | x | youtube
+  platform    String            @default("instagram")
+  scheduledAt DateTime
+  status      ContentPostStatus @default(draft)
+  brief       String            @default("")
+  caption     String            @default("")
+  /// Görsel / video linkleri (Drive, CDN vb.).
+  mediaUrls   String[]          @default([])
+  assigneeId  String?
+  designerId  String?
+  createdById String?
+  /// Tasarım görevi (Durum panosu).
+  boardCardId String?           @unique
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  tenant    Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  assignee  User?      @relation("ContentAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  designer  User?      @relation("ContentDesigner", fields: [designerId], references: [id], onDelete: SetNull)
+  createdBy User?      @relation("ContentCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  boardCard BoardCard? @relation(fields: [boardCardId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, scheduledAt])
+  @@index([scheduledAt])
+}
+
+/// Otomatik kurulum kontrolü (UTM, GA4 key event, Pixel/CAPI, Ads dönüşüm).
+model SetupCheck {
+  id        String   @id @default(cuid())
+  tenantId  String
+  /// utm | ga4_key_event | meta_pixel | meta_capi | google_ads_conversion
+  key       String
+  /// ok | missing | unknown
+  status    String
+  detail    String?
+  /// Ajans elle onayladı — otomatik kontrol üzerine yazmaz.
+  manual    Boolean  @default(false)
+  checkedAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, key])
+}
+
+/// Müşteriye gönderilen / indirilen PDF rapor (ajans yorumu ile).
+model BrandReport {
+  id             String    @id @default(cuid())
+  tenantId       String
+  from           DateTime  @db.Date
+  to             DateTime  @db.Date
+  comment        String    @default("")
+  createdById    String?
+  createdByEmail String?
+  /// cron | manual
+  trigger        String    @default("manual")
+  sentTo         String[]  @default([])
+  sentAt         DateTime?
+  error          String?
+  createdAt      DateTime  @default(now())
+
+  tenant    Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdBy User?  @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, createdAt])
+}
+
+/// Bildirim gönderim kaydı (WhatsApp / e-posta).
+model NotificationLog {
+  id        String   @id @default(cuid())
+  tenantId  String?
+  alertId   String?
+  /// whatsapp | email
+  channel   String
+  recipient String
+  template  String?
+  /// sent | failed | skipped
+  status    String
+  error     String?
+  createdAt DateTime @default(now())
+
+  tenant Tenant? @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  alert  Alert?  @relation(fields: [alertId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt])
+  @@index([alertId])
 }

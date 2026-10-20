@@ -2,91 +2,63 @@ import { Suspense } from "react";
 import { headers } from "next/headers";
 import PeriodFilterBar from "@/components/panel/PeriodFilterBar";
 import { StatusBadge } from "@/components/panel/StatusBadge";
-import { KPICard, DataTable } from "@/components/panel/ds";
+import {
+  CompareTrendChart,
+  DonutChart,
+  LabeledBarChart,
+  StatTile,
+  type ComparePoint,
+} from "@/components/panel/ds/viz";
+import { deltaPct } from "@/components/panel/ds/chart-theme";
 import { requireBundle } from "@/lib/panel/data";
 import { resolveGa4PropertyId } from "@/lib/panel/ga4-property-map";
 import { isIntegrationDisabled } from "@/lib/panel/integrations";
 import { resolvePanelDateRange } from "@/lib/panel/period";
+import { loadTenantStatus } from "@/lib/panel/tenant-status";
 import {
   fetchGa4Snapshot,
   type Ga4KeyEventRow,
 } from "@/lib/integrations/google/ga4";
 import { useMockPanelData } from "@/lib/integrations/tokens";
 import { formatNumber, formatTry } from "@/lib/panel/format";
-import type { MockGa4Overview, MockGa4Row } from "@/lib/panel/mock-data";
+import type {
+  MockGa4DailyPoint,
+  MockGa4Overview,
+  MockGa4Row,
+} from "@/lib/panel/mock-data";
 
 function formatDuration(sec: number) {
   const m = Math.floor(sec / 60);
   const s = Math.round(sec % 60);
-  return `${m}:${String(s).padStart(2, "0")}`;
+  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 }
 
-function sumGa4Rows(rows: MockGa4Row[]) {
-  return rows.reduce(
-    (acc, r) => ({
-      sessions: acc.sessions + r.sessions,
-      users: acc.users + r.users,
-      conversions: acc.conversions + r.conversions,
-    }),
-    { sessions: 0, users: 0, conversions: 0 },
-  );
+const TR_MONTHS = ["Oca", "Şub", "Mar", "Nis", "May", "Haz", "Tem", "Ağu", "Eyl", "Eki", "Kas", "Ara"];
+function dayLabel(ymd: string): string {
+  return `${Number(ymd.slice(8, 10))} ${TR_MONTHS[Number(ymd.slice(5, 7)) - 1]}`;
 }
 
-function Ga4DimTable({
-  title,
-  dimHeader,
-  rows,
-  totalLabel = "Toplam",
-}: {
-  title: string;
-  dimHeader: string;
-  rows: MockGa4Row[];
-  totalLabel?: string;
-}) {
-  const totals = sumGa4Rows(rows);
-  return (
-    <div className="space-y-3">
-      <h3 className="text-sm font-semibold text-zinc-800">{title}</h3>
-      <DataTable
-        headers={[
-          dimHeader,
-          { key: "sessions", label: "Oturum", metricKey: "sessions" },
-          { key: "users", label: "Kullanıcı", metricKey: "users" },
-          {
-            key: "conversions",
-            label: "Anahtar etkinlik",
-            metricKey: "conversions",
-          },
-        ]}
-        numericCols={[1, 2, 3]}
-      >
-        {rows.length > 0 ? (
-          <tr data-total>
-            <td>{totalLabel}</td>
-            <td className="num">{formatNumber(totals.sessions)}</td>
-            <td className="num">{formatNumber(totals.users)}</td>
-            <td className="num">{formatNumber(totals.conversions)}</td>
-          </tr>
-        ) : null}
-        {rows.map((r) => (
-          <tr key={r.dimension}>
-            <td
-              className={
-                dimHeader === "Sayfa"
-                  ? "font-mono text-xs text-panel-fg"
-                  : "font-medium text-panel-fg"
-              }
-            >
-              {r.dimension}
-            </td>
-            <td className="num">{formatNumber(r.sessions)}</td>
-            <td className="num">{formatNumber(r.users)}</td>
-            <td className="num">{formatNumber(r.conversions)}</td>
-          </tr>
-        ))}
-      </DataTable>
-    </div>
-  );
+/** Bu dönem günlükleri önceki dönemle aynı sırada eşler. */
+function compare(
+  cur: MockGa4DailyPoint[],
+  prev: MockGa4DailyPoint[],
+  key: keyof Omit<MockGa4DailyPoint, "date">,
+): ComparePoint[] {
+  return cur.map((p, i) => ({
+    label: dayLabel(p.date),
+    current: Number(p[key] ?? 0),
+    previous: prev[i] ? Number(prev[i]![key] ?? 0) : null,
+  }));
+}
+
+function series(points: MockGa4DailyPoint[], key: keyof Omit<MockGa4DailyPoint, "date">): number[] {
+  return points.map((p) => Number(p[key] ?? 0));
+}
+
+function pctDelta(cur: number, prev: MockGa4Overview | null | undefined, key: keyof MockGa4Overview) {
+  if (!prev) return null;
+  const p = prev[key];
+  return typeof p === "number" ? deltaPct(cur, p) : null;
 }
 
 export default async function Ga4Page({
@@ -102,11 +74,12 @@ export default async function Ga4Page({
     from: range.startDate,
     to: range.endDate,
   });
-  const { tenant, health, syncJobs } = bundle;
+  const { tenant, syncJobs } = bundle;
   const ecommerce = tenant.type === "ecommerce";
   const ga4Job = syncJobs.find((j) => j.service === "ga4");
   const ga4Property =
     resolveGa4PropertyId(tenant) || tenant.mapping.ga4PropertyId;
+  const status = await loadTenantStatus(bundle, null);
 
   let ga4: MockGa4Overview = bundle.ga4;
   let ga4Channels: MockGa4Row[] = bundle.ga4Channels;
@@ -154,21 +127,8 @@ export default async function Ga4Page({
       const hasDb =
         bundle.ga4.sessions > 0 || bundle.ga4Channels.length > 0;
       if (hasDb) {
-        ga4 = bundle.ga4;
-        ga4Channels = bundle.ga4Channels;
-        ga4Landings = bundle.ga4Landings;
         mode = "db";
       } else {
-        ga4 = {
-          totalUsers: 0,
-          sessions: 0,
-          averageSessionDuration: 0,
-          bounceRate: 0,
-          screenPageViewsPerSession: 0,
-          sessionConversionRate: 0,
-          purchaseRevenue: null,
-          transactions: null,
-        };
         ga4Channels = [];
         ga4Landings = [];
         mode = "empty";
@@ -182,6 +142,24 @@ export default async function Ga4Page({
   }
 
   const unknown = mode === "empty";
+  const daily = bundle.ga4Daily ?? [];
+  const prevDaily = bundle.ga4PrevDaily ?? [];
+  const prev = bundle.ga4Previous ?? null;
+  const badgeStatus = unknown
+    ? "unknown"
+    : liveError || ga4Job?.status === "error"
+      ? "warn"
+      : status.ga4.status === "unknown"
+        ? "ok"
+        : status.ga4.status;
+  const reasons = [
+    ...status.ga4.reasons.map((r) => r.text),
+    ...(liveError && mode === "db"
+      ? ["Canlı GA4 verisi alınamadı — son senkron verisi gösteriliyor"]
+      : []),
+  ];
+  const convRate = ga4.sessionConversionRate * 100;
+  const bounce = ga4.bounceRate * 100;
 
   return (
     <div className="space-y-6">
@@ -194,198 +172,149 @@ export default async function Ga4Page({
             Site davranışı
           </h2>
           <p className="mt-1 text-sm text-zinc-500">
-            Kullanıcı · oturum · kanal · açılış sayfası
-            {ga4Property ? ` · ${ga4Property}` : " · property eşleşmemiş"}
-            {" · "}
-            {range.label}
+            Kullanıcı · oturum · kanal · açılış sayfası · {range.label} ·
+            önceki dönemle karşılaştırma
           </p>
         </div>
-        <StatusBadge
-          status={
-            unknown
-              ? "unknown"
-              : liveError || ga4Job?.status === "error"
-                ? "warn"
-                : health === "unknown"
-                  ? "ok"
-                  : health
-          }
-        />
+        <StatusBadge status={badgeStatus} reasons={reasons} />
       </div>
 
       <Suspense fallback={null}>
         <PeriodFilterBar label={range.label} />
       </Suspense>
 
-      {liveError ? (
+      {unknown ? (
         <div className="rounded-lg border border-zinc-200 bg-zinc-100 px-4 py-3 text-sm text-zinc-700">
-          {mode === "db" ? (
-            <>
-              Canlı GA4 çekilemedi — seçilen dönem, sync edilmiş günlük
-              verilerden toplandı. Kullanıcı sayısı günlük toplamdır (tekil
-              değil); açılış sayfaları yalnızca canlı veride gösterilir.
-              <span className="mt-1 block text-xs text-zinc-500">
-                {liveError}
-              </span>
-            </>
-          ) : (
-            <>
-              GA4 verisi alınamadı.
-              <span className="mt-1 block text-xs text-zinc-500">
-                {liveError}
-              </span>
-            </>
-          )}
+          GA4 verisi şu an alınamıyor. Metrikler 0 olarak yazılmadı — durum:
+          Kontrol edilemedi.
         </div>
-      ) : null}
-
-      {unknown && !liveError ? (
-        <div className="rounded-lg border border-zinc-200 bg-zinc-100 px-4 py-3 text-sm text-zinc-700">
-          GA4 verisi alınamadı. Metrikler 0 olarak yazılmadı — durum: Kontrol
-          edilemedi.
-          {ga4Job?.error ? (
-            <span className="mt-1 block text-xs text-zinc-500">
-              {ga4Job.error}
-            </span>
-          ) : null}
-        </div>
-      ) : null}
-
-      {/* Tier 1 — kuzey yıldızı */}
-      <div
-        className={`grid gap-4 sm:grid-cols-2 ${
-          ecommerce ? "xl:grid-cols-4" : "xl:grid-cols-3"
-        }`}
-      >
-        <KPICard
-          tier={1}
-          metricKey="users"
-          kind="count"
-          accent="var(--panel-google-green)"
-          value={unknown ? null : formatNumber(ga4.totalUsers)}
-          goodDirection="up"
-        />
-        <KPICard
-          tier={1}
-          metricKey="sessions"
-          kind="count"
-          accent="var(--panel-google-green)"
-          value={unknown ? null : formatNumber(ga4.sessions)}
-          goodDirection="up"
-        />
-        <KPICard
-          tier={1}
-          metricKey="sessionConvRate"
-          kind="rate"
-          accent="var(--panel-google-green)"
-          value={
-            unknown
-              ? null
-              : `${formatNumber(ga4.sessionConversionRate * 100, 2)}%`
-          }
-          goodDirection="up"
-        />
-        {ecommerce ? (
-          <KPICard
-            tier={1}
-            metricKey="revenue"
-            kind="money"
-            label="Satın alma geliri"
-            accent="var(--panel-google-green)"
-            value={
-              unknown || ga4.purchaseRevenue == null
-                ? null
-                : formatTry(ga4.purchaseRevenue, tenant.currency)
-            }
-            goodDirection="up"
-          />
-        ) : null}
-      </div>
-
-      {!unknown ? (
+      ) : (
         <>
-          {/* Tier 2 — destekleyici */}
-          <div
-            className={`grid gap-3 sm:grid-cols-2 lg:grid-cols-3 ${
-              ecommerce && ga4.transactions != null ? "xl:grid-cols-4" : ""
-            }`}
-          >
-            <KPICard
-              tier={2}
-              metricKey="avgSessionDuration"
-              kind="duration"
+          <div className="grid gap-4 lg:grid-cols-5">
+            <div className="lg:col-span-3">
+              <CompareTrendChart
+                title="Web trafik kullanıcı trendi"
+                data={compare(daily, prevDaily, "users")}
+                total={ga4.totalUsers}
+                delta={pctDelta(ga4.totalUsers, prev, "totalUsers")}
+                variant="navy"
+              />
+            </div>
+            <div className="lg:col-span-2">
+              <DonutChart
+                title="Kullanıcı kanalları"
+                data={ga4Channels.map((c) => ({ name: c.dimension, value: c.sessions }))}
+                centerLabel="Oturum"
+                variant="dark"
+                delta={pctDelta(ga4.sessions, prev, "sessions")}
+              />
+            </div>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            <StatTile
+              label="Kullanıcı sayısı"
+              value={formatNumber(ga4.totalUsers)}
+              delta={pctDelta(ga4.totalUsers, prev, "totalUsers")}
+              values={series(daily, "users")}
+            />
+            <StatTile
+              label="Oturum"
+              value={formatNumber(ga4.sessions)}
+              delta={pctDelta(ga4.sessions, prev, "sessions")}
+              values={series(daily, "sessions")}
+            />
+            <StatTile
+              label="Kullanıcı başına oturum süresi"
               value={formatDuration(ga4.averageSessionDuration)}
-              goodDirection="up"
+              delta={pctDelta(ga4.averageSessionDuration, prev, "averageSessionDuration")}
+              values={series(daily, "avgDuration")}
             />
-            <KPICard
-              tier={2}
-              metricKey="bounceRate"
-              kind="rate"
-              value={`${formatNumber(ga4.bounceRate * 100, 1)}%`}
-              goodDirection="down"
+            <StatTile
+              label="Kullanıcı dönüşüm oranı"
+              value={`${formatNumber(convRate, 2)}%`}
+              delta={pctDelta(ga4.sessionConversionRate, prev, "sessionConversionRate")}
+              values={series(daily, "conversionRate").map((v) => v * 100)}
             />
-            <KPICard
-              tier={2}
-              metricKey="pagePerSession"
-              kind="count"
+            <StatTile
+              label="Çıkma oranı"
+              value={`${formatNumber(bounce, 1)}%`}
+              delta={pctDelta(ga4.bounceRate, prev, "bounceRate")}
+              invert
+              values={series(daily, "bounceRate").map((v) => v * 100)}
+            />
+            <StatTile
+              label="Oturum başına sayfa"
               value={formatNumber(ga4.screenPageViewsPerSession, 1)}
-              goodDirection="up"
+              delta={pctDelta(ga4.screenPageViewsPerSession, prev, "screenPageViewsPerSession")}
+              values={series(daily, "pagesPerSession")}
             />
+            {ecommerce && ga4.purchaseRevenue != null ? (
+              <StatTile
+                label="Satın alma geliri"
+                value={formatTry(ga4.purchaseRevenue, tenant.currency)}
+                delta={
+                  prev?.purchaseRevenue != null
+                    ? deltaPct(ga4.purchaseRevenue, prev.purchaseRevenue)
+                    : null
+                }
+                values={daily.map((p) => p.revenue ?? 0)}
+                variant="navy"
+              />
+            ) : null}
             {ecommerce && ga4.transactions != null ? (
-              <KPICard
-                tier={2}
-                metricKey="transactions"
-                kind="count"
+              <StatTile
+                label="Sipariş sayısı"
                 value={formatNumber(ga4.transactions)}
-                goodDirection="up"
+                delta={
+                  prev?.transactions != null
+                    ? deltaPct(ga4.transactions, prev.transactions)
+                    : null
+                }
+                values={daily.map((p) => p.transactions ?? 0)}
               />
             ) : null}
           </div>
 
           <div className="grid gap-4 lg:grid-cols-2">
-            <Ga4DimTable
-              title="Kanallar"
-              dimHeader="Kanal"
-              rows={ga4Channels}
+            <LabeledBarChart
+              title="Kanallara göre anahtar etkinlik"
+              data={ga4Channels.map((c) => ({ name: c.dimension, value: Math.round(c.conversions) }))}
+              layout="horizontal"
+              variant="dark"
+              color="#15803D"
+              max={8}
             />
-            <Ga4DimTable
-              title="Açılış sayfaları"
-              dimHeader="Sayfa"
-              rows={ga4Landings}
-              totalLabel={`İlk ${ga4Landings.length} sayfa toplamı`}
+            <LabeledBarChart
+              title="En çok ziyaret edilen açılış sayfaları"
+              data={ga4Landings.map((r) => ({ name: r.dimension, value: r.sessions }))}
+              layout="horizontal"
+              variant="navy"
+              color="#8fb3ff"
+              max={8}
             />
           </div>
 
           {keyEventsByName.length > 0 ? (
-            <div className="space-y-3">
-              <h3 className="text-sm font-semibold text-zinc-800">
-                Anahtar etkinlikler (GA4 dönüşümleri)
-              </h3>
-              <p className="text-xs text-zinc-500">
-                GA4&apos;te &quot;anahtar etkinlik&quot; işaretli olaylar · Google
-                Ads / Meta dönüşümlerinden bağımsız sayım (tekilleştirilmiş site
-                verisi).
-              </p>
-              <DataTable
-                headers={[
-                  "Olay",
-                  { key: "keyEvents", label: "Adet", metricKey: "conversions" },
-                ]}
-                numericCols={[1]}
-              >
-                {keyEventsByName.map((r) => (
-                  <tr key={r.eventName}>
-                    <td className="font-mono text-xs text-panel-fg">
-                      {r.eventName}
-                    </td>
-                    <td className="num">{formatNumber(r.keyEvents, 1)}</td>
-                  </tr>
-                ))}
-              </DataTable>
-            </div>
+            <LabeledBarChart
+              title="Anahtar etkinlikler (GA4 dönüşümleri)"
+              data={keyEventsByName.map((r) => ({ name: r.eventName, value: Math.round(r.keyEvents) }))}
+              layout="horizontal"
+              variant="light"
+              color="#15803D"
+              max={10}
+            />
+          ) : null}
+
+          {mode === "db" ? (
+            <p className="text-xs text-zinc-500">
+              Rakamlar son senkron verisinden toplandı; kullanıcı sayısı günlük
+              toplamdır (tekil değil). Açılış sayfaları yalnızca canlı veride
+              gösterilir.
+            </p>
           ) : null}
         </>
-      ) : null}
+      )}
     </div>
   );
 }

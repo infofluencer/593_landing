@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { formatTry } from "@/lib/panel/format";
+import { compactMoney } from "@/components/panel/ds/chart-theme";
 import {
   PACE_STATUS_META,
   computeBudgetPacing,
@@ -269,20 +270,7 @@ function shortDate(ymd: string): string {
   return `${Number(ymd.slice(8, 10))}.${ymd.slice(5, 7)}`;
 }
 
-function compactMoney(n: number, currency: string): string {
-  try {
-    return new Intl.NumberFormat("tr-TR", {
-      style: "currency",
-      currency,
-      notation: "compact",
-      maximumFractionDigits: 1,
-    }).format(n);
-  } catch {
-    return formatTry(n, currency);
-  }
-}
-
-function CumulativeChart({
+export function CumulativeChart({
   from,
   to,
   today,
@@ -377,15 +365,24 @@ function CumulativeChart({
         {width > 0 ? (
           <svg width={width} height={CHART_H} className="block overflow-visible">
             {[0.5, 1].map((f) => (
-              <line
-                key={f}
-                x1={PAD.left}
-                x2={PAD.left + innerW}
-                y1={y(maxY * f)}
-                y2={y(maxY * f)}
-                stroke="var(--panel-border)"
-                strokeDasharray="2 4"
-              />
+              <g key={f}>
+                <line
+                  x1={PAD.left}
+                  x2={PAD.left + innerW}
+                  y1={y(maxY * f)}
+                  y2={y(maxY * f)}
+                  stroke="var(--panel-border)"
+                  strokeDasharray="2 4"
+                />
+                {/* Ara çizgide de değer: "₺24 bin" (tr-TR "B" milyar sanılıyordu) */}
+                <text
+                  x={PAD.left + 2}
+                  y={y(maxY * f) - 3}
+                  className="fill-panel-fg-muted text-[10px] tabular-nums"
+                >
+                  {compactMoney(maxY * f, currency)}
+                </text>
+              </g>
             ))}
             <line
               x1={PAD.left}
@@ -466,13 +463,6 @@ function CumulativeChart({
                 {shortDate(series[i]?.date ?? from)}
               </text>
             ))}
-            <text
-              x={PAD.left + 2}
-              y={y(maxY) - 3}
-              className="fill-panel-fg-muted text-[10px] tabular-nums"
-            >
-              {compactMoney(maxY, currency)}
-            </text>
           </svg>
         ) : null}
         {hovered && hover != null ? (

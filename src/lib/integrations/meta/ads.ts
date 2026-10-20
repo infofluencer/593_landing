@@ -7,6 +7,7 @@ import {
   mergeVideoActions,
 } from "@/lib/integrations/meta/metrics";
 import { getMetaSystemUserToken } from "@/lib/integrations/tokens";
+import { graphFetch } from "@/lib/integrations/meta/graph";
 
 const GRAPH = "https://graph.facebook.com/v21.0";
 
@@ -27,6 +28,8 @@ export type MetaAdCreativeRow = {
   imageUrl: string | null;
   permalinkUrl: string | null;
   linkUrl: string | null;
+  /** Kreatif url_tags (utm_…) — kurulum kontrolü. */
+  urlTags: string | null;
   objectType: string | null;
 };
 
@@ -66,6 +69,7 @@ type GraphCreative = {
   image_hash?: string;
   object_type?: string;
   link_url?: string;
+  url_tags?: string;
   effective_object_story_id?: string;
   object_story_id?: string;
   /** Public Instagram post URL when the creative is an IG media/boost. */
@@ -184,8 +188,8 @@ export async function fetchMetaAdsWithCreatives(opts: {
     let failed = false;
 
     while (url) {
-      const res = await fetch(url);
-      const json = (await res.json()) as {
+      const { res, json: rawJson } = await graphFetch(url);
+      const json = rawJson as {
         data?: GraphAd[];
         paging?: { next?: string };
         error?: { message?: string };
@@ -221,12 +225,16 @@ export async function fetchMetaAdsWithCreatives(opts: {
     const params = new URLSearchParams({
       access_token: token,
       ids: batch.join(","),
+      // Varsayılan thumbnail 64×64 — tam boy görseli olmayan (IG gönderisi,
+      // video) kreatifler kartta bulanık/boş kalıyordu.
+      thumbnail_width: "720",
+      thumbnail_height: "720",
       // image_hash → full-res via adimages; thumbnail_url is often ~64–128px (blurry when stretched)
           fields:
-            "id,thumbnail_url,image_url,image_hash,object_type,link_url,effective_object_story_id,object_story_id,instagram_permalink_url,effective_instagram_media_id,object_story_spec{link_data{image_hash,picture,link},video_data{image_url,image_hash}}",
+            "id,thumbnail_url,image_url,image_hash,object_type,link_url,url_tags,effective_object_story_id,object_story_id,instagram_permalink_url,effective_instagram_media_id,object_story_spec{link_data{image_hash,picture,link},video_data{image_url,image_hash}}",
     });
-    const res = await fetch(`${GRAPH}/?${params}`);
-    const json = (await res.json()) as Record<string, unknown>;
+    const { json: rawJson } = await graphFetch(`${GRAPH}/?${params}`);
+    const json = rawJson as Record<string, unknown>;
     if (json.error && typeof json.error === "object") {
       const err = json.error as { message?: string };
       // Fallback without object_story_spec if payload too large
@@ -234,8 +242,10 @@ export async function fetchMetaAdsWithCreatives(opts: {
         const light = new URLSearchParams({
           access_token: token,
           ids: batch.join(","),
+          thumbnail_width: "720",
+          thumbnail_height: "720",
           fields:
-            "id,thumbnail_url,image_url,image_hash,object_type,link_url,effective_object_story_id,object_story_id,instagram_permalink_url,effective_instagram_media_id",
+            "id,thumbnail_url,image_url,image_hash,object_type,link_url,url_tags,effective_object_story_id,object_story_id,instagram_permalink_url,effective_instagram_media_id",
         });
         const res2 = await fetch(`${GRAPH}/?${light}`);
         const json2 = (await res2.json()) as Record<string, unknown>;
@@ -309,6 +319,7 @@ export async function fetchMetaAdsWithCreatives(opts: {
       imageUrl,
       permalinkUrl: extractPermalink(ad, creative),
       linkUrl: extractLinkUrl(creative),
+      urlTags: creative?.url_tags || null,
       objectType: creative?.object_type || null,
     };
   });
@@ -331,8 +342,8 @@ async function fetchMetaAdImageUrls(opts: {
       hashes: JSON.stringify(batch),
       fields: "hash,url,permalink_url,width,height",
     });
-    const res = await fetch(`${GRAPH}/${account}/adimages?${params}`);
-    const json = (await res.json()) as {
+    const { res, json: rawJson } = await graphFetch(`${GRAPH}/${account}/adimages?${params}`);
+    const json = rawJson as {
       data?: Array<{
         hash?: string;
         url?: string;
@@ -415,8 +426,8 @@ async function fetchMetaAdInsightsChunk(opts: {
   let url: string | null = `${GRAPH}/${account}/insights?${params}`;
 
   while (url) {
-    const res = await fetch(url);
-    const json = (await res.json()) as {
+    const { res, json: rawJson } = await graphFetch(url);
+    const json = rawJson as {
       data?: Array<{
         date_start?: string;
         ad_id?: string;
@@ -577,8 +588,8 @@ async function fetchMetaAdsetInsightsChunk(opts: {
   let url: string | null = `${GRAPH}/${account}/insights?${params}`;
 
   while (url) {
-    const res = await fetch(url);
-    const json = (await res.json()) as {
+    const { res, json: rawJson } = await graphFetch(url);
+    const json = rawJson as {
       data?: Array<{
         date_start?: string;
         adset_id?: string;
@@ -747,8 +758,8 @@ async function fetchMetaBreakdownChunk(opts: {
   let url: string | null = `${GRAPH}/${account}/insights?${params}`;
 
   while (url) {
-    const res = await fetch(url);
-    const json = (await res.json()) as {
+    const { res, json: rawJson } = await graphFetch(url);
+    const json = rawJson as {
       data?: Array<{
         date_start?: string;
         publisher_platform?: string;

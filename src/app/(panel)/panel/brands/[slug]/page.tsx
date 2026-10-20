@@ -7,6 +7,9 @@ import AuditLogTable from "@/components/panel/AuditLogTable";
 import BrandIntegrationToggles from "@/components/panel/BrandIntegrationToggles";
 import BrandOwnerSelect from "@/components/panel/BrandOwnerSelect";
 import BrandBudgetPlanner from "@/components/panel/BrandBudgetPlanner";
+import BrandMeetingsList from "@/components/panel/BrandMeetingsList";
+import BrandNotes from "@/components/panel/BrandNotes";
+import BrandReportPanel from "@/components/panel/BrandReportPanel";
 import BrandDetailHeaderActions from "@/components/panel/BrandDetailHeaderActions";
 import BrandPanelLinkActions from "@/components/panel/BrandPanelLinkActions";
 import { StatusBadge } from "@/components/panel/StatusBadge";
@@ -23,6 +26,11 @@ import { getBrandMissingIntegrations } from "@/lib/panel/brand-onboarding";
 import { resolveAdsCustomerId } from "@/lib/panel/google-ads-customer-map";
 import { resolveMetaAccountId } from "@/lib/panel/meta-ad-account-map";
 import { listAuditLogs, listStaffOptions } from "@/lib/panel/audit-query";
+import { meetingInclude, serializeMeeting } from "@/lib/panel/meetings";
+import { listBrandNotes, type SerializedNote } from "@/lib/panel/brand-notes";
+import { listBrandReports, type SerializedReport } from "@/lib/panel/brand-report";
+import { loadSetupChecks, type SetupCheckRow } from "@/lib/panel/setup-checks";
+import { fixedTeamOrderBy, fixedTeamWhere } from "@/lib/panel/teams";
 import { getTenantBundle } from "@/lib/panel/data";
 import { formatDateTime, formatNumber, formatTry } from "@/lib/panel/format";
 import { isStaffRole, rootDomain } from "@/lib/panel/host";
@@ -253,11 +261,7 @@ export default async function BrandDetailPage({ params, searchParams }: Props) {
         }),
       ])
     : ([true, null] as const);
-  const [ownerRow, staffOptions, recentAudit]: [
-    { ownerId: string | null; disabledIntegrations: string[] } | null,
-    Awaited<ReturnType<typeof listStaffOptions>>,
-    Awaited<ReturnType<typeof listAuditLogs>>,
-  ] = existsInDb
+  const [ownerRow, staffOptions, recentAudit, recentMeetings] = existsInDb
     ? await Promise.all([
         prisma.tenant.findUnique({
           where: { id: bundle.tenant.id },
@@ -265,9 +269,42 @@ export default async function BrandDetailPage({ params, searchParams }: Props) {
         }),
         listStaffOptions(),
         listAuditLogs({ tenantId: bundle.tenant.id, take: 10 }),
+        prisma.meeting.findMany({
+          where: { tenantId: bundle.tenant.id },
+          include: meetingInclude,
+          orderBy: { startsAt: "desc" },
+          take: 5,
+        }),
       ])
-    : [null, [], { rows: [], nextBefore: null }];
+    : [
+        null,
+        [] as Awaited<ReturnType<typeof listStaffOptions>>,
+        { rows: [], nextBefore: null } as Awaited<ReturnType<typeof listAuditLogs>>,
+        [],
+      ];
   const disabledIntegrations = ownerRow?.disabledIntegrations ?? [];
+  const [notes, setupRows, noteTeams, recentReports, reportSettings] = existsInDb
+    ? await Promise.all([
+        listBrandNotes(bundle.tenant.id),
+        loadSetupChecks([bundle.tenant.id]).then((m) => m.get(bundle.tenant.id) ?? []),
+        prisma.team.findMany({
+          where: fixedTeamWhere,
+          orderBy: fixedTeamOrderBy,
+          select: { id: true, name: true, color: true },
+        }),
+        listBrandReports(bundle.tenant.id, 5),
+        prisma.tenant.findUnique({
+          where: { id: bundle.tenant.id },
+          select: { reportFrequency: true, reportEmails: true },
+        }),
+      ])
+    : [
+        [] as SerializedNote[],
+        [] as SetupCheckRow[],
+        [] as Array<{ id: string; name: string; color: string }>,
+        [] as SerializedReport[],
+        null,
+      ];
   const missing = getBrandMissingIntegrations({
     disabled: disabledIntegrations,
     tenant: bundle.tenant,
@@ -380,12 +417,13 @@ export default async function BrandDetailPage({ params, searchParams }: Props) {
         <div className="min-w-0 rounded-xl border border-zinc-200 bg-white px-4 py-3">
           <p className="flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-[0.12em] text-zinc-500">
             <IconCheck className="size-3.5 shrink-0 text-zinc-400" />
-            Onboarding
+            Kurulum kontrolü
           </p>
-          <div className="mt-2">
-            {missing.length === 0 ? (
+          <div className="mt-2 space-y-1.5">
+            {missing.length === 0 && setupRows.every((r) => r.status !== "missing") ? (
               <p className="text-base font-semibold text-emerald-600">Tamam</p>
-            ) : (
+            ) : null}
+            {missing.length > 0 ? (
               <div className="flex flex-wrap items-center gap-1.5">
                 {missing.map((m) => (
                   <span
@@ -402,7 +440,36 @@ export default async function BrandDetailPage({ params, searchParams }: Props) {
                   Eksikleri tamamla
                 </a>
               </div>
-            )}
+            ) : null}
+            <ul className="space-y-0.5">
+              {setupRows.map((r) => (
+                <li
+                  key={r.key}
+                  className="flex items-center gap-1.5 text-[11px]"
+                  title={r.detail ?? undefined}
+                >
+                  <span
+                    className={
+                      r.status === "ok"
+                        ? "font-bold text-emerald-600"
+                        : r.status === "missing"
+                          ? "font-bold text-rose-600"
+                          : "text-zinc-400"
+                    }
+                  >
+                    {r.status === "ok" ? "✓" : r.status === "missing" ? "✕" : "?"}
+                  </span>
+                  <span className={r.status === "missing" ? "text-zinc-800" : "text-zinc-600"}>
+                    {r.label}
+                  </span>
+                </li>
+              ))}
+              {setupRows.length === 0 ? (
+                <li className="text-[11px] text-zinc-400">
+                  Otomatik kontrol (UTM, GA4, Pixel/CAPI, Ads dönüşüm) senkron sonrası dolar
+                </li>
+              ) : null}
+            </ul>
           </div>
         </div>
         <div className="min-w-0 rounded-xl border border-zinc-200 bg-white px-4 py-3 sm:col-span-2 lg:col-span-1">
@@ -566,6 +633,35 @@ export default async function BrandDetailPage({ params, searchParams }: Props) {
           </PanelTable>
         )}
       </section>
+
+      {existsInDb ? (
+        <BrandNotes
+          tenantSlug={bundle.tenant.slug}
+          initialNotes={notes}
+          teams={noteTeams}
+          canEdit={can(session.user.role, "brands.edit")}
+        />
+      ) : null}
+
+      {existsInDb ? (
+        <BrandReportPanel
+          tenantSlug={bundle.tenant.slug}
+          defaultFrom={range.startDate}
+          defaultTo={range.endDate}
+          frequency={reportSettings?.reportFrequency ?? "none"}
+          emails={reportSettings?.reportEmails ?? []}
+          recent={recentReports}
+          canEdit={can(session.user.role, "brands.edit")}
+        />
+      ) : null}
+
+      {existsInDb ? (
+        <BrandMeetingsList
+          meetings={recentMeetings.map(serializeMeeting)}
+          tenantSlug={bundle.tenant.slug}
+          canManage={can(session.user.role, "meetings.manage")}
+        />
+      ) : null}
 
       {existsInDb ? (
         <section className="space-y-4 rounded-xl border border-zinc-200 bg-white p-4 sm:p-5">

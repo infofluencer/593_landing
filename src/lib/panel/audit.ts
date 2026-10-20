@@ -8,7 +8,11 @@ export type AuditEntity =
   | "campaign_budget"
   | "user"
   | "team"
-  | "board_card";
+  | "board_card"
+  | "meeting"
+  | "brand_note"
+  | "content_post"
+  | "report";
 
 type AuditSession = {
   user: { id?: string | null; email?: string | null };

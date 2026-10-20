@@ -29,6 +29,7 @@ import {
   type MockCampaignMetric,
   type MockConversion,
   type MockDailySpendPoint,
+  type MockGa4DailyPoint,
   type MockGa4Overview,
   type MockGtmSnapshot,
   type MockMetaAdPerformance,
@@ -89,6 +90,29 @@ function asActionMap(v: unknown): Record<string, number> {
 
 function dateKey(d: Date): string {
   return d.toISOString().slice(0, 10);
+}
+
+function toAccountHealth(
+  row:
+    | { status: string; label: string; detail: string | null; raw: unknown; checkedAt: Date }
+    | undefined,
+): MockTenantBundle["accounts"] extends infer A
+  ? A extends { google: infer H } ? H : never
+  : never {
+  if (!row) return null;
+  const raw = (row.raw ?? {}) as Record<string, unknown>;
+  const active = raw.enabledCampaigns ?? raw.activeCampaigns;
+  const status = row.status;
+  return {
+    status:
+      status === "ok" || status === "warn" || status === "critical"
+        ? status
+        : "unknown",
+    label: row.label,
+    detail: row.detail,
+    activeCampaigns: typeof active === "number" ? active : null,
+    checkedAt: row.checkedAt.toISOString(),
+  };
 }
 
 function sumCampaigns(
@@ -390,6 +414,140 @@ function healthFromJobs(
   return "unknown";
 }
 
+type Ga4OverviewRow = {
+  sessions: number | null;
+  totalUsers: number | null;
+  averageSessionDuration: unknown;
+  bounceRate: unknown;
+  screenPageViewsPerSession: unknown;
+  sessionConversionRate: unknown;
+  purchaseRevenue: unknown;
+  transactions: number | null;
+};
+
+/** Oranlar / ortalamalar oturum ağırlıklı; kullanıcı günlük toplamdır (tekil değil). */
+function aggregateGa4Overview(ov: Ga4OverviewRow[]): MockGa4Overview | null {
+  if (ov.length === 0) return null;
+  let sessions = 0;
+  let users = 0;
+  let durW = 0;
+  let bounceW = 0;
+  let ppsW = 0;
+  let convW = 0;
+  let revenue: number | null = null;
+  let transactions: number | null = null;
+  for (const r of ov) {
+    const sess = r.sessions ?? 0;
+    sessions += sess;
+    users += r.totalUsers ?? 0;
+    durW += Number(r.averageSessionDuration ?? 0) * sess;
+    bounceW += Number(r.bounceRate ?? 0) * sess;
+    ppsW += Number(r.screenPageViewsPerSession ?? 0) * sess;
+    convW += Number(r.sessionConversionRate ?? 0) * sess;
+    if (r.purchaseRevenue != null) {
+      revenue = (revenue ?? 0) + Number(r.purchaseRevenue);
+    }
+    if (r.transactions != null) {
+      transactions = (transactions ?? 0) + r.transactions;
+    }
+  }
+  const w = (x: number) => (sessions > 0 ? x / sessions : 0);
+  return {
+    totalUsers: users,
+    sessions,
+    averageSessionDuration: w(durW),
+    bounceRate: w(bounceW),
+    screenPageViewsPerSession: w(ppsW),
+    sessionConversionRate: w(convW),
+    purchaseRevenue: revenue,
+    transactions,
+  };
+}
+
+function ga4DailyFromRows(
+  rows: Array<Ga4OverviewRow & { date: Date }>,
+): MockGa4DailyPoint[] {
+  return rows
+    .map((r) => {
+      const sess = r.sessions ?? 0;
+      return {
+        date: dateKey(r.date),
+        users: r.totalUsers ?? 0,
+        sessions: sess,
+        keyEvents: sess * Number(r.sessionConversionRate ?? 0),
+        conversionRate: Number(r.sessionConversionRate ?? 0),
+        bounceRate: Number(r.bounceRate ?? 0),
+        avgDuration: Number(r.averageSessionDuration ?? 0),
+        pagesPerSession: Number(r.screenPageViewsPerSession ?? 0),
+        revenue: r.purchaseRevenue != null ? Number(r.purchaseRevenue) : null,
+        transactions: r.transactions ?? null,
+      };
+    })
+    .sort((a, b) => a.date.localeCompare(b.date));
+}
+
+/** Google günlük hesap toplamı (kampanyalar toplanır). */
+function groupGoogleDaily(rows: GoogleMetricRow[]): MockMetaDailyPoint[] {
+  const map = new Map<string, MockMetaDailyPoint>();
+  for (const m of rows) {
+    const key = dateKey(m.date);
+    const prev = map.get(key) || {
+      date: key,
+      spend: 0,
+      clicks: 0,
+      conv: 0,
+      convValue: 0,
+      impr: 0,
+    };
+    prev.spend += Number(m.cost);
+    prev.clicks += m.clicks;
+    prev.impr = (prev.impr ?? 0) + m.impressions;
+    prev.conv += Number(m.conversions);
+    prev.convValue += Number(m.convValue);
+    map.set(key, prev);
+  }
+  return [...map.values()].sort((a, b) => a.date.localeCompare(b.date));
+}
+
+/** Meta günlük hesap toplamı — önceki dönem karşılaştırması için. */
+function groupMetaDaily(
+  type: TenantType,
+  rows: Array<{
+    date: Date;
+    spend: unknown;
+    impressions: number;
+    reach: number;
+    clicks: number;
+    actions: unknown;
+    actionValues: unknown;
+    conversions: unknown;
+    convValue: unknown;
+  }>,
+): MockMetaDailyPoint[] {
+  const map = new Map<string, MockMetaDailyPoint>();
+  for (const m of rows) {
+    const key = dateKey(m.date);
+    const prev = map.get(key) || {
+      date: key,
+      spend: 0,
+      clicks: 0,
+      conv: 0,
+      convValue: 0,
+      impr: 0,
+      reach: 0,
+    };
+    prev.spend += Number(m.spend);
+    prev.clicks += metaLinkClicks(m);
+    prev.impr = (prev.impr ?? 0) + m.impressions;
+    prev.reach = (prev.reach ?? 0) + m.reach;
+    const mc = metaConv(type, m);
+    prev.conv += mc.conv;
+    prev.convValue += mc.convValue;
+    map.set(key, prev);
+  }
+  return [...map.values()].sort((a, b) => a.date.localeCompare(b.date));
+}
+
 async function bundleFromDb(
   slug: string,
   range: BundleRangeOpts,
@@ -415,6 +573,7 @@ async function bundleFromDb(
         include: { assignee: { select: { email: true } } },
       },
       siteVerification: true,
+      accountHealth: true,
       googleAdsMetrics: {
         where: { date: dateFilter },
       },
@@ -446,7 +605,8 @@ async function bundleFromDb(
   if (!tenant) return null;
 
   // Önceki dönem (aynı uzunluk, hemen önce) — delta rozetleri için.
-  const [prevGoogleRows, prevMetaRows] = await Promise.all([
+  const [prevGoogleRows, prevMetaRows, prevGa4Rows, lastGoogleSpend, lastMetaSpend] =
+    await Promise.all([
     prisma.googleAdsMetric.findMany({
       where: { tenantId: tenant.id, date: prevDateFilter },
     }),
@@ -466,6 +626,20 @@ async function bundleFromDb(
         actions: true,
         actionValues: true,
       },
+    }),
+    prisma.ga4Metric.findMany({
+      where: { tenantId: tenant.id, date: prevDateFilter, dimensionType: "overview" },
+    }),
+    // "Harcama durdu" sebebi: kanalın harcaması olan son günü (dönemden bağımsız).
+    prisma.googleAdsMetric.findFirst({
+      where: { tenantId: tenant.id, cost: { gt: 0 } },
+      orderBy: { date: "desc" },
+      select: { date: true },
+    }),
+    prisma.metaInsight.findFirst({
+      where: { tenantId: tenant.id, spend: { gt: 0 } },
+      orderBy: { date: "desc" },
+      select: { date: true },
     }),
   ]);
   const ga4Rows = tenant.ga4Metrics;
@@ -525,6 +699,7 @@ async function bundleFromDb(
     const prev = metaAdsById.get(row.adId) || {
       adId: row.adId,
       adName: row.adName || creative?.adName || "(unnamed)",
+      campaignId: row.campaignId || creative?.campaignId || undefined,
       campaignName: row.campaignName || creative?.campaignName || "",
       adsetName: row.adsetName || creative?.adsetName || "",
       effectiveStatus: creative?.effectiveStatus || "",
@@ -564,6 +739,7 @@ async function bundleFromDb(
     metaAdsById.set(creative.adId, {
       adId: creative.adId,
       adName: creative.adName,
+      campaignId: creative.campaignId || undefined,
       campaignName: creative.campaignName,
       adsetName: creative.adsetName,
       effectiveStatus: creative.effectiveStatus,
@@ -647,9 +823,13 @@ async function bundleFromDb(
       clicks: 0,
       conv: 0,
       convValue: 0,
+      impr: 0,
+      reach: 0,
     };
     prev.spend += Number(m.spend);
     prev.clicks += metaLinkClicks(m);
+    prev.impr = (prev.impr ?? 0) + m.impressions;
+    prev.reach = (prev.reach ?? 0) + m.reach;
     const mc = metaConv(tenant.type, m);
     prev.conv += mc.conv;
     prev.convValue += mc.convValue;
@@ -663,6 +843,11 @@ async function bundleFromDb(
   const metaDaily = [...dailyMap.values()].sort((a, b) =>
     a.date.localeCompare(b.date),
   );
+  const googleDaily = groupGoogleDaily(tenant.googleAdsMetrics);
+  const prevDaily = {
+    google: adsUnknown ? [] : groupGoogleDaily(prevGoogleRows),
+    meta: metaUnknown ? [] : groupMetaDaily(tenant.type, prevMetaRows),
+  };
   const metaFunnel =
     funnelParts.length > 0 ? sumMetaFunnel(funnelParts) : { ...EMPTY_META_FUNNEL };
   const metaVideo =
@@ -717,48 +902,14 @@ async function bundleFromDb(
   let ga4: MockGa4Overview = { ...EMPTY_GA4 };
   const ga4Channels: MockTenantBundle["ga4Channels"] = [];
   const ga4Landings: MockTenantBundle["ga4Landings"] = [];
+  let ga4Daily: MockGa4DailyPoint[] = [];
 
   if (ga4Job?.status === "error" && ga4Rows.length === 0) {
     // leave empty — unknown ≠ zero
   } else if (ga4Rows.length > 0) {
-    // Oranlar / ortalamalar oturum ağırlıklı; kullanıcı günlük toplamdır (tekil değil).
     const ov = ga4Rows.filter((r) => r.dimensionType === "overview");
-    let sessions = 0;
-    let users = 0;
-    let durW = 0;
-    let bounceW = 0;
-    let ppsW = 0;
-    let convW = 0;
-    let revenue: number | null = null;
-    let transactions: number | null = null;
-    for (const r of ov) {
-      const sess = r.sessions ?? 0;
-      sessions += sess;
-      users += r.totalUsers ?? 0;
-      durW += Number(r.averageSessionDuration ?? 0) * sess;
-      bounceW += Number(r.bounceRate ?? 0) * sess;
-      ppsW += Number(r.screenPageViewsPerSession ?? 0) * sess;
-      convW += Number(r.sessionConversionRate ?? 0) * sess;
-      if (r.purchaseRevenue != null) {
-        revenue = (revenue ?? 0) + Number(r.purchaseRevenue);
-      }
-      if (r.transactions != null) {
-        transactions = (transactions ?? 0) + r.transactions;
-      }
-    }
-    if (ov.length > 0) {
-      const w = (x: number) => (sessions > 0 ? x / sessions : 0);
-      ga4 = {
-        totalUsers: users,
-        sessions,
-        averageSessionDuration: w(durW),
-        bounceRate: w(bounceW),
-        screenPageViewsPerSession: w(ppsW),
-        sessionConversionRate: w(convW),
-        purchaseRevenue: revenue,
-        transactions,
-      };
-    }
+    ga4 = aggregateGa4Overview(ov) ?? { ...EMPTY_GA4 };
+    ga4Daily = ga4DailyFromRows(ov);
     const byChannel = new Map<string, MockTenantBundle["ga4Channels"][number]>();
     for (const r of ga4Rows.filter((x) => x.dimensionType === "channel")) {
       const prev = byChannel.get(r.dimensionValue) || {
@@ -780,6 +931,8 @@ async function bundleFromDb(
     );
     // Açılış sayfaları DB'de tutulmaz — yalnızca canlı GA4.
   }
+  const ga4Previous = aggregateGa4Overview(prevGa4Rows);
+  const ga4PrevDaily = ga4DailyFromRows(prevGa4Rows);
 
   return {
     tenant: {
@@ -823,6 +976,9 @@ async function bundleFromDb(
       minSpendForAlert: tenant.thresholds?.minSpendForAlert
         ? Number(tenant.thresholds.minSpendForAlert)
         : 100,
+      cplTarget: tenant.thresholds?.cplTarget
+        ? Number(tenant.thresholds.cplTarget)
+        : null,
     },
     health: bothUnknown ? "unknown" : health,
     periodSpend,
@@ -859,6 +1015,8 @@ async function bundleFromDb(
     metaAdsets,
     metaBreakdowns,
     metaDaily,
+    googleDaily,
+    prevDaily,
     dailySpend,
     metaFunnel,
     metaVideo,
@@ -889,6 +1047,17 @@ async function bundleFromDb(
     ga4,
     ga4Channels,
     ga4Landings,
+    ga4Daily,
+    ga4PrevDaily,
+    ga4Previous,
+    accounts: {
+      google: toAccountHealth(tenant.accountHealth.find((a) => a.provider === "google")),
+      meta: toAccountHealth(tenant.accountHealth.find((a) => a.provider === "meta")),
+    },
+    lastSpend: {
+      google: lastGoogleSpend ? dateKey(lastGoogleSpend.date) : null,
+      meta: lastMetaSpend ? dateKey(lastMetaSpend.date) : null,
+    },
     gtm: {
       ...EMPTY_GTM,
       publicId:

@@ -1,5 +1,11 @@
 import type { AlertSeverity, Role } from "@prisma/client";
 import { prisma } from "@/lib/db";
+import { classifySyncError } from "@/lib/panel/sync-error-class";
+import {
+  loadSetupChecks,
+  setupMissingText,
+  type SetupCheckRow,
+} from "@/lib/panel/setup-checks";
 import { getIstanbulTodayYmd } from "@/lib/date/now";
 import { ymdToUtcDate } from "@/lib/date/tr";
 import { currentBudgetMonth, endOfMonthYmd } from "@/lib/panel/brand-budget";
@@ -33,6 +39,9 @@ function dmy(ymd: string): string {
 /** Senkron bu kadar saatten eskiyse "gecikmiş" sayılır. */
 export const SYNC_STALE_HOURS = 24;
 
+/** Fatura çekimi günlük; bu kadar gün başarısızsa ajans uyarılır (müşteri "güncelleniyor" görür). */
+export const BILLING_STALE_DAYS = 3;
+
 export type TokenState = "ok" | "token" | "permission" | "none";
 
 export type BrandReason = { tone: PaceTone; text: string };
@@ -44,6 +53,8 @@ export type BrandTableRow = {
   health: AlertSeverity | null;
   /** Öncelik sırasına göre (kritik önce) — ilki "durum sebebi" olarak gösterilir. */
   reasons: BrandReason[];
+  /** Otomatik kurulum kontrolü (UTM, GA4 key event, Pixel/CAPI, Ads dönüşüm). */
+  setupChecks: SetupCheckRow[];
   currency: string;
   planned: number | null;
   spent: number;
@@ -116,19 +127,7 @@ export type BrandTableData = {
 };
 
 /** Hata metni → sınıf. Gerçek SyncJob.error örneklerine göre. */
-export function classifySyncError(
-  error: string | null,
-): "token" | "permission" | "setup" | "rate" | "other" {
-  const e = error ?? "";
-  if (/OAuth eksik|access token|authentication credential|invalid_grant|Error validating access token|session has expired|code.?190|\(#190\)/i.test(e))
-    return "token";
-  if (/\(#200\)|permission|not grant|PERMISSION_DENIED|yetki/i.test(e))
-    return "permission";
-  if (/eksik|yok —|eşleştirilmemiş|has not been used|is disabled|tanımlı değil/i.test(e))
-    return "setup";
-  if (/limit reached|rate limit|429|quota/i.test(e)) return "rate";
-  return "other";
-}
+export { classifySyncError } from "@/lib/panel/sync-error-class";
 
 const SERVICE_LABEL: Record<string, string> = {
   insights: "Meta kampanya",
@@ -222,6 +221,7 @@ export async function loadBrandTable(opts: {
         coverUrl: c.coverUrl,
         health: c.health,
         reasons: [],
+      setupChecks: [],
         currency: "TRY",
         planned: null,
         spent: 0,
@@ -354,6 +354,7 @@ export async function loadBrandTable(opts: {
     healthBy.set(h.tenantId, cur);
   }
   const lastSpendBy = new Map(lastSpendRows.map((r) => [r.tenantId, r.last]));
+  const setupBy = await loadSetupChecks(ids);
 
   const budgetBy = new Map(budgets.map((b) => [b.tenantId, b]));
   const campaignBy = new Map(
@@ -525,6 +526,18 @@ export async function loadBrandTable(opts: {
           text: `Eşleşme eksik: ${missing.join(", ")}`,
         });
       }
+      const setupText = setupMissingText(setupBy.get(t.id));
+      if (setupText) reasons.push({ tone: "warn", text: setupText });
+      for (const j of jobs) {
+        if (j.service !== "billing" || !j.lastSuccessAt) continue;
+        const ageDays = Math.floor((Date.now() - j.lastSuccessAt.getTime()) / 86_400_000);
+        if (ageDays >= BILLING_STALE_DAYS) {
+          reasons.push({
+            tone: "warn",
+            text: `${j.provider === "meta" ? "Meta" : "Google"} fatura verisi ${ageDays} gündür güncellenmedi`,
+          });
+        }
+      }
       if (!lastSync) {
         reasons.push({ tone: "warn", text: "Hiç senkron olmadı" });
       } else if (lastSync.getTime() < staleBefore) {
@@ -587,6 +600,7 @@ export async function loadBrandTable(opts: {
       coverUrl: card.coverUrl,
       health: card.health,
       reasons: uniqueReasons,
+      setupChecks: setupBy.get(t.id) ?? [],
       currency: t.currency,
       planned,
       spent: spentMeta + spentGoogle,

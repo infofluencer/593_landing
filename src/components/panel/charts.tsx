@@ -17,6 +17,7 @@ import {
   YAxis,
 } from "recharts";
 import type { DailyTrendPoint } from "@/lib/panel/presentation";
+import { compactNumber } from "@/components/panel/ds/chart-theme";
 
 const tooltipStyle = {
   background: "#ffffff",
@@ -49,6 +50,7 @@ export function SpendTrendChart({ data }: { data: DailyTrendPoint[] }) {
             tickLine={false}
           />
           <YAxis
+            tickFormatter={compactNumber}
             tick={{ fill: "#71717a", fontSize: 11 }}
             axisLine={false}
             tickLine={false}
@@ -91,6 +93,7 @@ export function ConvTrendChart({ data }: { data: DailyTrendPoint[] }) {
             tickLine={false}
           />
           <YAxis
+            tickFormatter={compactNumber}
             tick={{ fill: "#71717a", fontSize: 11 }}
             axisLine={false}
             tickLine={false}
@@ -211,6 +214,7 @@ export function CampaignBarChart({
             height={50}
           />
           <YAxis
+            tickFormatter={compactNumber}
             tick={{ fill: "#71717a", fontSize: 11 }}
             axisLine={false}
             tickLine={false}
@@ -255,6 +259,7 @@ export function MetaDailyChart({
             interval="preserveStartEnd"
           />
           <YAxis
+            tickFormatter={compactNumber}
             yAxisId="left"
             tick={{ fill: "#71717a", fontSize: 11 }}
             axisLine={false}
@@ -262,6 +267,7 @@ export function MetaDailyChart({
             width={48}
           />
           <YAxis
+            tickFormatter={compactNumber}
             yAxisId="right"
             orientation="right"
             tick={{ fill: "#71717a", fontSize: 11 }}
@@ -329,6 +335,7 @@ export function GscTrendChart({
             interval="preserveStartEnd"
           />
           <YAxis
+            tickFormatter={compactNumber}
             yAxisId="left"
             tick={{ fill: "#71717a", fontSize: 11 }}
             axisLine={false}
@@ -336,6 +343,7 @@ export function GscTrendChart({
             width={40}
           />
           <YAxis
+            tickFormatter={compactNumber}
             yAxisId="right"
             orientation="right"
             tick={{ fill: "#71717a", fontSize: 11 }}
@@ -397,6 +405,7 @@ export function GscQueryBarChart({
             height={56}
           />
           <YAxis
+            tickFormatter={compactNumber}
             tick={{ fill: "#71717a", fontSize: 11 }}
             axisLine={false}
             tickLine={false}

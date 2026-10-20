@@ -73,6 +73,10 @@ export default async function PanelLayout({
       browserPath.startsWith("/board/") ||
       browserPath === "/ekip" ||
       browserPath.startsWith("/ekip/") ||
+      browserPath === "/toplantilar" ||
+      browserPath.startsWith("/toplantilar/") ||
+      browserPath === "/takvim" ||
+      browserPath.startsWith("/takvim/") ||
       browserPath === "/audit" ||
       browserPath === "/settings" ||
       browserPath.startsWith("/settings") ||

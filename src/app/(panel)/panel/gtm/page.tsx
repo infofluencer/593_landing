@@ -108,7 +108,22 @@ async function GtmConfigSection({
     <>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm font-medium text-zinc-800">Konteyner config</p>
-        <StatusBadge status={configUnknown ? "unknown" : "ok"} />
+        <StatusBadge
+          status={configUnknown ? "unknown" : "ok"}
+          reasons={
+            liveError
+              ? [
+                  isQuotaError(liveError)
+                    ? "GTM yapılandırması geçici olarak okunamıyor (API limiti)"
+                    : "GTM yapılandırması okunamadı",
+                ]
+              : gtmJob?.status === "error"
+                ? ["GTM yapılandırması son çekimde okunamadı"]
+                : !publicId
+                  ? ["GTM konteyneri bağlı değil"]
+                  : []
+          }
+        />
       </div>
 
       {liveError ? (

@@ -28,6 +28,7 @@ const demoMeta: ChannelView = {
   sectionTitle: "Facebook & Instagram",
   color: "#0866FF",
   status: "ok",
+  reasons: [],
   tenantType: "ecommerce",
   spend: 72100,
   clicks: 18420,

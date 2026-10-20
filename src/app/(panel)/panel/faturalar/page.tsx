@@ -178,21 +178,17 @@ export default async function FaturalarPage({
         />
       </div>
 
-      {(hints.metaError || hints.googleError) && (
+      {hints.metaError || hints.googleError ? (
+        // İç hata metni müşteriye gösterilmez; ajans paneli (Veri çekimi /
+        // marka kartı) ayrıca uyarılır.
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-          {hints.metaError ? (
-            <p>
-              <span className="font-medium">Meta sync:</span> {hints.metaError}
-            </p>
-          ) : null}
-          {hints.googleError ? (
-            <p className={hints.metaError ? "mt-1" : undefined}>
-              <span className="font-medium">Google sync:</span>{" "}
-              {hints.googleError}
-            </p>
-          ) : null}
+          {[hints.metaError ? "Meta" : null, hints.googleError ? "Google Ads" : null]
+            .filter(Boolean)
+            .join(" ve ")}{" "}
+          fatura verileri şu an güncellenemiyor. Ajansınız bilgilendirildi;
+          düzelince kayıtlar otomatik olarak burada görünecek.
         </div>
-      )}
+      ) : null}
 
       {channel !== "meta" && googleRows.length === 0 && !hints.googleError ? (
         <div className="rounded-lg border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-600">
@@ -204,8 +200,8 @@ export default async function FaturalarPage({
 
       {charges.length === 0 ? (
         <div className="rounded-lg border border-zinc-200 bg-zinc-100 px-4 py-6 text-center text-sm text-zinc-600">
-          Bu dönemde başarılı çekim kaydı yok. Ajans panelinden Meta / Google
-          sync çalıştırın.
+          Bu dönemde başarılı çekim kaydı yok. Fatura verileri günde iki kez
+          otomatik güncellenir.
         </div>
       ) : (
         <PanelTable
@@ -252,10 +248,10 @@ export default async function FaturalarPage({
         yalnızca aylık faturalama (InvoiceService) — otomatik ödeme makbuzları
         API’de yok.
         {hints.metaOkAt
-          ? ` Son Meta sync: ${formatDateTime(hints.metaOkAt)}.`
+          ? ` Meta son güncelleme: ${formatDateTime(hints.metaOkAt)}.`
           : ""}
         {hints.googleOkAt
-          ? ` Son Google sync: ${formatDateTime(hints.googleOkAt)}.`
+          ? ` Google son güncelleme: ${formatDateTime(hints.googleOkAt)}.`
           : ""}
       </p>
     </div>

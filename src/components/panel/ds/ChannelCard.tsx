@@ -49,14 +49,16 @@ export function ChannelCard({
             </h3>
           </div>
         </div>
-        <StatusBadge status={channel.status} />
+        <StatusBadge status={channel.status} reasons={channel.reasons} />
       </header>
 
       <div className="px-5 py-5 sm:px-6">
-        {channel.statusNote ? (
-          <p className="mb-4 rounded-panel-md bg-panel-surface-muted px-3 py-2 text-xs leading-5 text-panel-fg-secondary">
-            {channel.statusNote}
-          </p>
+        {channel.reasons.length > 0 ? (
+          <ul className="mb-4 space-y-1 rounded-panel-md bg-panel-surface-muted px-3 py-2 text-xs leading-5 text-panel-fg-secondary">
+            {channel.reasons.map((r) => (
+              <li key={r}>{r}</li>
+            ))}
+          </ul>
         ) : null}
 
         {unknown ? (

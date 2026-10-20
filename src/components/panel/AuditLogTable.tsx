@@ -26,6 +26,9 @@ const ACTION_LABEL: Record<string, string> = {
   "team.member_add": "Ekibe eklendi",
   "team.member_remove": "Ekipten çıkarıldı",
   "board_card.delete": "Kart silindi",
+  "meeting.create": "Toplantı eklendi",
+  "meeting.update": "Toplantı güncellendi",
+  "meeting.delete": "Toplantı silindi",
 };
 
 export function auditActionLabel(action: string): string {

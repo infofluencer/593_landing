@@ -7,6 +7,8 @@ import type {
 import { derivedMetrics, deltaPct } from "@/lib/panel/mock-data";
 import { resolveAdsCustomerId } from "@/lib/panel/google-ads-customer-map";
 import { resolveMetaAccountId } from "@/lib/panel/meta-ad-account-map";
+import type { TenantStatus } from "@/lib/panel/status-reasons";
+import type { MockMetaDailyPoint } from "@/lib/panel/mock-data";
 
 export type ChannelId = "google" | "meta";
 
@@ -19,6 +21,8 @@ export type ChannelView = {
   color: string;
   status: HealthStatus;
   statusNote?: string;
+  /** Rozet sebepleri (müşteri dilinde). */
+  reasons: string[];
   tenantType: TenantType;
   spend: number;
   clicks: number;
@@ -50,6 +54,17 @@ export type DailyTrendPoint = {
   metaConv: number;
 };
 
+/** Gün / hafta / ay kovası — bu dönem ve önceki dönem aynı sırayla. */
+export type SeriesPoint = {
+  label: string;
+  spend: number;
+  conv: number;
+  clicks: number;
+  impr: number;
+  reach: number;
+  convValue: number;
+};
+
 export type PresentationModel = {
   brand: string;
   tenantType: TenantType;
@@ -57,9 +72,17 @@ export type PresentationModel = {
   currency: string;
   periodLabel: string;
   health: HealthStatus;
+  healthReasons: string[];
   totalSpend: number;
   totalConv: number;
   totalRevenue: number | null;
+  totalClicks: number;
+  totalImpr: number;
+  totalReach: number | null;
+  prev: { spend: number; conv: number; clicks: number; impr: number; revenue: number | null };
+  /** Kanal toplamı (Google + Meta) — bu dönem ve önceki dönem, aynı kova sırası. */
+  series: SeriesPoint[];
+  prevSeries: SeriesPoint[];
   google: ChannelView;
   meta: ChannelView;
   daily: DailyTrendPoint[];
@@ -132,10 +155,20 @@ function buildChannel(
   current: MockCampaignMetric,
   previous: MockCampaignMetric,
   campaigns: MockCampaignMetric[],
+  tenantStatus?: TenantStatus,
 ): ChannelView {
   const type = bundle.tenant.type;
   const d = derivedMetrics(current);
-  const { status, note } = channelStatus(bundle, id);
+  const base = channelStatus(bundle, id);
+  // Sebepli durum (ödeme, harcama durdu, CPL…) veri okunamıyorsa "unknown" kalır.
+  const cs = tenantStatus?.[id];
+  const status: HealthStatus =
+    base.status === "unknown" ? "unknown" : (cs?.status ?? base.status);
+  const note = base.note;
+  const reasons = [
+    ...(cs?.reasons.map((r) => r.text) ?? []),
+    ...(base.note && !cs?.reasons.length ? [base.note] : []),
+  ];
   const unknown = status === "unknown";
   const ecommerce = type === "ecommerce";
 
@@ -157,6 +190,7 @@ function buildChannel(
     color: id === "meta" ? "#7C3AED" : "#4285F4",
     status,
     statusNote: note,
+    reasons,
     tenantType: type,
     spend: unknown ? 0 : current.spend,
     clicks: unknown ? 0 : current.clicks,
@@ -253,9 +287,95 @@ const CONV_COLORS = {
   other: "#94a3b8",
 };
 
+/** Kanal günlüklerini (Google + Meta) aynı tarihte toplar. */
+function mergeDaily(
+  google: MockMetaDailyPoint[],
+  meta: MockMetaDailyPoint[],
+): Array<MockMetaDailyPoint & { date: string }> {
+  const map = new Map<string, MockMetaDailyPoint>();
+  for (const p of [...google, ...meta]) {
+    const prev = map.get(p.date) ?? {
+      date: p.date,
+      spend: 0,
+      clicks: 0,
+      conv: 0,
+      convValue: 0,
+      impr: 0,
+      reach: 0,
+    };
+    prev.spend += p.spend;
+    prev.clicks += p.clicks;
+    prev.conv += p.conv;
+    prev.convValue += p.convValue;
+    prev.impr = (prev.impr ?? 0) + (p.impr ?? 0);
+    prev.reach = (prev.reach ?? 0) + (p.reach ?? 0);
+    map.set(p.date, prev);
+  }
+  return [...map.values()].sort((a, b) => a.date.localeCompare(b.date));
+}
+
+/**
+ * Dönem aralığını gün / hafta / ay kovalarına böler; boş günler 0 ile dolar
+ * ki önceki dönemle aynı sırada hizalansın.
+ */
+export function bucketSeries(
+  points: MockMetaDailyPoint[],
+  from: string,
+  to: string,
+): SeriesPoint[] {
+  const span =
+    (Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000 + 1;
+  const mode = span <= 31 ? "day" : span <= 120 ? "week" : "month";
+  const byDate = new Map(points.map((p) => [p.date, p]));
+  const buckets = new Map<string, SeriesPoint>();
+  for (let i = 0; i < span; i++) {
+    const date = new Date(Date.parse(`${from}T00:00:00Z`) + i * 86_400_000)
+      .toISOString()
+      .slice(0, 10);
+    let key = date;
+    let label = dayLabel(date);
+    if (mode === "week") {
+      const d = new Date(`${date}T00:00:00Z`);
+      const monday = new Date(d);
+      monday.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7));
+      key = monday.toISOString().slice(0, 10);
+      label = `${dayLabel(key)} haftası`;
+    } else if (mode === "month") {
+      key = date.slice(0, 7);
+      label = `${TR_MONTHS[Number(date.slice(5, 7)) - 1]} ${date.slice(2, 4)}`;
+    }
+    const b = buckets.get(key) ?? {
+      label,
+      spend: 0,
+      conv: 0,
+      clicks: 0,
+      impr: 0,
+      reach: 0,
+      convValue: 0,
+    };
+    const p = byDate.get(date);
+    if (p) {
+      b.spend += p.spend;
+      b.conv += p.conv;
+      b.clicks += p.clicks;
+      b.impr += p.impr ?? 0;
+      b.reach += p.reach ?? 0;
+      b.convValue += p.convValue;
+    }
+    buckets.set(key, b);
+  }
+  return [...buckets.values()].map((b) => ({
+    ...b,
+    spend: Math.round(b.spend),
+    conv: Math.round(b.conv * 10) / 10,
+    convValue: Math.round(b.convValue),
+  }));
+}
+
 export function buildPresentation(
   bundle: MockTenantBundle,
   periodLabelOverride?: string,
+  tenantStatus?: TenantStatus,
 ): PresentationModel {
   const type = bundle.tenant.type;
   const google = buildChannel(
@@ -264,6 +384,7 @@ export function buildPresentation(
     bundle.current.account,
     bundle.previous.account,
     bundle.current.campaigns,
+    tenantStatus,
   );
   const meta = buildChannel(
     "meta",
@@ -271,6 +392,22 @@ export function buildPresentation(
     bundle.metaCurrent.account,
     bundle.metaPrevious.account,
     bundle.metaCurrent.campaigns,
+    tenantStatus,
+  );
+  const gUnk = google.status === "unknown";
+  const mUnk = meta.status === "unknown";
+  const series = bucketSeries(
+    mergeDaily(gUnk ? [] : (bundle.googleDaily ?? []), mUnk ? [] : bundle.metaDaily),
+    bundle.current.from,
+    bundle.current.to,
+  );
+  const prevSeries = bucketSeries(
+    mergeDaily(
+      gUnk ? [] : (bundle.prevDaily?.google ?? []),
+      mUnk ? [] : (bundle.prevDaily?.meta ?? []),
+    ),
+    bundle.previous.from,
+    bundle.previous.to,
   );
 
   const gSpend = google.status === "unknown" ? 0 : google.spend;
@@ -328,10 +465,26 @@ export function buildPresentation(
     periodLabel:
       periodLabelOverride ??
       `${bundle.current.from} → ${bundle.current.to}`,
-    health: bundle.health,
+    health: tenantStatus?.overall.status ?? bundle.health,
+    healthReasons: tenantStatus?.overall.reasons.map((r) => r.text) ?? [],
     totalSpend: gSpend + mSpend,
     totalConv: gConv + mConv,
     totalRevenue: revenue,
+    totalClicks: (gUnk ? 0 : google.clicks) + (mUnk ? 0 : meta.clicks),
+    totalImpr: (gUnk ? 0 : google.impr) + (mUnk ? 0 : meta.impr),
+    totalReach: mUnk ? null : meta.reach,
+    prev: {
+      spend: (gUnk ? 0 : bundle.previous.account.spend) + (mUnk ? 0 : bundle.metaPrevious.account.spend),
+      conv: (gUnk ? 0 : bundle.previous.account.conv) + (mUnk ? 0 : bundle.metaPrevious.account.conv),
+      clicks: (gUnk ? 0 : bundle.previous.account.clicks) + (mUnk ? 0 : bundle.metaPrevious.account.clicks),
+      impr: (gUnk ? 0 : bundle.previous.account.impr) + (mUnk ? 0 : bundle.metaPrevious.account.impr),
+      revenue:
+        type === "ecommerce"
+          ? (gUnk ? 0 : bundle.previous.account.convValue) + (mUnk ? 0 : bundle.metaPrevious.account.convValue)
+          : null,
+    },
+    series,
+    prevSeries,
     google,
     meta,
     daily: buildDaily(

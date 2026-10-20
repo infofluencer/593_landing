@@ -45,6 +45,8 @@ type PatchBody = {
     budgetPaceWarnPct?: number;
     convDropoutDays?: number;
     minSpendForAlert?: number;
+    /** CPL / CPA hedefi — null = hedef yok. */
+    cplTarget?: number | null;
   };
 };
 
@@ -131,6 +133,7 @@ function auditSnapshot(t: TenantWithSettings | null): Record<string, unknown> {
     budgetPaceWarnPct: t.thresholds?.budgetPaceWarnPct ?? null,
     convDropoutDays: t.thresholds?.convDropoutDays ?? null,
     minSpendForAlert: t.thresholds?.minSpendForAlert?.toString() ?? null,
+    cplTarget: t.thresholds?.cplTarget?.toString() ?? null,
   };
 }
 
@@ -353,12 +356,14 @@ export async function PATCH(request: Request) {
             ...(t.minSpendForAlert != null
               ? { minSpendForAlert: t.minSpendForAlert }
               : {}),
+            ...(t.cplTarget !== undefined ? { cplTarget: t.cplTarget } : {}),
           },
           create: {
             tenantId: tenant.id,
             budgetPaceWarnPct: t.budgetPaceWarnPct ?? 85,
             convDropoutDays: t.convDropoutDays ?? 3,
             minSpendForAlert: t.minSpendForAlert ?? 100,
+            cplTarget: t.cplTarget ?? null,
           },
         });
       }

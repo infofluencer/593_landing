@@ -21,6 +21,8 @@ export const TENANT_NAV_LINKS: PanelNavLink[] = [
 export const STAFF_NAV_LINKS: PanelNavLink[] = [
   { href: "/brands", label: "Markalar" },
   { href: "/board", label: "Durum" },
+  { href: "/toplantilar", label: "Toplantılar" },
+  { href: "/takvim", label: "Takvim" },
   { href: "/ekip", label: "Ekip" },
   { href: "/audit", label: "İşlem kaydı" },
   { href: "/settings", label: "Ayarlar" },
@@ -47,6 +49,8 @@ function matches(path: string, base: string): boolean {
 export function staffPageTitle(rawPath: string): string {
   const path = stripPanelPrefix(rawPath);
   if (matches(path, "/board")) return "Durum tablosu";
+  if (matches(path, "/toplantilar")) return "Toplantılar";
+  if (matches(path, "/takvim")) return "İçerik takvimi";
   if (matches(path, "/ekip")) return "Ekip";
   if (matches(path, "/settings")) return "Ayarlar";
   if (matches(path, "/design")) return "Tasarım sistemi";

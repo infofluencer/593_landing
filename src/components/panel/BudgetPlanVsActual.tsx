@@ -1,9 +1,12 @@
 import Link from "next/link";
-import BudgetPacingCard, {
+import {
+  CumulativeChart,
   PaceStatusBadge,
 } from "@/components/panel/BudgetPacingCard";
 import BudgetYearTable from "@/components/panel/BudgetYearTable";
-import { BudgetBar, KPICard } from "@/components/panel/ds";
+import { StatusBadge } from "@/components/panel/ds";
+import { DeltaCell } from "@/components/panel/ds/DeltaCell";
+import { StatTile } from "@/components/panel/ds/viz";
 import { PanelTable } from "@/components/panel/ui";
 import {
   budgetPacePct,
@@ -13,7 +16,7 @@ import {
   type BrandBudgetPlan,
   type BudgetProvider,
 } from "@/lib/panel/brand-budget";
-import { computeBudgetPacing } from "@/lib/panel/budget-pacing";
+import { computeBudgetPacing, dayCount } from "@/lib/panel/budget-pacing";
 import { formatTry } from "@/lib/panel/format";
 
 function paceClass(pct: number | null, warnPct: number): string {
@@ -23,15 +26,21 @@ function paceClass(pct: number | null, warnPct: number): string {
   return "text-panel-ok";
 }
 
-/** Marka paneli — planlanan vs gerçekleşen. Salt okuma, düzenleme yok. */
+/**
+ * Marka paneli — Planlanan / Harcanan / Kalan. Tahmin ("dönem sonu", "beklenen")
+ * yok; "Harcanan" her sayfada aynı rakam (bugün dahil). Düzenleme yok.
+ */
 export default function BudgetPlanVsActual({
   plan,
   variant = "full",
   provider,
+  statusReasons = [],
 }: {
   plan: BrandBudgetPlan;
   variant?: "full" | "compact";
   provider?: BudgetProvider;
+  /** Durum rozeti sebepleri (ör. "Google Ads 12 gündür harcama yok"). */
+  statusReasons?: readonly string[];
 }) {
   const campaigns = provider
     ? plan.campaigns.filter((c) => c.provider === provider)
@@ -66,39 +75,119 @@ export default function BudgetPlanVsActual({
     today: plan.today,
     todaySpend,
   });
-  const note = plan.canEdit ? plan.brand.note.trim() : "";
   const currency = plan.currency;
+  const money = (n: number) => formatTry(n, currency);
+  const planned = summary.plannedMonthly;
+  const spent = summary.monthSpend;
+  const remaining = planned != null ? Math.max(0, planned - spent) : null;
+  const totalDays = Math.max(1, dayCount(plan.pace.from, plan.pace.to));
+  const dailyAvgPlan = planned != null ? planned / totalDays : null;
+  const remainingDays = plan.isCurrentMonth ? pacing.remainingDays : 0;
+  const spentPct =
+    planned != null && planned > 0
+      ? Math.min(100, Math.round((spent / planned) * 100))
+      : null;
+  const note = plan.canEdit ? plan.brand.note.trim() : "";
   const channelLabel =
     provider === "meta" ? "Meta" : provider === "google" ? "Google Ads" : null;
+  const spentHint = plan.isCurrentMonth
+    ? `Bugün dahil · bugün ${money(summary.todaySpend)}`
+    : plan.rangeLabel;
+  const badgeStatus =
+    pacing.status === "over" || pacing.status === "done_over"
+      ? "critical"
+      : pacing.status === "fast" || pacing.status === "slow" || pacing.status === "done_under"
+        ? "warn"
+        : "ok";
+  const spendSeries = [...paceDaily]
+    .sort((a, b) => a.date.localeCompare(b.date))
+    .filter((d) => d.date <= plan.today)
+    .map((d) => d.google + d.meta);
+  const activeCampaigns = campaigns.filter((row) => row.active);
+
+  const header = (
+    <div className="flex flex-wrap items-center justify-between gap-2">
+      <div>
+        <div className="flex flex-wrap items-center gap-2">
+          <h3 className="text-sm font-semibold text-panel-fg">
+            Bütçe{channelLabel ? ` · ${channelLabel}` : ""}
+          </h3>
+          <PaceStatusBadge status={pacing.status} />
+          {statusReasons.length > 0 ? (
+            <StatusBadge status={badgeStatus} reasons={statusReasons} />
+          ) : null}
+        </div>
+        <p className="mt-0.5 text-xs text-panel-fg-secondary">
+          Plan ajans tarafından belirlenir · {plan.rangeLabel}
+        </p>
+      </div>
+      {variant === "compact" ? (
+        <Link
+          href="/budget"
+          className="text-xs font-medium text-panel-accent hover:underline"
+        >
+          Bütçe detayı →
+        </Link>
+      ) : null}
+    </div>
+  );
+
+  const bar =
+    planned != null && planned > 0 ? (
+      <div>
+        <div className="h-3 overflow-hidden rounded-full bg-panel-surface-muted">
+          <div
+            className="h-full rounded-full bg-[#1c2057]"
+            style={{ width: `${spentPct ?? 0}%` }}
+            title="Harcanan"
+          />
+        </div>
+        <div className="mt-1.5 flex justify-between text-[11px] text-panel-fg-secondary">
+          <span>Harcanan %{spentPct}</span>
+          <span>
+            {remainingDays > 0
+              ? `${remainingDays} gün kaldı · kalan için günlük ${money((remaining ?? 0) / remainingDays)}`
+              : plan.isCurrentMonth
+                ? "Son gün"
+                : "Dönem kapandı"}
+          </span>
+        </div>
+      </div>
+    ) : null;
+
+  if (variant === "compact") {
+    return (
+      <section className="space-y-4 rounded-panel-lg border border-panel-border bg-panel-surface p-4 shadow-panel sm:p-5">
+        {header}
+        {statusReasons.length > 0 ? (
+          <ul className="space-y-0.5 text-xs text-panel-fg-secondary">
+            {statusReasons.map((r) => (
+              <li key={r}>• {r}</li>
+            ))}
+          </ul>
+        ) : null}
+        <div className="grid grid-cols-3 gap-3">
+          <MiniStat label="Planlanan" value={planned != null ? money(planned) : "—"} />
+          <MiniStat label="Harcanan" value={money(spent)} />
+          <MiniStat label="Kalan" value={remaining != null ? money(remaining) : "—"} />
+        </div>
+        {bar}
+        <p className="text-[11px] text-panel-fg-muted">{spentHint}</p>
+      </section>
+    );
+  }
 
   return (
     <section className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <div className="flex flex-wrap items-center gap-2">
-            <h3 className="text-sm font-semibold text-panel-fg">
-              Planlanan ve gerçekleşen
-              {channelLabel ? ` · ${channelLabel}` : ""}
-            </h3>
-            <span className="rounded-md border border-zinc-200 bg-zinc-50 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-zinc-500">
-              İnceleme
-            </span>
-            <PaceStatusBadge status={pacing.status} />
-          </div>
-          <p className="mt-0.5 text-xs text-panel-fg-secondary">
-            Plan ajans tarafından belirlenir · burada yalnızca izlenir ·{" "}
-            {plan.rangeLabel}
-          </p>
-        </div>
-        {variant === "compact" ? (
-          <Link
-            href="/budget"
-            className="text-xs font-medium text-panel-accent hover:underline"
-          >
-            Bütçe detayı →
-          </Link>
-        ) : null}
-      </div>
+      {header}
+
+      {statusReasons.length > 0 ? (
+        <ul className="space-y-1 rounded-panel-md border border-panel-warn/30 bg-panel-warn-bg px-4 py-3 text-sm text-panel-fg">
+          {statusReasons.map((r) => (
+            <li key={r}>• {r}</li>
+          ))}
+        </ul>
+      ) : null}
 
       {note ? (
         <p className="rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs text-zinc-600">
@@ -107,236 +196,144 @@ export default function BudgetPlanVsActual({
         </p>
       ) : null}
 
-      {variant === "compact" ? (
-        <BudgetBar
-          realized={summary.monthSpend}
-          target={summary.plannedMonthly}
-          currency={currency}
+      <div className="grid gap-4 sm:grid-cols-3">
+        <StatTile
+          label="Planlanan"
+          value={planned != null ? money(planned) : "—"}
+          hint={dailyAvgPlan != null ? `Günlük ortalama ${money(dailyAvgPlan)}` : "Aylık plan"}
+          variant="navy"
         />
-      ) : (
-        <BudgetPacingCard
-          title={
-            plan.months.length > 1
-              ? `Bütçe temposu · ${plan.months.length} ay`
-              : `Bütçe temposu · ${plan.monthLabel}`
+        <StatTile
+          label="Harcanan"
+          value={money(spent)}
+          hint={spentHint}
+          values={spendSeries}
+        />
+        <StatTile
+          label="Kalan"
+          value={remaining != null ? money(remaining) : "—"}
+          hint={
+            remainingDays > 0 && remaining != null
+              ? `${remainingDays} gün · günlük ${money(remaining / remainingDays)}`
+              : undefined
           }
-          planned={summary.plannedMonthly}
+        />
+      </div>
+
+      {bar}
+
+      {!provider ? (
+        <div className="grid gap-4 sm:grid-cols-2">
+          <StatTile
+            label="Google Ads"
+            value={money(summary.google.monthSpend)}
+            hint={
+              summary.google.plannedMonthly > 0
+                ? `Planlanan ${money(summary.google.plannedMonthly)}`
+                : "Plan girilmemiş"
+            }
+            color="#E37400"
+            values={[...paceDaily]
+              .sort((a, b) => a.date.localeCompare(b.date))
+              .filter((d) => d.date <= plan.today)
+              .map((d) => d.google)}
+          />
+          <StatTile
+            label="Meta Ads"
+            value={money(summary.meta.monthSpend)}
+            hint={
+              summary.meta.plannedMonthly > 0
+                ? `Planlanan ${money(summary.meta.plannedMonthly)}`
+                : "Plan girilmemiş"
+            }
+            color="#0866FF"
+            values={[...paceDaily]
+              .sort((a, b) => a.date.localeCompare(b.date))
+              .filter((d) => d.date <= plan.today)
+              .map((d) => d.meta)}
+          />
+        </div>
+      ) : null}
+
+      <div className="rounded-panel-lg border border-panel-border bg-panel-surface p-4 shadow-panel sm:p-5">
+        <h4 className="text-sm font-semibold text-panel-fg">
+          Birikimli harcama ve plan çizgisi
+        </h4>
+        <p className="mb-3 mt-0.5 text-xs text-panel-fg-secondary">
+          Gün gün toplam harcama · kesikli çizgi planın eşit dağılımı
+        </p>
+        <CumulativeChart
           from={plan.pace.from}
           to={plan.pace.to}
           today={plan.today}
+          planned={planned}
           daily={paceDaily}
           currency={currency}
         />
-      )}
+      </div>
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <KPICard
-          tier={2}
-          metricKey="spend"
-          kind="money"
-          label="Planlanan"
-          accent="var(--panel-accent)"
-          value={
-            summary.plannedMonthly != null
-              ? formatTry(summary.plannedMonthly, currency)
-              : "—"
-          }
-          hint={
-            <span className="text-[11px] text-panel-fg-secondary">
-              {summary.plannedDaily != null
-                ? `Günlük ${formatTry(summary.plannedDaily, currency)}`
-                : "Aylık plan"}
-            </span>
-          }
-          goodDirection="neutral"
-        />
-        <KPICard
-          tier={2}
-          metricKey="spend"
-          kind="money"
-          label="Gerçekleşen"
-          value={formatTry(summary.monthSpend, currency)}
-          hint={
-            plan.isCurrentMonth ? (
-              <span className="text-[11px] text-panel-fg-secondary">
-                Bugün {formatTry(summary.todaySpend, currency)}
-              </span>
-            ) : (
-              <span className="text-[11px] text-panel-fg-secondary">
-                {plan.rangeLabel}
-              </span>
-            )
-          }
-          goodDirection="neutral"
-        />
-        {!provider ? (
-          <>
-            <KPICard
-              tier={2}
-              metricKey="spend"
-              kind="money"
-              label="Google Ads"
-              accent="var(--panel-google-blue)"
-              value={formatTry(summary.google.monthSpend, currency)}
-              hint={
-                <span className="text-[11px] text-panel-fg-secondary">
-                  Planlanan{" "}
-                  {summary.google.plannedMonthly > 0
-                    ? formatTry(summary.google.plannedMonthly, currency)
-                    : "—"}
-                </span>
-              }
-              goodDirection="neutral"
-            />
-            <KPICard
-              tier={2}
-              metricKey="spend"
-              kind="money"
-              label="Meta Ads"
-              accent="var(--panel-meta)"
-              value={formatTry(summary.meta.monthSpend, currency)}
-              hint={
-                <span className="text-[11px] text-panel-fg-secondary">
-                  Planlanan{" "}
-                  {summary.meta.plannedMonthly > 0
-                    ? formatTry(summary.meta.plannedMonthly, currency)
-                    : "—"}
-                </span>
-              }
-              goodDirection="neutral"
-            />
-          </>
+      <div>
+        <div className="mb-2 flex flex-wrap items-end justify-between gap-2">
+          <h4 className="text-sm font-semibold text-zinc-900">
+            Aktif kampanyalar
+          </h4>
+          <p className="text-xs text-zinc-500">
+            {activeCampaigns.length} kampanya · kapalı kampanyalar listelenmez
+          </p>
+        </div>
+        {activeCampaigns.length === 0 ? (
+          <div className="rounded-lg border border-zinc-200 bg-zinc-100 px-4 py-3 text-sm text-zinc-700">
+            Bu dönemde aktif kampanya yok.
+          </div>
         ) : (
-          <>
-            <KPICard
-              tier={2}
-              kind="money"
-              label="Kalan"
-              value={
-                summary.remaining != null
-                  ? formatTry(summary.remaining, currency)
-                  : "—"
-              }
-              goodDirection="neutral"
-            />
-            <KPICard
-              tier={2}
-              kind="rate"
-              label="Tempo"
-              value={summary.pacePct == null ? "—" : `%${summary.pacePct}`}
-              goodDirection="neutral"
-            />
-          </>
+          <PanelTable
+            headers={[
+              "Kampanya",
+              ...(provider ? [] : ["Platform"]),
+              "Planlanan aylık",
+              "Harcanan",
+              "Kalan",
+              "Tempo",
+            ]}
+            numericCols={provider ? [1, 2, 3, 4] : [2, 3, 4, 5]}
+          >
+            {activeCampaigns.map((row) => {
+              const pace = budgetPacePct(row.monthSpend, row.monthlyBudget);
+              return (
+                <tr key={`${row.provider}-${row.campaignId}`}>
+                  <td className="font-medium text-panel-fg">
+                    <span>{displayCampaignName(row)}</span>
+                    {isManualCampaignId(row.campaignId) ? (
+                      <span className="mt-0.5 block text-[10px] font-normal text-panel-fg-muted">
+                        Elle eklendi
+                      </span>
+                    ) : null}
+                  </td>
+                  {provider ? null : (
+                    <td>{row.provider === "meta" ? "Meta" : "Google"}</td>
+                  )}
+                  <td className="num">
+                    {row.monthlyBudget != null ? money(row.monthlyBudget) : "—"}
+                  </td>
+                  <td className="num">
+                    <DeltaCell value={money(row.monthSpend)} />
+                  </td>
+                  <td className="num">
+                    {row.monthlyBudget != null
+                      ? money(Math.max(0, row.monthlyBudget - row.monthSpend))
+                      : "—"}
+                  </td>
+                  <td className={`num font-semibold ${paceClass(pace, plan.warnPct)}`}>
+                    {pace == null ? "—" : `%${pace}`}
+                  </td>
+                </tr>
+              );
+            })}
+          </PanelTable>
         )}
       </div>
 
-      {variant === "compact" ? null : (
-        <div>
-          <div className="mb-2 flex flex-wrap items-end justify-between gap-2">
-            <h4 className="text-sm font-semibold text-zinc-900">
-              Kampanya incelemesi
-            </h4>
-            <p className="text-xs text-zinc-500">Düzenleme yok</p>
-          </div>
-          {campaigns.length === 0 ? (
-            <div className="rounded-lg border border-zinc-200 bg-zinc-100 px-4 py-3 text-sm text-zinc-700">
-              Bu ay için kampanya satırı yok.
-            </div>
-          ) : (
-            <PanelTable
-              headers={[
-                "Kampanya",
-                ...(provider ? [] : ["Platform"]),
-                "Hedef kitle",
-                "Konum",
-                "Planlanan günlük",
-                "Planlanan aylık",
-                "Gerçekleşen günlük",
-                "Gerçekleşen",
-                "Tempo",
-              ]}
-              numericCols={provider ? [3, 4, 5, 6, 7] : [4, 5, 6, 7, 8]}
-            >
-              {(["active", "inactive"] as const).flatMap((group) => {
-                const rows = campaigns.filter((row) =>
-                  group === "active" ? row.active : !row.active,
-                );
-                if (rows.length === 0) return [];
-                const colSpan = provider ? 8 : 9;
-                return [
-                  <tr key={group} className="bg-zinc-50">
-                    <td
-                      colSpan={colSpan}
-                      className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-zinc-500"
-                    >
-                      {group === "active" ? "Aktif · planlanan" : "Aktif değil"}
-                      <span className="ml-1.5 font-medium normal-case tracking-normal text-zinc-400">
-                        {rows.length}
-                      </span>
-                    </td>
-                  </tr>,
-                  ...rows.map((row) => {
-                    const pace = budgetPacePct(row.monthSpend, row.monthlyBudget);
-                    return (
-                      <tr
-                        key={`${row.provider}-${row.campaignId}`}
-                        className={row.active ? undefined : "text-zinc-500"}
-                      >
-                        <td className="font-medium text-panel-fg">
-                          <span>{displayCampaignName(row)}</span>
-                          {isManualCampaignId(row.campaignId) ? (
-                            <span className="mt-0.5 block text-[10px] font-normal text-panel-fg-muted">
-                              Elle eklendi
-                            </span>
-                          ) : row.label?.trim() &&
-                            row.label.trim() !== row.campaignName ? (
-                            <span className="mt-0.5 block text-[10px] font-normal text-panel-fg-muted">
-                              {row.campaignName}
-                            </span>
-                          ) : null}
-                        </td>
-                        {provider ? null : (
-                          <td>{row.provider === "meta" ? "Meta" : "Google"}</td>
-                        )}
-                        <td>{row.audience?.trim() || "—"}</td>
-                        <td>{row.location?.trim() || "—"}</td>
-                        <td className="num">
-                          {row.dailyBudget != null
-                            ? formatTry(row.dailyBudget, currency)
-                            : "—"}
-                        </td>
-                        <td className="num">
-                          {row.monthlyBudget != null
-                            ? formatTry(row.monthlyBudget, currency)
-                            : "—"}
-                        </td>
-                        <td className="num">
-                          {formatTry(row.avgDailySpend, currency)}
-                          {plan.isCurrentMonth ? (
-                            <span className="mt-0.5 block text-[10px] font-normal text-panel-fg-muted">
-                              Bugün {formatTry(row.todaySpend, currency)}
-                            </span>
-                          ) : null}
-                        </td>
-                        <td className="num">
-                          {formatTry(row.monthSpend, currency)}
-                        </td>
-                        <td
-                          className={`num font-semibold ${paceClass(pace, plan.warnPct)}`}
-                        >
-                          {pace == null ? "—" : `%${pace}`}
-                        </td>
-                      </tr>
-                    );
-                  }),
-                ];
-              })}
-            </PanelTable>
-          )}
-        </div>
-      )}
-
-      {variant === "full" && !provider ? (
+      {!provider ? (
         <BudgetYearTable
           slug={plan.slug}
           currency={currency}
@@ -348,5 +345,16 @@ export default function BudgetPlanVsActual({
         />
       ) : null}
     </section>
+  );
+}
+
+function MiniStat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-panel-md bg-panel-surface-muted px-3 py-2.5">
+      <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-panel-fg-secondary">
+        {label}
+      </p>
+      <p className="mt-1 text-lg font-semibold tracking-tight text-panel-fg">{value}</p>
+    </div>
   );
 }

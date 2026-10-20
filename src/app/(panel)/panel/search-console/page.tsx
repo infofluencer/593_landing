@@ -180,6 +180,13 @@ export default async function SearchConsolePage({
         </div>
         <StatusBadge
           status={liveError || !siteUrl ? "unknown" : "ok"}
+          reasons={
+            liveError
+              ? ["Search Console verisi şu an okunamıyor"]
+              : !siteUrl
+                ? ["Search Console site adresi bağlı değil"]
+                : []
+          }
           label={
             liveError
               ? "Kontrol edilemedi"

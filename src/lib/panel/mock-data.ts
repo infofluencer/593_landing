@@ -137,11 +137,24 @@ export type MockThresholds = {
   budgetPaceWarnPct: number;
   convDropoutDays: number;
   minSpendForAlert: number;
+  /** Ay içi CPL / CPA hedefi — aşılınca uyarı. */
+  cplTarget?: number | null;
+};
+
+/** Saatlik kontrolden gelen reklam hesabı / ödeme durumu. */
+export type MockAccountHealth = {
+  status: "ok" | "warn" | "critical" | "unknown";
+  label: string;
+  detail: string | null;
+  /** Yayındaki kampanya sayısı (bilinmiyorsa null). */
+  activeCampaigns: number | null;
+  checkedAt: string;
 };
 
 export type MockMetaAdPerformance = {
   adId: string;
   adName: string;
+  campaignId?: string;
   campaignName: string;
   adsetName: string;
   effectiveStatus: string;
@@ -186,6 +199,23 @@ export type MockMetaDailyPoint = {
   clicks: number;
   conv: number;
   convValue: number;
+  /** Sparkline / trend için (Google + Meta günlük). */
+  impr?: number;
+  reach?: number;
+};
+
+/** GA4 günlük genel bakış satırı (sparkline / önceki dönem karşılaştırması). */
+export type MockGa4DailyPoint = {
+  date: string;
+  users: number;
+  sessions: number;
+  keyEvents: number;
+  conversionRate: number;
+  bounceRate: number;
+  avgDuration: number;
+  pagesPerSession: number;
+  revenue: number | null;
+  transactions: number | null;
 };
 
 /** Combined Google + Meta spend per calendar day (budget page). */
@@ -246,6 +276,18 @@ export type MockTenantBundle = {
   ga4Channels: MockGa4Row[];
   ga4Landings: MockGa4Row[];
   gtm: MockGtmSnapshot;
+  /** Google Ads günlük toplam (sparkline). */
+  googleDaily?: MockMetaDailyPoint[];
+  /** Önceki dönem günlük kanal toplamları (trend karşılaştırması). */
+  prevDaily?: { google: MockMetaDailyPoint[]; meta: MockMetaDailyPoint[] };
+  /** GA4 günlük genel bakış (DB) + önceki dönem toplamı. */
+  ga4Daily?: MockGa4DailyPoint[];
+  ga4PrevDaily?: MockGa4DailyPoint[];
+  ga4Previous?: MockGa4Overview | null;
+  /** Reklam hesabı / ödeme durumu (DB'den; mock'ta yok). */
+  accounts?: { google: MockAccountHealth | null; meta: MockAccountHealth | null };
+  /** Kanal bazında harcaması olan son gün (YMD) — "harcama durdu" sebebi. */
+  lastSpend?: { google: string | null; meta: string | null };
 };
 
 export const EMPTY_META_FUNNEL: MockMetaFunnel = {

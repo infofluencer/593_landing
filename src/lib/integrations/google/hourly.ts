@@ -45,7 +45,7 @@ const CUSTOMER_STATUS: Record<string, string> = {
 export async function fetchGoogleAccountHealth(
   customerId: string,
 ): Promise<AccountHealthResult> {
-  const [customerRes, setupRes, budgetRes] = await Promise.all([
+  const [customerRes, setupRes, budgetRes, campaignsRes] = await Promise.all([
     adsSearch({ customerId, query: "SELECT customer.status FROM customer LIMIT 1" }),
     adsSearch({ customerId, query: "SELECT billing_setup.status FROM billing_setup" }),
     adsSearch({
@@ -58,6 +58,11 @@ export async function fetchGoogleAccountHealth(
                      account_budget.approved_end_time_type
               FROM account_budget`,
     }),
+    // Harcama yoksa sebep: "Aktif kampanya yok" — sorgu düşerse bilinmiyor kalır.
+    adsSearch({
+      customerId,
+      query: "SELECT campaign.id FROM campaign WHERE campaign.status = 'ENABLED'",
+    }).catch(() => null),
   ]);
 
   const status =
@@ -79,7 +84,15 @@ export async function fetchGoogleAccountHealth(
     }).accountBudget ?? {};
     return b;
   });
-  const raw = { customerStatus: status, billingSetups: setups, accountBudgets: budgets };
+  const enabledCampaigns = campaignsRes
+    ? (campaignsRes.json.results ?? []).length
+    : null;
+  const raw = {
+    customerStatus: status,
+    billingSetups: setups,
+    accountBudgets: budgets,
+    enabledCampaigns,
+  };
 
   if (status && CUSTOMER_STATUS[status]) {
     return { status: "critical", label: CUSTOMER_STATUS[status], detail: null, raw };
