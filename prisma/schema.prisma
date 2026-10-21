@@ -98,6 +98,21 @@ enum MeetingStatus {
   cancelled
 }
 
+/// Öneri kutusu — gönderinin türü.
+enum SuggestionKind {
+  idea
+  request
+  bug
+}
+
+/// Öneri kutusu — admin tarafındaki durum.
+enum SuggestionStatus {
+  new
+  reviewing
+  done
+  rejected
+}
+
 /// Agency-level OAuth / system-user (one row per provider).
 /// Tokens NEVER stored raw — secret-store reference only.
 model AgencyConnection {
@@ -311,6 +326,7 @@ model User {
   meetingsCreated    Meeting[]           @relation("MeetingCreator")
   meetingAttendances MeetingAttendee[]
   actionItems        MeetingActionItem[] @relation("ActionItemAssignee")
+  suggestions        Suggestion[]
 }
 
 /// Ajans içi sabit ekip (src/lib/panel/teams.ts). Üye çoka-çok (TeamMember).
@@ -1052,4 +1068,20 @@ model NotificationLog {
 
   @@index([createdAt])
   @@index([alertId])
+}
+
+/// Sistemle ilgili öneri / istek / hata bildirimi. Yalnızca admin görür.
+/// Anonim gönderide authorId hiç yazılmaz (admin de göremez).
+model Suggestion {
+  id        String           @id @default(cuid())
+  kind      SuggestionKind   @default(idea)
+  body      String
+  status    SuggestionStatus @default(new)
+  authorId  String?
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  author User? @relation(fields: [authorId], references: [id], onDelete: SetNull)
+
+  @@index([status, createdAt])
 }

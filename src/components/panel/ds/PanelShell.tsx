@@ -17,7 +17,7 @@ import {
   LayoutDashboard,
   LogOut,
   Menu,
-  Palette,
+  Lightbulb,
   Receipt,
   Settings,
   Users,
@@ -45,7 +45,7 @@ const NAV_ICONS: Record<string, LucideIcon> = {
   "/ekip": Users,
   "/audit": History,
   "/settings": Settings,
-  "/design": Palette,
+  "/oneriler": Lightbulb,
 };
 
 function iconFor(href: string): LucideIcon {

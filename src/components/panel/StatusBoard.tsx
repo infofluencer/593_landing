@@ -31,6 +31,7 @@ import {
   ChevronDown,
   GripVertical,
   ImagePlus,
+  Link2,
   LayoutGrid,
   Rows3,
   Trash2,
@@ -1105,6 +1106,9 @@ export default function StatusBoard({
               value={draftDesc}
               onChange={(e) => setDraftDesc(e.target.value)}
               onPaste={(e) => {
+                // Linkler çoğu uygulamadan önizleme görseliyle birlikte kopyalanır;
+                // metin varsa normal yapıştır, yalnızca saf görseli yükle.
+                if (e.clipboardData.getData("text/plain").trim()) return;
                 const files = Array.from(e.clipboardData.files);
                 if (files.some((f) => f.type.startsWith("image/"))) {
                   e.preventDefault();
@@ -1115,6 +1119,7 @@ export default function StatusBoard({
               placeholder="Açıklama (görsel yapıştırabilirsiniz)"
               className="w-full resize-none rounded-md border border-zinc-200 px-3 py-2 text-sm outline-none focus:border-[#e91825]"
             />
+            <DescriptionLinks text={draftDesc} />
             <CardImagesField
               images={editingImages}
               uploading={uploadingImages > 0}
@@ -1584,6 +1589,51 @@ function SortableCard({
   );
 }
 
+const URL_RE = /https?:\/\/[^\s<>"'()]+/gi;
+
+/** Açıklamadaki http(s) bağlantıları (sondaki noktalama hariç, tekrarsız). */
+function extractLinks(text: string | null | undefined): string[] {
+  if (!text) return [];
+  const found = (text.match(URL_RE) ?? []).map((u) => u.replace(/[.,;:!?]+$/, ""));
+  return [...new Set(found)];
+}
+
+/** Düzenleme penceresi — açıklamadaki linkleri tıklanabilir gösterir. */
+function DescriptionLinks({ text }: { text: string }) {
+  const links = extractLinks(text);
+  if (links.length === 0) return null;
+  return (
+    <div className="space-y-1">
+      <p className="text-[11px] font-medium text-zinc-500">Bağlantılar</p>
+      <ul className="flex flex-col gap-1">
+        {links.map((href) => {
+          let label = href;
+          try {
+            const u = new URL(href);
+            label = `${u.hostname.replace(/^www\./, "")}${u.pathname === "/" ? "" : u.pathname}`;
+          } catch {
+            // Geçersiz URL — ham metni göster.
+          }
+          return (
+            <li key={href} className="min-w-0">
+              <a
+                href={href}
+                target="_blank"
+                rel="noopener noreferrer"
+                title={href}
+                className="inline-flex max-w-full items-center gap-1.5 rounded-md border border-zinc-200 px-2 py-1 text-xs text-sky-700 transition hover:border-sky-300 hover:bg-sky-50"
+              >
+                <Link2 className="size-3.5 shrink-0" aria-hidden />
+                <span className="truncate">{label}</span>
+              </a>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
+
 /** Filtre çubuğu seçimi — boşken etiket, seçiliyken değer koyu görünür. */
 function FilterSelect({
   label,
@@ -1700,6 +1750,7 @@ function CardFace({
     card.dueAt &&
     isCardOverdue({ dueAt: card.dueAt, columnName: columnName ?? null });
   const days = overdue && card.dueAt ? overdueDays(card.dueAt) : 0;
+  const linkCount = extractLinks(card.description).length;
   const subtitle = [card.tenant?.name, card.team?.name]
     .filter(Boolean)
     .join(" · ");
@@ -1793,6 +1844,15 @@ function CardFace({
 
       <div className="mt-3 flex items-end gap-2">
         <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1">
+          {linkCount > 0 ? (
+            <span
+              className={`inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-medium ${chip}`}
+              title={`${linkCount} bağlantı`}
+            >
+              <Link2 className="size-3" aria-hidden />
+              {linkCount}
+            </span>
+          ) : null}
           <span
             className={`rounded-full px-2 py-0.5 text-[10px] font-bold tracking-wide ${PRIORITY_STYLE[card.priority]}`}
           >

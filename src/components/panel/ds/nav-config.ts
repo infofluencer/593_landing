@@ -25,8 +25,8 @@ export const STAFF_NAV_LINKS: PanelNavLink[] = [
   { href: "/takvim", label: "Takvim" },
   { href: "/ekip", label: "Ekip" },
   { href: "/audit", label: "İşlem kaydı" },
+  { href: "/oneriler", label: "Öneriler" },
   { href: "/settings", label: "Ayarlar" },
-  { href: "/design", label: "Tasarım" },
 ];
 
 /** Markada kapatılan platformların sayfalarını menüden çıkarır. */
@@ -53,7 +53,7 @@ export function staffPageTitle(rawPath: string): string {
   if (matches(path, "/takvim")) return "İçerik takvimi";
   if (matches(path, "/ekip")) return "Ekip";
   if (matches(path, "/settings")) return "Ayarlar";
-  if (matches(path, "/design")) return "Tasarım sistemi";
+  if (matches(path, "/oneriler")) return "Öneri kutusu";
   if (matches(path, "/audit")) return "İşlem kaydı";
   if (matches(path, "/brands/sync")) return "Veri çekimi";
   if (path.startsWith("/brands/")) return "Marka detayı";

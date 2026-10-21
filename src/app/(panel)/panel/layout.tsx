@@ -80,8 +80,7 @@ export default async function PanelLayout({
       browserPath === "/audit" ||
       browserPath === "/settings" ||
       browserPath.startsWith("/settings") ||
-      browserPath === "/design" ||
-      browserPath.startsWith("/design/");
+      browserPath === "/oneriler";
     if (!staffOk) {
       redirect("/brands");
     }
