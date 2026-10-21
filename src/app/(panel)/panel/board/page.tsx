@@ -2,6 +2,7 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { Suspense } from "react";
 import { auth } from "@/auth";
+import BoardBackdrop from "@/components/panel/BoardBackdrop";
 import StatusBoard from "@/components/panel/StatusBoard";
 import {
   ensureAgencyBoard,
@@ -61,7 +62,9 @@ export default async function BoardPage() {
   };
 
   return (
-    <Suspense fallback={<p className="text-sm text-zinc-500">Durum yükleniyor…</p>}>
+    <>
+    <BoardBackdrop />
+    <Suspense fallback={<p className="relative z-10 text-sm text-zinc-500">Durum yükleniyor…</p>}>
       <StatusBoard
         initialBoard={serialized}
         staff={staff}
@@ -70,5 +73,6 @@ export default async function BoardPage() {
         canDeleteCards={can(session.user.role, "board.deleteCards")}
       />
     </Suspense>
+    </>
   );
 }

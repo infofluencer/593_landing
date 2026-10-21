@@ -769,7 +769,9 @@ export default function StatusBoard({
     filters.overdue;
 
   return (
-    <div className="space-y-4">
+    // Arka plandaki logonun (BoardBackdrop) üstünde kalsın. Boş alanlar tıklamayı
+    // geçirir ki logo basılı tutulup taşınabilsin; içerik kutuları tıklanır kalır.
+    <div className="pointer-events-none relative z-10 space-y-4 [&>*]:pointer-events-auto">
       {/* Filtre barı */}
       <div className="space-y-3 rounded-xl border border-zinc-200 bg-white p-3 shadow-sm">
         <div className="flex flex-wrap items-center gap-1.5">
@@ -1010,7 +1012,7 @@ export default function StatusBoard({
           items={columnIds}
           strategy={horizontalListSortingStrategy}
         >
-          <div className="-mx-1 flex gap-3 overflow-x-auto pb-4 pt-1">
+          <div className="pointer-events-none -mx-1 flex gap-3 overflow-x-auto pb-4 pt-1 [&>*]:pointer-events-auto">
             {displayColumns.map((col) => (
               <BoardColumn
                 key={col.id}

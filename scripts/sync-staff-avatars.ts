@@ -9,13 +9,41 @@
 import { PrismaClient } from "@prisma/client";
 import { s3Enabled, s3Put, s3SignedGetUrl } from "../src/lib/storage/s3";
 
-/** e-posta → S3’te fotoğrafın bulunduğu anahtar. */
-const AVATARS: Record<string, string> = {
-  "sevde@593emarketing.com": "avatars/cmupft6yw0006ml1f3yjqpfbs.webp",
-  "huseyin@593emarketing.com": "avatars/cmupfu0wg0009ml1fnmkz04yh.webp",
-  "sudenas@593emarketing.com": "avatars/cmupfuit9000cml1ffpbef5i7.webp",
-  "numan@593emarketing.com": "avatars/cmupfz9740000n41gjwprw29e.webp",
-};
+/**
+ * Kişi → S3’te fotoğrafın bulunduğu anahtar. E-posta biliniyorsa onunla,
+ * bilinmiyorsa staff içinde ada göre (tek eşleşme şartıyla) bulunur.
+ */
+const AVATARS: Array<{ label: string; email?: string; name?: RegExp; key: string }> = [
+  { label: "Admin", email: "admin@593emarketing.com", key: "avatars/cmtr0r2bw0012pi4wgh1cmv3e.webp" },
+  { label: "Sevde", email: "sevde@593emarketing.com", key: "avatars/cmupft6yw0006ml1f3yjqpfbs.webp" },
+  { label: "Hüseyin", email: "huseyin@593emarketing.com", key: "avatars/cmupfu0wg0009ml1fnmkz04yh.webp" },
+  { label: "Sudenas", email: "sudenas@593emarketing.com", key: "avatars/cmupfuit9000cml1ffpbef5i7.webp" },
+  { label: "Numan", email: "numan@593emarketing.com", key: "avatars/cmupfz9740000n41gjwprw29e.webp" },
+  { label: "Hakan Kandemir", name: /hakan|kandemir/i, key: "avatars/seedhakan.webp" },
+  { label: "Muhammet Akpınar", name: /muhammet|akp[iı]nar/i, key: "avatars/seedmhmmetak.webp" },
+];
+
+async function findUser(entry: (typeof AVATARS)[number]) {
+  const select = { id: true, email: true, avatarUrl: true } as const;
+  if (entry.email) {
+    const byEmail = await prisma.user.findUnique({ where: { email: entry.email }, select });
+    if (byEmail || !entry.name) return { user: byEmail, note: "kullanıcı yok" };
+  }
+  const staff = await prisma.user.findMany({
+    where: { role: { in: ["admin", "team"] } },
+    select: { ...select, name: true },
+  });
+  const hits = staff.filter(
+    (u) => entry.name!.test(u.name ?? "") || entry.name!.test(u.email.split("@")[0]!),
+  );
+  if (hits.length === 1) return { user: hits[0]!, note: "" };
+  return {
+    user: null,
+    note: hits.length === 0
+      ? "adla eşleşen kullanıcı yok"
+      : `birden çok eşleşme (${hits.map((h) => h.email).join(", ")})`,
+  };
+}
 
 const prisma = new PrismaClient();
 
@@ -27,15 +55,14 @@ async function main() {
   }
   const force = process.argv.includes("--force");
 
-  for (const [email, sourceKey] of Object.entries(AVATARS)) {
-    const user = await prisma.user.findUnique({
-      where: { email },
-      select: { id: true, avatarUrl: true },
-    });
+  for (const entry of AVATARS) {
+    const sourceKey = entry.key;
+    const { user, note } = await findUser(entry);
     if (!user) {
-      console.log(`– ${email}: kullanıcı yok, atlandı`);
+      console.log(`– ${entry.label}: ${note}, atlandı`);
       continue;
     }
+    const email = `${entry.label} <${user.email}>`;
     if (user.avatarUrl && !force) {
       console.log(`– ${email}: zaten fotoğrafı var, atlandı`);
       continue;
