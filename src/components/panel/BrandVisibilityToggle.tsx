@@ -1,6 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import { Power } from "lucide-react";
 import { useState, useTransition } from "react";
 
 export default function BrandVisibilityToggle({
@@ -11,7 +12,7 @@ export default function BrandVisibilityToggle({
 }: {
   tenantSlug: string;
   visible: boolean;
-  variant?: "card" | "settings" | "menu";
+  variant?: "card" | "settings" | "toolbar";
   onChanged?: (visible: boolean) => void;
 }) {
   const router = useRouter();
@@ -79,25 +80,26 @@ export default function BrandVisibilityToggle({
     );
   }
 
-  if (variant === "menu") {
+  if (variant === "toolbar") {
     return (
       <>
         <button
           type="button"
-          role="menuitem"
           disabled={pending}
           onClick={() => setVisible(!visible)}
-          className={`flex w-full items-center rounded-md px-2.5 py-1.5 text-left text-xs hover:bg-zinc-100 disabled:opacity-60 ${
-            visible ? "text-zinc-700" : "text-emerald-700"
+          title={visible ? "Devre dışı bırak" : "Aktifleştir"}
+          className={`inline-flex min-w-0 flex-1 items-center justify-center gap-1 rounded-md border px-1.5 py-1 text-[10px] font-medium transition disabled:opacity-60 ${
+            visible
+              ? "border-zinc-200 bg-white text-zinc-600 hover:border-zinc-300 hover:text-zinc-900"
+              : "border-emerald-200 bg-emerald-50 text-emerald-700 hover:border-emerald-300"
           }`}
         >
-          {pending
-            ? "Kaydediliyor…"
-            : visible
-              ? "Devre dışı bırak"
-              : "Aktifleştir"}
+          <Power className="size-3 shrink-0" aria-hidden />
+          <span className="truncate">
+            {pending ? "…" : visible ? "Devre dışı" : "Aktifleştir"}
+          </span>
         </button>
-        {error ? <p className="px-2.5 pb-1 text-[10px] text-red-600">{error}</p> : null}
+        {error ? <p className="w-full text-[10px] text-red-600">{error}</p> : null}
       </>
     );
   }

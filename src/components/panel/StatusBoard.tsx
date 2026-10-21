@@ -28,11 +28,13 @@ import {
   AlertTriangle,
   Calendar,
   Clock,
+  ChevronDown,
   GripVertical,
   ImagePlus,
   LayoutGrid,
   Rows3,
   Trash2,
+  X,
 } from "lucide-react";
 import {
   useCallback,
@@ -768,21 +770,6 @@ export default function StatusBoard({
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#e91825]">
-            Ajans · durum
-          </p>
-          <h2 className="text-lg font-semibold tracking-tight">{board.name}</h2>
-          <p className="mt-1 text-sm text-zinc-500">
-            Sürükle-bırak · filtreler URL’de · marka panellerinde görünmez
-          </p>
-        </div>
-        {pending ? (
-          <span className="text-xs text-zinc-400">Kaydediliyor…</span>
-        ) : null}
-      </div>
-
       {/* Filtre barı */}
       <div className="space-y-3 rounded-xl border border-zinc-200 bg-white p-3 shadow-sm">
         <div className="flex flex-wrap items-center gap-1.5">
@@ -824,96 +811,43 @@ export default function StatusBoard({
               </button>
             );
           })}
-          <span className="ml-auto rounded-full bg-zinc-100 px-2 py-0.5 text-[11px] font-semibold tabular-nums text-zinc-600">
-            {filteredCount} kart
-          </span>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          <select
+        <div className="flex flex-wrap items-center gap-2 border-t border-zinc-100 pt-3">
+          <FilterSelect
+            label="Marka"
             value={filters.tenant}
-            onChange={(e) => setFilters({ tenant: e.target.value })}
-            className="rounded-md border-2 border-zinc-200 bg-white px-2.5 py-1.5 text-xs font-medium text-zinc-700 focus:border-zinc-400"
-            aria-label="Marka filtresi"
-          >
-            <option value="">Marka: tümü</option>
-            {tenants.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.name}
-              </option>
-            ))}
-          </select>
-          <select
+            onChange={(v) => setFilters({ tenant: v })}
+            options={tenants.map((t) => ({ value: t.id, label: t.name }))}
+          />
+          <FilterSelect
+            label="Atanan"
             value={filters.assignee}
-            onChange={(e) => setFilters({ assignee: e.target.value })}
-            className="rounded-md border-2 border-zinc-200 bg-white px-2.5 py-1.5 text-xs font-medium text-zinc-700 focus:border-zinc-400"
-            aria-label="Atanan filtresi"
-          >
-            <option value="">Atanan: tümü</option>
-            {staff.map((u) => (
-              <option key={u.id} value={u.id}>
-                {displayName(u)}
-              </option>
-            ))}
-          </select>
-          <select
+            onChange={(v) => setFilters({ assignee: v })}
+            options={staff.map((u) => ({ value: u.id, label: displayName(u) ?? u.email }))}
+          />
+          <FilterSelect
+            label="Öncelik"
             value={filters.priority}
-            onChange={(e) => setFilters({ priority: e.target.value })}
-            className="rounded-md border-2 border-zinc-200 bg-white px-2.5 py-1.5 text-xs font-medium text-zinc-700 focus:border-zinc-400"
-            aria-label="Öncelik filtresi"
-          >
-            <option value="">Öncelik: tümü</option>
-            {(Object.keys(PRIORITY_LABEL) as Card["priority"][]).map((p) => (
-              <option key={p} value={p}>
-                {PRIORITY_LABEL[p]}
-              </option>
-            ))}
-          </select>
+            onChange={(v) => setFilters({ priority: v })}
+            options={(Object.keys(PRIORITY_LABEL) as Card["priority"][]).map((p) => ({
+              value: p,
+              label: PRIORITY_LABEL[p],
+            }))}
+          />
           <button
             type="button"
             aria-pressed={filters.overdue}
             onClick={() => setFilters({ overdue: !filters.overdue })}
-            className={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-semibold transition ${
+            className={`inline-flex h-8 items-center gap-1.5 rounded-lg border px-3 text-xs font-medium transition ${
               filters.overdue
-                ? "border-rose-600 bg-rose-600 text-white shadow-sm"
-                : "border-2 border-zinc-200 text-zinc-600 hover:border-zinc-300"
+                ? "border-rose-200 bg-rose-50 text-rose-700"
+                : "border-zinc-200 bg-white text-zinc-600 hover:border-zinc-300 hover:text-zinc-900"
             }`}
           >
             <Clock className="size-3.5" aria-hidden />
-            Sadece gecikenler
+            Gecikenler
           </button>
-
-          <div className="ml-auto flex items-center gap-0.5 rounded-lg border-2 border-zinc-200 bg-zinc-50 p-0.5">
-            <button
-              type="button"
-              aria-pressed={filters.group === "status"}
-              onClick={() => setFilters({ group: "status" })}
-              className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-semibold transition ${
-                filters.group === "status"
-                  ? "bg-[#e91825] text-white shadow-sm"
-                  : "text-zinc-600 hover:bg-white"
-              }`}
-              title="Durum kolonları"
-            >
-              <LayoutGrid className="size-3.5" aria-hidden />
-              Durum
-            </button>
-            <button
-              type="button"
-              aria-pressed={filters.group === "team"}
-              onClick={() => setFilters({ group: "team" })}
-              className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-semibold transition ${
-                filters.group === "team"
-                  ? "bg-[#e91825] text-white shadow-sm"
-                  : "text-zinc-600 hover:bg-white"
-              }`}
-              title="Takıma göre grupla"
-            >
-              <Rows3 className="size-3.5" aria-hidden />
-              Takım
-            </button>
-          </div>
-
           {hasActiveFilters ? (
             <button
               type="button"
@@ -926,11 +860,50 @@ export default function StatusBoard({
                   overdue: false,
                 })
               }
-              className="text-xs text-zinc-500 underline-offset-2 hover:text-zinc-800 hover:underline"
+              className="inline-flex h-8 items-center gap-1 rounded-lg px-2 text-xs text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-800"
             >
-              Filtreleri temizle
+              <X className="size-3.5" aria-hidden />
+              Temizle
             </button>
           ) : null}
+
+          <div className="ml-auto flex items-center gap-3">
+            <span className="text-xs tabular-nums text-zinc-500">
+              {pending ? "Kaydediliyor… · " : ""}
+              {filteredCount} kart
+            </span>
+            <div
+              className="flex h-8 items-center gap-0.5 rounded-lg bg-zinc-100 p-0.5"
+              role="group"
+              aria-label="Görünüm"
+            >
+              {(
+                [
+                  { key: "status", label: "Durum", Icon: LayoutGrid, title: "Durum kolonları" },
+                  { key: "team", label: "Takım", Icon: Rows3, title: "Takıma göre grupla" },
+                ] as const
+              ).map(({ key, label, Icon, title }) => {
+                const on = filters.group === key;
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    aria-pressed={on}
+                    onClick={() => setFilters({ group: key })}
+                    title={title}
+                    className={`inline-flex h-full items-center gap-1.5 rounded-md px-2.5 text-xs font-medium transition ${
+                      on
+                        ? "bg-white text-zinc-900 shadow-sm"
+                        : "text-zinc-500 hover:text-zinc-800"
+                    }`}
+                  >
+                    <Icon className="size-3.5" aria-hidden />
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
         </div>
       </div>
 
@@ -1381,13 +1354,9 @@ function BoardColumn({
         setDropRef(node);
       }}
       style={style}
-      className={`flex max-h-[calc(100dvh-19rem)] min-h-[24rem] w-72 shrink-0 flex-col rounded-xl border bg-white ${
-        isOver
-          ? "border-[#e91825]/60 bg-rose-50/40 ring-2 ring-[#e91825]/20"
-          : "border-zinc-200"
-      }`}
+      className="flex max-h-[calc(100dvh-19rem)] min-h-[24rem] w-72 shrink-0 flex-col gap-2"
     >
-      <header className="flex items-center gap-2 px-2 py-3">
+      <header className="flex items-center gap-2 rounded-xl border border-zinc-200 bg-white px-2 py-2.5 shadow-sm">
         <button
           type="button"
           className="cursor-grab touch-none rounded p-1 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-600 active:cursor-grabbing"
@@ -1418,8 +1387,16 @@ function BoardColumn({
         </span>
       </header>
 
+      {/* Kartların durduğu alan — ayrı çerçeve; üzerine sürüklenince vurgulanır. */}
+      <div
+        className={`flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border bg-white transition ${
+          isOver
+            ? "border-[#e91825]/60 bg-rose-50/40 ring-2 ring-[#e91825]/20"
+            : "border-zinc-200"
+        }`}
+      >
       <SortableContext items={cardIds} strategy={verticalListSortingStrategy}>
-        <ul className="flex min-h-[120px] flex-1 flex-col gap-2 overflow-y-auto overscroll-contain px-2 pb-2 pt-0.5">
+        <ul className="flex min-h-[120px] flex-1 flex-col gap-2 overflow-y-auto overscroll-contain p-2">
           {column.cards.map((card) => (
             <SortableCard
               key={card.id}
@@ -1541,11 +1518,12 @@ function BoardColumn({
         <button
           type="button"
           onClick={onOpenComposer}
-          className="m-2 rounded-lg border border-dashed border-zinc-300 px-3 py-2 text-left text-sm text-zinc-500 hover:border-zinc-400 hover:bg-zinc-50 hover:text-zinc-700"
+          className="mx-2 mb-2 rounded-lg border border-dashed border-zinc-300 px-3 py-2 text-left text-sm text-zinc-500 hover:border-zinc-400 hover:bg-zinc-50 hover:text-zinc-700"
         >
           + Görev ekle
         </button>
       )}
+      </div>
     </section>
   );
 }
@@ -1601,6 +1579,48 @@ function SortableCard({
         />
       </div>
     </li>
+  );
+}
+
+/** Filtre çubuğu seçimi — boşken etiket, seçiliyken değer koyu görünür. */
+function FilterSelect({
+  label,
+  value,
+  onChange,
+  options,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  options: Array<{ value: string; label: string }>;
+}) {
+  const active = value !== "";
+  return (
+    <label className="relative inline-flex">
+      <span className="sr-only">{label}</span>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className={`h-8 max-w-[11rem] cursor-pointer appearance-none truncate rounded-lg border pl-3 pr-7 text-xs font-medium outline-none transition focus-visible:ring-2 focus-visible:ring-zinc-300 ${
+          active
+            ? "border-zinc-800 bg-zinc-800 text-white"
+            : "border-zinc-200 bg-white text-zinc-600 hover:border-zinc-300"
+        }`}
+      >
+        <option value="">{label}: tümü</option>
+        {options.map((o) => (
+          <option key={o.value} value={o.value}>
+            {o.label}
+          </option>
+        ))}
+      </select>
+      <ChevronDown
+        className={`pointer-events-none absolute right-2 top-1/2 size-3.5 -translate-y-1/2 ${
+          active ? "text-white/70" : "text-zinc-400"
+        }`}
+        aria-hidden
+      />
+    </label>
   );
 }
 

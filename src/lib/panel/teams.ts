@@ -75,6 +75,7 @@ export function staffSelect(withPasswords: boolean) {
     name: true,
     email: true,
     phone: true,
+    avatarUrl: true,
     role: true,
     passwordPlain: withPasswords,
     teamMemberships: {

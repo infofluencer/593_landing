@@ -75,7 +75,8 @@ export function proxy(request: NextRequest) {
     request.method !== "GET" &&
     ((pathname.includes("/api/panel/tenants/") && pathname.endsWith("/cover")) ||
       (pathname.includes("/api/panel/board/cards/") &&
-        pathname.endsWith("/images")))
+        pathname.endsWith("/images")) ||
+      (pathname.includes("/api/panel/users/") && pathname.endsWith("/avatar")))
   ) {
     return NextResponse.next();
   }

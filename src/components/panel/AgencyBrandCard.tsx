@@ -1,8 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { MoreHorizontal } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import BrandCoverUpload from "@/components/panel/BrandCoverUpload";
 import BrandVisibilityToggle from "@/components/panel/BrandVisibilityToggle";
 import {
@@ -32,27 +31,9 @@ export default function AgencyBrandCard({
 }) {
   const [cover, setCover] = useState(coverUrl);
   const [brokenSrc, setBrokenSrc] = useState<string | null>(null);
-  const [menuOpen, setMenuOpen] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
-
   useEffect(() => {
     setCover(coverUrl);
   }, [coverUrl]);
-
-  useEffect(() => {
-    if (!menuOpen) return;
-    const close = (e: PointerEvent | KeyboardEvent) => {
-      if (e instanceof KeyboardEvent ? e.key === "Escape" : !menuRef.current?.contains(e.target as Node)) {
-        setMenuOpen(false);
-      }
-    };
-    document.addEventListener("pointerdown", close);
-    document.addEventListener("keydown", close);
-    return () => {
-      document.removeEventListener("pointerdown", close);
-      document.removeEventListener("keydown", close);
-    };
-  }, [menuOpen]);
 
   const media = resolveBrandCover({ slug, name, coverUrl: cover });
   const showMedia = media && media.src !== brokenSrc;
@@ -66,13 +47,34 @@ export default function AgencyBrandCard({
         grabbing ? "cursor-grab active:cursor-grabbing" : "hover:border-zinc-300 hover:shadow-sm"
       } ${inactive ? "border-zinc-200/80" : "border-zinc-200/90"}`}
     >
+      {/* İşlemler kartın üstünde, her zaman görünür. */}
+      <div
+        className={`flex flex-wrap gap-1 px-2 pt-2 sm:px-2.5 sm:pt-2.5 ${
+          grabbing ? "pointer-events-none opacity-40" : ""
+        }`}
+        data-no-dnd
+        onPointerDown={(event) => event.stopPropagation()}
+      >
+        <BrandCoverUpload
+          tenantSlug={slug}
+          brandName={name}
+          coverUrl={cover}
+          variant="toolbar"
+          onChanged={(next) => {
+            setCover(next);
+            setBrokenSrc(null);
+          }}
+        />
+        <BrandVisibilityToggle tenantSlug={slug} visible={visible} variant="toolbar" />
+      </div>
+
       <Link
         href={href}
         className={`group flex flex-col focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#e91825] ${
           settled ? "" : "pointer-events-none"
         }`}
       >
-        <div className="aspect-square w-full p-2 sm:p-2.5">
+        <div className="aspect-square w-full px-2 pb-2 pt-1.5 sm:px-2.5 sm:pb-2.5">
           <div
             className={`flex h-full w-full items-center justify-center overflow-hidden rounded-[0.85rem] bg-[#f4f1ea] transition duration-300 group-hover:bg-[#f7f4ed] ${
               inactive ? "opacity-60 grayscale" : ""
@@ -117,47 +119,6 @@ export default function AgencyBrandCard({
         ) : null}
       </Link>
 
-      {grabbing ? null : (
-        <div
-          ref={menuRef}
-          className="absolute right-3.5 top-3.5 sm:right-4 sm:top-4"
-          data-no-dnd
-          onPointerDown={(event) => event.stopPropagation()}
-        >
-          <button
-            type="button"
-            aria-label={`${name} seçenekleri`}
-            aria-haspopup="menu"
-            aria-expanded={menuOpen}
-            onClick={() => setMenuOpen((v) => !v)}
-            className={`flex size-7 items-center justify-center rounded-full border border-zinc-200 bg-white/90 text-zinc-600 shadow-sm backdrop-blur transition hover:bg-white hover:text-zinc-900 focus-visible:opacity-100 ${
-              menuOpen ? "opacity-100" : "opacity-0 group-hover/card:opacity-100 [@media(hover:none)]:opacity-100"
-            }`}
-          >
-            <MoreHorizontal className="size-4" aria-hidden />
-          </button>
-          {/* Hep mounted: dosya seçici menü kapanınca kaybolmasın. */}
-          <div
-            role="menu"
-            className={`absolute right-0 top-8 z-20 w-40 rounded-lg border border-zinc-200 bg-white p-1 shadow-lg ${
-              menuOpen ? "" : "hidden"
-            }`}
-          >
-            <BrandCoverUpload
-              tenantSlug={slug}
-              brandName={name}
-              coverUrl={cover}
-              variant="menu"
-              onChanged={(next) => {
-                setCover(next);
-                setBrokenSrc(null);
-                setMenuOpen(false);
-              }}
-            />
-            <BrandVisibilityToggle tenantSlug={slug} visible={visible} variant="menu" />
-          </div>
-        </div>
-      )}
     </div>
   );
 }

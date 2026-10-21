@@ -1,7 +1,7 @@
 "use client";
 
-import { Check, Lock, Plus, Trash2, UserMinus, X } from "lucide-react";
-import { useState } from "react";
+import { Camera, Check, Lock, Plus, Trash2, UserMinus, X } from "lucide-react";
+import { useRef, useState } from "react";
 import { EmptyState } from "@/components/panel/ds/EmptyState";
 import { TeamPlatformIcon } from "@/components/panel/TeamPlatformIcon";
 
@@ -18,6 +18,8 @@ type StaffUser = {
   email: string;
   /** WhatsApp bildirimi için (E.164). */
   phone?: string | null;
+  /** Profil fotoğrafı (/uploads/avatars/…). */
+  avatarUrl?: string | null;
   role: string;
   teamMemberships: Array<{
     teamId: string;
@@ -436,6 +438,18 @@ export default function TeamManager({
                     className="border-b border-zinc-50 last:border-0 hover:bg-zinc-50/60"
                   >
                     <td className="px-4 py-3">
+                      <div className="flex items-start gap-3">
+                      <StaffAvatarUpload
+                        user={u}
+                        editable={canManageUsers || isSelf}
+                        onError={setError}
+                        onChanged={(avatarUrl) =>
+                          setStaff((prev) =>
+                            prev.map((s) => (s.id === u.id ? { ...s, avatarUrl } : s)),
+                          )
+                        }
+                      />
+                      <div className="min-w-0">
                       <p className="font-medium text-zinc-900">
                         {label(u)}
                         {isSelf ? (
@@ -457,6 +471,8 @@ export default function TeamManager({
                           </button>
                         ) : null}
                       </p>
+                      </div>
+                      </div>
                     </td>
                     <td className="px-4 py-3">
                       <RoleBadge role={u.role} />
@@ -701,6 +717,95 @@ export default function TeamManager({
           </table>
         </div>
       </section>
+    </div>
+  );
+}
+
+function StaffAvatarUpload({
+  user,
+  editable,
+  onChanged,
+  onError,
+}: {
+  user: StaffUser;
+  editable: boolean;
+  onChanged: (avatarUrl: string | null) => void;
+  onError: (message: string | null) => void;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [busy, setBusy] = useState(false);
+  const initials = label(user)
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((p) => p[0]!.toLocaleUpperCase("tr"))
+    .join("");
+
+  async function upload(file: File) {
+    onError(null);
+    setBusy(true);
+    try {
+      const body = new FormData();
+      body.set("file", file);
+      const res = await fetch(`/api/panel/users/${user.id}/avatar`, {
+        method: "POST",
+        body,
+      });
+      const j = (await res.json().catch(() => null)) as {
+        avatarUrl?: string;
+        error?: string;
+      } | null;
+      if (!res.ok || !j?.avatarUrl) {
+        onError(j?.error || "Fotoğraf yüklenemedi");
+        return;
+      }
+      onChanged(j.avatarUrl);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const face = user.avatarUrl ? (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img src={user.avatarUrl} alt="" className="size-10 rounded-full object-cover" />
+  ) : (
+    <span className="flex size-10 items-center justify-center rounded-full bg-zinc-200 text-xs font-bold text-zinc-600">
+      {initials}
+    </span>
+  );
+
+  if (!editable) return <div className="shrink-0">{face}</div>;
+
+  return (
+    <div className="shrink-0">
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/jpeg,image/png,image/webp,image/gif"
+        hidden
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          e.target.value = "";
+          if (file) void upload(file);
+        }}
+      />
+      <button
+        type="button"
+        disabled={busy}
+        onClick={() => inputRef.current?.click()}
+        title={user.avatarUrl ? "Fotoğrafı değiştir" : "Fotoğraf yükle"}
+        aria-label={`${label(user)} — fotoğraf ${user.avatarUrl ? "değiştir" : "yükle"}`}
+        className="group relative block rounded-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#e91825] disabled:opacity-60"
+      >
+        {face}
+        <span
+          className={`absolute inset-0 flex items-center justify-center rounded-full bg-black/45 text-white transition ${
+            busy ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+          }`}
+        >
+          <Camera className="size-4" aria-hidden />
+        </span>
+      </button>
     </div>
   );
 }

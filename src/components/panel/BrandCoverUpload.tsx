@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { ImagePlus } from "lucide-react";
 import { brandInitials } from "@/lib/panel/brand-logos";
 
 export default function BrandCoverUpload({
@@ -16,7 +17,7 @@ export default function BrandCoverUpload({
   brandName: string;
   coverUrl?: string | null;
   fallbackSrc?: string | null;
-  variant?: "settings" | "card" | "menu";
+  variant?: "settings" | "card" | "toolbar";
   onChanged?: (coverUrl: string | null) => void;
 }) {
   const router = useRouter();
@@ -123,20 +124,21 @@ export default function BrandCoverUpload({
     />
   );
 
-  if (variant === "menu") {
+  if (variant === "toolbar") {
     return (
       <>
         {fileInput}
         <button
           type="button"
-          role="menuitem"
           disabled={busy}
           onClick={() => inputRef.current?.click()}
-          className="flex w-full items-center rounded-md px-2.5 py-1.5 text-left text-xs text-zinc-700 hover:bg-zinc-100 disabled:opacity-60"
+          title={localCover ? "Kapağı değiştir" : "Kapak ekle"}
+          className="inline-flex min-w-0 flex-1 items-center justify-center gap-1 rounded-md border border-zinc-200 bg-white px-1.5 py-1 text-[10px] font-medium text-zinc-600 transition hover:border-zinc-300 hover:text-zinc-900 disabled:opacity-60"
         >
-          {busy ? "Yükleniyor…" : localCover ? "Kapağı değiştir" : "Kapak ekle"}
+          <ImagePlus className="size-3 shrink-0" aria-hidden />
+          <span className="truncate">{busy ? "Yükleniyor…" : "Kapak"}</span>
         </button>
-        {error ? <p className="px-2.5 pb-1 text-[10px] text-red-600">{error}</p> : null}
+        {error ? <p className="w-full text-[10px] text-red-600">{error}</p> : null}
       </>
     );
   }
