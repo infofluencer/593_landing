@@ -261,7 +261,7 @@ export async function loadBrandTable(opts: {
       timezone: true,
       metaAccountId: true,
       disabledIntegrations: true,
-      mapping: { select: { adsCustomerId: true, ga4PropertyId: true, adsTimezone: true } },
+      mapping: { select: { adsCustomerId: true, ga4PropertyId: true, adsTimezone: true, gtmContainerId: true, gscSiteUrl: true,} },
       owner: { select: { id: true, name: true, email: true } },
       syncJobs: {
         select: {
@@ -520,6 +520,8 @@ export async function loadBrandTable(opts: {
       if (!off.has("meta") && !resolveMetaAccountId(t)) missing.push("Meta");
       if (!off.has("google_ads") && !resolveAdsCustomerId(t)) missing.push("Google Ads");
       if (!off.has("ga4") && !t.mapping?.ga4PropertyId) missing.push("GA4");
+      if (!off.has("gtm") && !t.mapping?.gtmContainerId) missing.push("GTM");
+      if (!off.has("gsc") && !t.mapping?.gscSiteUrl) missing.push("Search Console");
       if (missing.length) {
         reasons.push({
           tone: "warn",

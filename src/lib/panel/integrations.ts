@@ -54,11 +54,11 @@ export function withoutDisabledJobs<T extends { provider: string; service: strin
 
 /** Platform kapatılınca çözülecek alarm tipleri (alerts-engine + saatlik kontrol). */
 export const ALERT_TYPES_BY_INTEGRATION: Record<IntegrationKey, string[]> = {
-  meta: ["sync_error_meta", "payment_meta"],
-  google_ads: ["missing_mapping", "sync_error", "payment_google"],
-  ga4: ["sync_error_ga4"],
-  gtm: [],
-  gsc: [],
+  meta: ["sync_error_meta", "payment_meta", "spend_stopped_meta", "token_expired_meta", "missing_mapping_meta"],
+  google_ads: ["missing_mapping", "sync_error", "payment_google", "spend_stopped_google", "token_expired_google"],
+  ga4: ["sync_error_ga4", "missing_mapping_ga4"],
+  gtm: ["missing_mapping_gtm"],
+  gsc: ["missing_mapping_gsc"],
 };
 
 /** Platform markada kapalı mı — canlı API çağrısından önce kontrol. */

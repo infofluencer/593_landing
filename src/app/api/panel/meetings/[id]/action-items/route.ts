@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { audit } from "@/lib/panel/audit";
 import {
   allStaffIds,
   loadMeeting,
@@ -26,7 +27,7 @@ export async function POST(request: Request, ctx: Ctx) {
   const { id } = await ctx.params;
   const meeting = await prisma.meeting.findUnique({
     where: { id },
-    select: { id: true },
+    select: { id: true, title: true, tenantId: true },
   });
   if (!meeting) {
     return NextResponse.json({ error: "Toplantı bulunamadı" }, { status: 404 });
@@ -67,6 +68,13 @@ export async function POST(request: Request, ctx: Ctx) {
       dueAt,
       position: (maxPos._max.position ?? -1) + 1,
     },
+  });
+  await audit(session, {
+    action: "meeting.action_add",
+    entity: "meeting",
+    entityId: id,
+    tenantId: meeting.tenantId,
+    summary: `${meeting.title}: aksiyon eklendi — ${text}`,
   });
 
   const full = await loadMeeting(id);

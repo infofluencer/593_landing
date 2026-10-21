@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { audit } from "@/lib/panel/audit";
 import { ensureAgencyBoard } from "@/lib/panel/board";
 import { formatDateTime } from "@/lib/panel/format";
 import {
@@ -87,6 +88,15 @@ export async function PATCH(request: Request, ctx: Ctx) {
 
   if (Object.keys(data).length > 0) {
     await prisma.meetingActionItem.update({ where: { id: itemId }, data });
+    await audit(session, {
+      action: "meeting.action_update",
+      entity: "meeting",
+      entityId: id,
+      tenantId: item.meeting.tenantId,
+      summary: `${item.meeting.title}: ${
+        body.done === true ? "aksiyon tamamlandı" : body.done === false ? "aksiyon yeniden açıldı" : "aksiyon güncellendi"
+      } — ${typeof data.text === "string" ? data.text : item.text}`,
+    });
   }
 
   if (body.convertToCard && !item.boardCardId) {
@@ -140,6 +150,13 @@ export async function PATCH(request: Request, ctx: Ctx) {
       where: { id: itemId },
       data: { boardCardId: card.id },
     });
+    await audit(session, {
+      action: "meeting.action_to_card",
+      entity: "meeting",
+      entityId: id,
+      tenantId: item.meeting.tenantId,
+      summary: `${item.meeting.title}: aksiyon göreve çevrildi — ${text}`,
+    });
   }
 
   const full = await loadMeeting(id);
@@ -154,12 +171,19 @@ export async function DELETE(_request: Request, ctx: Ctx) {
   const { id, itemId } = await ctx.params;
   const item = await prisma.meetingActionItem.findFirst({
     where: { id: itemId, meetingId: id },
-    select: { id: true },
+    select: { id: true, text: true, meeting: { select: { title: true, tenantId: true } } },
   });
   if (!item) {
     return NextResponse.json({ error: "Madde bulunamadı" }, { status: 404 });
   }
   await prisma.meetingActionItem.delete({ where: { id: itemId } });
+  await audit(session, {
+    action: "meeting.action_delete",
+    entity: "meeting",
+    entityId: id,
+    tenantId: item.meeting.tenantId,
+    summary: `${item.meeting.title}: aksiyon silindi — ${item.text}`,
+  });
 
   const full = await loadMeeting(id);
   return NextResponse.json({ meeting: full ? serializeMeeting(full) : null });

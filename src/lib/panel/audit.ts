@@ -12,7 +12,8 @@ export type AuditEntity =
   | "meeting"
   | "brand_note"
   | "content_post"
-  | "report";
+  | "report"
+  | "alert";
 
 type AuditSession = {
   user: { id?: string | null; email?: string | null };

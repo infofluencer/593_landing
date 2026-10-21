@@ -289,6 +289,8 @@ model User {
   name          String?
   /// WhatsApp bildirimi için E.164 (ör. +905321234567).
   phone         String?
+  /// Profil fotoğrafı (/uploads/avatars/{id}.webp?v=…).
+  avatarUrl     String?
   role          Role
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
@@ -380,6 +382,8 @@ model BoardCard {
   tenantId      String?
   dueAt         DateTime?
   labels        String[]          @default([])
+  /// Referans görselleri (/uploads/board/…). İlki kart kapağı olarak gösterilir.
+  images        String[]          @default([])
   sourceAlertId String?
   createdById   String?
   createdAt     DateTime          @default(now())
@@ -728,6 +732,8 @@ model Alert {
   assigneeId       String?
   resolved         Boolean        @default(false)
   history          Json           @default("[]")
+  /// Şablon parametreleri (platform, tutar, gün sayısı…) — bildirim metni buradan kurulur.
+  details          Json          @default("{}")
   /// Son bildirim (WhatsApp / e-posta) — aynı seviyede tekrar gönderilmez.
   notifiedAt       DateTime?
   notifiedSeverity AlertSeverity?

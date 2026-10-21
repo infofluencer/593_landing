@@ -20,7 +20,12 @@ import { formatTry } from "@/lib/panel/format";
 
 export type ReasonTone = "critical" | "warn" | "unknown";
 
-export type StatusReason = { tone: ReasonTone; text: string };
+export type StatusReason = {
+  tone: ReasonTone;
+  text: string;
+  /** Ajans içi: ne yapılmalı (müşteri ekranında gösterilmez). */
+  fix?: string;
+};
 
 export type ChannelStatus = {
   status: HealthStatus;
@@ -103,6 +108,7 @@ function channelStatus(
     reasons.push({
       tone: acc.status,
       text: `${label}: ${acc.label}${acc.detail ? ` — ${acc.detail}` : ""}`,
+      fix: `${label} panelinde hesap durumunu ve ödeme yöntemini kontrol edin.`,
     });
   }
 
@@ -127,9 +133,23 @@ function channelStatus(
             : cls === "setup"
               ? `${label} hesabı eşleştirilmemiş`
               : `${label} verisi güncellenemedi`,
+      fix:
+        cls === "token"
+          ? `Ayarlar → Entegrasyonlar’dan ${label} bağlantısını yeniden yetkilendirin.`
+          : cls === "permission"
+            ? provider === "meta"
+              ? "Reklam hesabını Business Manager’da system user’a varlık olarak atayın."
+              : "Google Ads hesabının yönetici (MCC) hesabına bağlı olduğunu kontrol edin."
+            : cls === "setup"
+              ? `Aşağıdaki Ayarlar’dan ${label} hesap ID’sini girin.`
+              : "Veri çekimini tekrar deneyin; sürerse Veri çekimi sayfasındaki hata kaydına bakın.",
     });
   } else if (!mapped) {
-    reasons.push({ tone: "unknown", text: `${label} hesabı bağlı değil` });
+    reasons.push({
+      tone: "unknown",
+      text: `${label} hesabı bağlı değil`,
+      fix: `Ayarlar’dan ${label} hesap ID’sini girin; bu marka ${label} kullanmıyorsa entegrasyonu kapatın.`,
+    });
   }
 
   const unknownData = reasons.some((r) => r.tone === "unknown");
@@ -168,11 +188,16 @@ function channelStatus(
         : lastSpend
           ? ` (son harcama ${dmy(lastSpend)})`
           : "";
-      reasons.push({ tone: "critical", text: `${label}: ${since}${tail}` });
+      reasons.push({
+        tone: "critical",
+        text: `${label}: ${since}${tail}`,
+        fix: "Bu kanal için bütçe planlanmış ama harcama yok. Kampanyaların açık olduğunu, ödeme yönteminin çalıştığını ve reddedilen reklam olmadığını kontrol edin.",
+      });
     } else if (stopped && planned == null) {
       reasons.push({
         tone: "warn",
         text: `${label}: ${stoppedDays} gündür harcama yok`,
+        fix: "Kampanyalar bilerek durdurulduysa sorun yok. Değilse kampanya ve ödeme durumunu kontrol edin.",
       });
     }
 
@@ -182,6 +207,7 @@ function channelStatus(
       reasons.push({
         tone: "warn",
         text: `${label}: ${ecommerce ? "satış" : "lead"} maliyeti hedefin üstünde (${formatTry(spend / conv, bundle.tenant.currency)} > ${formatTry(target, bundle.tenant.currency)})`,
+        fix: "Hedefleme, kreatif ve teklif stratejisini gözden geçirin ya da Ayarlar’daki hedef maliyeti güncelleyin.",
       });
     }
   }
@@ -206,9 +232,19 @@ function ga4Status(bundle: MockTenantBundle): ChannelStatus {
           : cls === "setup"
             ? "GA4 mülkü eşleştirilmemiş"
             : "GA4 verisi güncellenemedi",
+      fix:
+        cls === "token"
+          ? "Ayarlar → Entegrasyonlar’dan Google bağlantısını yeniden yetkilendirin."
+          : cls === "setup"
+            ? "Ayarlar’dan GA4 mülk ID’sini girin."
+            : "Servis hesabının GA4 mülkünde Görüntüleyici olduğunu kontrol edin.",
     });
   } else if (!bundle.tenant.mapping?.ga4PropertyId) {
-    reasons.push({ tone: "unknown", text: "GA4 mülkü bağlı değil" });
+    reasons.push({
+      tone: "unknown",
+      text: "GA4 mülkü bağlı değil",
+      fix: "Ayarlar’dan GA4 mülk ID’sini girin; kullanılmıyorsa GA4 entegrasyonunu kapatın.",
+    });
   }
   return { status: worst(reasons), reasons };
 }
@@ -228,9 +264,17 @@ function gtmStatus(bundle: MockTenantBundle): ChannelStatus {
         cls === "rate"
           ? "GTM yapılandırması geçici olarak okunamıyor (API limiti)"
           : "GTM yapılandırması okunamadı",
+      fix:
+        cls === "rate"
+          ? "Geçici bir durum; bir sonraki senkronda kendiliğinden düzelir."
+          : "Servis hesabının GTM konteynerinde okuma yetkisi olduğunu kontrol edin.",
     });
   } else if (!bundle.tenant.mapping?.gtmContainerId) {
-    reasons.push({ tone: "unknown", text: "GTM konteyneri bağlı değil" });
+    reasons.push({
+      tone: "unknown",
+      text: "GTM konteyneri bağlı değil",
+      fix: "Ayarlar’dan GTM konteyner ID’sini girin; kullanılmıyorsa GTM entegrasyonunu kapatın.",
+    });
   }
   return { status: worst(reasons), reasons };
 }
@@ -264,7 +308,11 @@ export function computeTenantStatus(
     pace = pacing.status;
     const meta_ = PACE_STATUS_META[pacing.status];
     if (meta_.tone === "warn" || meta_.tone === "critical") {
-      budgetReasons.push({ tone: meta_.tone, text: `${meta_.label} — ${meta_.hint}` });
+      budgetReasons.push({
+        tone: meta_.tone,
+        text: `${meta_.label} — ${meta_.hint}`,
+        fix: "Bütçe planını ve kampanya günlük bütçelerini karşılaştırın.",
+      });
     }
   }
   for (const r of [...google.reasons, ...meta.reasons]) {
@@ -284,6 +332,7 @@ export function computeTenantStatus(
       overallReasons.push({
         tone: "warn",
         text: "Harcama var ama dönüşüm gelmiyor — dönüşüm takibi kontrol edilmeli",
+        fix: "Pixel/CAPI ve Google Ads dönüşüm etiketlerinin tetiklendiğini kontrol edin (Kurulum kontrolü kartı).",
       });
     }
   }

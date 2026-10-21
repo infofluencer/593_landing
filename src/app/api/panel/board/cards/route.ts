@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import type { BoardCardPriority } from "@prisma/client";
 import { prisma } from "@/lib/db";
+import { audit } from "@/lib/panel/audit";
 import {
   boardCardInclude,
   serializeBoardCard,
@@ -170,6 +171,14 @@ export async function POST(request: Request) {
       },
     },
     include: boardCardInclude,
+  });
+
+  await audit(session, {
+    action: "board_card.create",
+    entity: "board_card",
+    entityId: card.id,
+    tenantId,
+    summary: `Kart oluşturuldu: ${title} (${column.name})`,
   });
 
   return NextResponse.json(

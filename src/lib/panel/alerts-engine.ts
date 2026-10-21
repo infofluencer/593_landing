@@ -8,6 +8,10 @@ import {
 import { withoutDisabledJobs } from "@/lib/panel/integrations";
 import { notifyAlert, shouldNotifyAlert } from "@/lib/panel/notify";
 import { classifySyncError } from "@/lib/panel/sync-error-class";
+import { resolveAdsCustomerId } from "@/lib/panel/google-ads-customer-map";
+import { resolveGa4PropertyId } from "@/lib/panel/ga4-property-map";
+import { resolveGtmApiRef } from "@/lib/panel/gtm-container-map";
+import { resolveMetaAccountId } from "@/lib/panel/meta-ad-account-map";
 
 type HistoryEntry = {
   at: string;
@@ -51,7 +55,10 @@ export async function upsertOpenAlert(opts: {
   type: string;
   severity: AlertSeverity;
   message: string;
+  /** Şablon parametreleri (platform, tutar, gün…) — WhatsApp metni buradan kurulur. */
+  details?: Record<string, unknown>;
 }) {
+  const details = JSON.parse(JSON.stringify(opts.details ?? {})) as Prisma.InputJsonValue;
   const existing = await prisma.alert.findFirst({
     where: {
       tenantId: opts.tenantId,
@@ -67,6 +74,7 @@ export async function upsertOpenAlert(opts: {
       data: {
         severity: opts.severity,
         message: opts.message,
+        details,
         updatedAt: new Date(),
       },
     });
@@ -85,6 +93,7 @@ export async function upsertOpenAlert(opts: {
         type: opts.type,
         severity: opts.severity,
         message: opts.message,
+        details,
         history: history as unknown as Prisma.InputJsonValue,
       },
     });
@@ -170,12 +179,67 @@ export async function evaluateTenantAlerts(tenantId: string) {
   const off = new Set(tenant.disabledIntegrations);
   const currency = tenant.currency;
 
-  if (!off.has("google_ads") && !tenant.mapping?.adsCustomerId) {
+  // --- Eşleşme eksik: kapalı olmayan her platform için ayrı uyarı (ilgili ekibe gider) ---
+  const mappingChecks: Array<{
+    integration: string;
+    type: string;
+    ok: boolean;
+    provider: string;
+    problem: string;
+    action: string;
+  }> = [
+    {
+      integration: "google_ads",
+      type: "missing_mapping",
+      ok: Boolean(resolveAdsCustomerId(tenant)),
+      provider: "Google Ads",
+      problem: "Müşteri ID eşleştirilmemiş — kampanya, fatura ve ödeme verisi çekilemiyor",
+      action: "Marka ayarlarından Google Ads müşteri ID (123-456-7890) girin",
+    },
+    {
+      integration: "meta",
+      type: "missing_mapping_meta",
+      ok: Boolean(resolveMetaAccountId(tenant)),
+      provider: "Meta",
+      problem: "Reklam hesabı (act_…) eşleştirilmemiş — Meta verisi çekilemiyor",
+      action: "Marka ayarlarından Meta reklam hesabı ID girin; hesap BM'de sistem kullanıcısına atanmış olmalı",
+    },
+    {
+      integration: "ga4",
+      type: "missing_mapping_ga4",
+      ok: Boolean(resolveGa4PropertyId(tenant)),
+      provider: "GA4",
+      problem: "Property ID eşleştirilmemiş — site trafiği ve anahtar etkinlikler görünmüyor",
+      action: "Marka ayarlarından GA4 property ID girin (Yönetici → Mülk ayrıntıları)",
+    },
+    {
+      integration: "gtm",
+      type: "missing_mapping_gtm",
+      ok: Boolean(resolveGtmApiRef(tenant)),
+      provider: "GTM",
+      problem: "Konteyner eşleştirilmemiş — etiket yapılandırması ve site testi çalışmıyor",
+      action: "Marka ayarlarından GTM konteyner ID (GTM-XXXXXXX) girin",
+    },
+    {
+      integration: "gsc",
+      type: "missing_mapping_gsc",
+      ok: Boolean(tenant.mapping?.gscSiteUrl?.trim()),
+      provider: "Search Console",
+      problem: "Site adresi eşleştirilmemiş — organik arama verisi görünmüyor",
+      action: "Marka ayarlarından Search Console site URL'sini girin (sc-domain: veya https://)",
+    },
+  ];
+  for (const m of mappingChecks) {
+    if (off.has(m.integration) || m.ok) {
+      await resolveOpenAlertsOfType(tenantId, m.type, off.has(m.integration) ? "Platform kapatıldı" : "Eşleşme tamamlandı");
+      continue;
+    }
     await upsertOpenAlert({
       tenantId,
-      type: "missing_mapping",
-      severity: "unknown",
-      message: "Google Ads müşteri ID eşleştirilmemiş — veri çekilemedi.",
+      type: m.type,
+      severity: "warn",
+      message: `${m.provider}: ${m.problem}.`,
+      details: { provider: m.provider, problem: m.problem, action: m.action },
     });
   }
 
@@ -188,7 +252,14 @@ export async function evaluateTenantAlerts(tenantId: string) {
       type: "sync_error",
       severity: "unknown",
       message: `Ads sync hatası: ${adsJob.error || "bilinmeyen"}`,
+      details: {
+        provider: "Google Ads",
+        problem: adsJob.error || "bilinmeyen hata",
+        action: "Veri çekimi sayfasından yeniden deneyin; sürerse hesap erişimini kontrol edin",
+      },
     });
+  } else {
+    await resolveOpenAlertsOfType(tenantId, "sync_error", "Çekim düzeldi");
   }
 
   const metaJob = tenant.syncJobs.find(
@@ -200,7 +271,14 @@ export async function evaluateTenantAlerts(tenantId: string) {
       type: "sync_error_meta",
       severity: "unknown",
       message: `Meta insights hatası: ${metaJob.error || "bilinmeyen"}`,
+      details: {
+        provider: "Meta",
+        problem: metaJob.error || "bilinmeyen hata",
+        action: "Veri çekimi sayfasından yeniden deneyin; sürerse BM varlık atamasını kontrol edin",
+      },
     });
+  } else {
+    await resolveOpenAlertsOfType(tenantId, "sync_error_meta", "Çekim düzeldi");
   }
 
   const ga4Job = tenant.syncJobs.find(
@@ -212,7 +290,14 @@ export async function evaluateTenantAlerts(tenantId: string) {
       type: "sync_error_ga4",
       severity: "unknown",
       message: `GA4 sync hatası: ${ga4Job.error || "bilinmeyen"}`,
+      details: {
+        provider: "GA4",
+        problem: ga4Job.error || "bilinmeyen hata",
+        action: "GA4 mülk eşleşmesini ve erişim iznini kontrol edin",
+      },
     });
+  } else {
+    await resolveOpenAlertsOfType(tenantId, "sync_error_ga4", "Çekim düzeldi");
   }
 
   const dropoutDays = thresholds.convDropoutDays ?? 3;
@@ -222,6 +307,11 @@ export async function evaluateTenantAlerts(tenantId: string) {
       type: "conv_dropout",
       severity: "critical",
       message: `Harcama var, son dönemde dönüşüm 0 — ölçüm kesintisi şüphesi.`,
+      details: {
+        topic: "Dönüşüm takibi sıfırlandı",
+        detail: `Bu ay ${money(mtdSpend, currency)} harcandı, dönüşüm 0`,
+        action: "Pixel / dönüşüm işlemleri ve GTM etiketlerini kontrol edin",
+      },
     });
   }
 
@@ -232,23 +322,32 @@ export async function evaluateTenantAlerts(tenantId: string) {
     ),
     tenant.disabledIntegrations,
   );
-  const tokenProviders = [
-    ...new Set(
-      liveJobs
-        .filter((j) => j.status === "error" && classifySyncError(j.error) === "token")
-        .map((j) => (j.provider === "meta" ? "Meta" : "Google")),
-    ),
-  ];
-  if (tokenProviders.length) {
-    await upsertOpenAlert({
-      tenantId,
-      type: "token_expired",
-      severity: "critical",
-      message: `${tokenProviders.join(" ve ")} API erişimi süresi doldu — yeniden yetkilendirme gerekli, veri çekilemiyor.`,
-    });
-  } else {
-    await resolveOpenAlertsOfType(tenantId, "token_expired", "Erişim yenilendi");
+  // Sağlayıcı başına ayrı alarm → ilgili ekibe (Meta / Google) gider.
+  for (const provider of ["meta", "google"] as const) {
+    const expired = liveJobs.some(
+      (j) => j.provider === provider && j.status === "error" && classifySyncError(j.error) === "token",
+    );
+    const type = `token_expired_${provider}`;
+    if (expired) {
+      await upsertOpenAlert({
+        tenantId,
+        type,
+        severity: "critical",
+        message: `${provider === "meta" ? "Meta" : "Google"} API erişimi süresi doldu — yeniden yetkilendirme gerekli, veri çekilemiyor.`,
+        details: {
+          provider: provider === "meta" ? "Meta" : "Google",
+          problem: "API erişim süresi doldu / token geçersiz",
+          action: provider === "meta"
+            ? "Sistem kullanıcısı token'ını yenileyin"
+            : "Google OAuth yetkisini yenileyin (refresh token)",
+        },
+      });
+    } else {
+      await resolveOpenAlertsOfType(tenantId, type, "Erişim yenilendi");
+    }
   }
+  // Eski birleşik alarm tipi — varsa kapat.
+  await resolveOpenAlertsOfType(tenantId, "token_expired", "Sağlayıcı bazlı alarma taşındı");
 
   // --- Plan: marka aylık / kanal payı / kampanya toplamı ---
   const budget = tenant.budgets[0];
@@ -286,6 +385,12 @@ export async function evaluateTenantAlerts(tenantId: string) {
       type: "budget_over",
       severity: "critical",
       message: `Aylık bütçe aşıldı: ${money(mtdSpend, currency)} / plan ${money(planned, currency)}.`,
+      details: {
+        month: monthKey,
+        spent: money(mtdSpend, currency),
+        planned: money(planned, currency),
+        pct: `%${Math.round((mtdSpend / planned) * 100)}`,
+      },
     });
   } else {
     await resolveOpenAlertsOfType(tenantId, "budget_over", "Harcama plan altında");
@@ -300,6 +405,13 @@ export async function evaluateTenantAlerts(tenantId: string) {
         type: "cpl_over",
         severity: "warn",
         message: `${tenant.type === "ecommerce" ? "Satış" : "Lead"} maliyeti hedefin üstünde: ${money(cpl, currency)} > hedef ${money(cplTarget, currency)}.`,
+        details: {
+          kind: tenant.type === "ecommerce" ? "Satış maliyeti" : "Lead maliyeti",
+          actual: money(cpl, currency),
+          target: money(cplTarget, currency),
+          month: monthKey,
+          conv: String(Math.round(mtdConv)),
+        },
       });
     } else {
       await resolveOpenAlertsOfType(tenantId, "cpl_over", "Maliyet hedefe döndü");
@@ -350,6 +462,12 @@ export async function evaluateTenantAlerts(tenantId: string) {
         type,
         severity: "critical",
         message: `${label}: ${stoppedDays} gündür harcama yok (son harcama ${dmy(lastYmd)})${cause ? ` — ${cause}` : ""}.`,
+        details: {
+          provider: label,
+          days: String(stoppedDays),
+          lastSpend: dmy(lastYmd),
+          cause: cause ?? "Sebep tespit edilemedi — kampanya durumlarını kontrol edin",
+        },
       });
     } else {
       await resolveOpenAlertsOfType(tenantId, type, "Harcama yeniden başladı");

@@ -14,7 +14,8 @@ function isRetryable(err: unknown): boolean {
   const message = err instanceof Error ? err.message : String(err);
   if (/eksik|yok —|tanımlı değil|formatı|eşleştirilmemiş|App Review|permission|OAuth/i.test(message))
     return false;
-  return /429|500|502|503|504|ECONNRESET|ETIMEDOUT|rate limit|temporarily|timeout|TRY_AGAIN/i.test(
+  // Meta'nın geçici hataları: "An unknown error occurred" (#1), "unexpected error" (#2), bozuk JSON gövdesi.
+  return /429|500|502|503|504|ECONNRESET|ETIMEDOUT|rate limit|temporarily|timeout|TRY_AGAIN|unknown error occurred|unexpected error has occurred|geçersiz yanıt|Unexpected (non-whitespace|end of JSON|token)/i.test(
     message,
   );
 }
@@ -139,7 +140,10 @@ export async function runSynced<T>(
       const retry =
         attempt < MAX_ATTEMPTS && isRetryable(err);
       if (retry) {
-        await sleep(400 * attempt * attempt);
+        // Meta "Service temporarily unavailable" / limit hatalarında kısa bekleme
+        // işe yaramıyor; 15–30 s dinlendirip yeniden dene.
+        const heavy = /temporarily|rate limit|limit reached|429|unknown error|unexpected error/i.test(lastError);
+        await sleep(heavy ? 15_000 * attempt : 400 * attempt * attempt);
         continue;
       }
       break;

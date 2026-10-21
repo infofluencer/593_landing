@@ -84,12 +84,15 @@ export default function TeamManager({
   canManageUsers,
   canManageMembers,
   permissions,
+  whatsappReady = false,
 }: {
   initialTeams: Team[];
   initialStaff: StaffUser[];
   currentUserId: string | null;
   canManageUsers: boolean;
   canManageMembers: boolean;
+  /** WHATSAPP_* env tanımlı mı (test butonu + uyarı şeridi). */
+  whatsappReady?: boolean;
   permissions: PermissionRow[];
 }) {
   const [teams, setTeams] = useState(initialTeams);
@@ -166,6 +169,25 @@ export default function TeamManager({
     await refresh();
   }
 
+  async function testWhatsApp() {
+    const me = staff.find((u) => u.id === currentUserId);
+    const to = prompt("Test mesajı gönderilecek telefon (+90 5xx…)", me?.phone ?? "");
+    if (!to) return;
+    setError(null);
+    setOk(null);
+    const res = await fetch("/api/panel/notify/test", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ phone: to }),
+    });
+    const j = (await res.json().catch(() => null)) as { error?: string; messageId?: string | null } | null;
+    if (!res.ok) {
+      setError(j?.error || "WhatsApp test mesajı gönderilemedi");
+      return;
+    }
+    setOk(`WhatsApp test mesajı gönderildi${j?.messageId ? ` (${j.messageId})` : ""}`);
+  }
+
   async function updatePhone(u: StaffUser) {
     const next = prompt("WhatsApp bildirimi için telefon (+90 5xx xxx xx xx). Boş = kaldır.", u.phone ?? "");
     if (next === null) return;
@@ -209,6 +231,35 @@ export default function TeamManager({
         <p className="mt-1 text-sm text-zinc-500">
           Yalnızca admin portalında · marka panellerinde görünmez
         </p>
+      </div>
+
+      <div
+        className={`flex flex-wrap items-center justify-between gap-3 rounded-xl border px-4 py-3 text-sm ${
+          whatsappReady
+            ? "border-emerald-200 bg-emerald-50 text-emerald-900"
+            : "border-amber-200 bg-amber-50 text-amber-900"
+        }`}
+      >
+        <div>
+          <p className="font-semibold">
+            WhatsApp bildirimi: {whatsappReady ? "hazır" : "tanımlı değil"}
+          </p>
+          <p className="mt-0.5 text-xs opacity-80">
+            Hata çıkınca ilgili ekibin üyelerine (Meta → Meta ekibi, Google Ads →
+            Google ekibi, GA4/kurulum → Analytics) ve markanın sorumlusuna gider.
+            Telefonu olmayan üyeye e-posta yedeği denenir.
+            {whatsappReady
+              ? ""
+              : " Sunucuda WHATSAPP_ACCESS_TOKEN, WHATSAPP_PHONE_NUMBER_ID ve onaylı şablon adı tanımlanmalı."}
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => void testWhatsApp()}
+          className="rounded-md border border-current/30 px-3 py-1.5 text-xs font-semibold hover:bg-white/60"
+        >
+          Test mesajı gönder
+        </button>
       </div>
 
       {error ? (

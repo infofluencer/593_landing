@@ -16,6 +16,10 @@ const ENTITY_OPTIONS = [
   { value: "user", label: "Kullanıcılar" },
   { value: "team", label: "Ekipler" },
   { value: "board_card", label: "Durum panosu" },
+  { value: "meeting", label: "Toplantılar" },
+  { value: "content_post", label: "İçerik takvimi" },
+  { value: "brand_note", label: "Marka notları" },
+  { value: "alert", label: "Uyarılar" },
 ];
 
 type Props = {
@@ -77,8 +81,7 @@ export default async function AuditPage({ searchParams }: Props) {
         <h2 className="text-lg font-semibold tracking-tight">İşlem kaydı</h2>
         <p className="mt-1 max-w-2xl text-sm text-zinc-500">
           Kim, neyi, ne zaman değiştirdi — bütçe, plan, marka ayarları,
-          kullanıcı ve ekip değişiklikleri. Durum panosu kart geçmişi kartın
-          kendi detayında tutulur.
+          kullanıcı, ekip, Durum panosu, toplantı, içerik ve uyarı işlemleri.
         </p>
       </div>
 

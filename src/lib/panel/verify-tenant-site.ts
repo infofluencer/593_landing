@@ -59,6 +59,11 @@ export async function verifyTenantSite(opts: {
           type: "site_tag_verify",
           severity: result.status === "fail" ? "critical" : "warn",
           message: result.summary,
+          details: {
+            topic: "Site etiket testi",
+            detail: result.summary,
+            action: "GTM etiketlerini ve consent ayarlarını sitede kontrol edin",
+          },
         });
       }
 

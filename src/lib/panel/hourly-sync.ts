@@ -108,6 +108,12 @@ async function saveAccountHealth(opts: {
       type: alertType,
       severity: result.status,
       message: `${PROVIDER_LABEL[provider]}: ${result.label}${result.detail ? ` — ${result.detail}` : ""}`,
+      details: {
+        provider: PROVIDER_LABEL[provider],
+        status: result.label,
+        detail: result.detail ?? "Reklamlar durmuş olabilir; ödeme yöntemini kontrol edin",
+        checkedAt: now.toISOString(),
+      },
     });
   } else if (result.status === "ok") {
     const open = await prisma.alert.findMany({

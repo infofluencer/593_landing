@@ -8,7 +8,12 @@ const DEFAULT_COLUMNS: Array<{ name: string; color: string }> = [
   { name: "Tamamlandı", color: "#16a34a" },
 ];
 
-const staffSelect = { id: true, name: true, email: true } as const;
+const staffSelect = {
+  id: true,
+  name: true,
+  email: true,
+  avatarUrl: true,
+} as const;
 
 export const boardCardInclude = {
   assignees: {
@@ -115,7 +120,7 @@ export async function logCardActivity(opts: {
 /** API yanıtında eski `assignee` alanını da doldur (UI geçişi). */
 export function withLegacyAssignee<
   T extends {
-    assignees?: Array<{ user: { id: string; name: string | null; email: string } }>;
+    assignees?: Array<{ user: { id: string; name: string | null; email: string; avatarUrl?: string | null } }>;
   },
 >(card: T) {
   const first = card.assignees?.[0]?.user ?? null;
@@ -133,8 +138,9 @@ type CardForSerialize = {
   tenantId: string | null;
   dueAt: Date | string | null;
   labels: string[];
+  images?: string[];
   sourceAlertId: string | null;
-  createdBy: { id: string; name: string | null; email: string } | null;
+  createdBy: { id: string; name: string | null; email: string; avatarUrl?: string | null } | null;
   team: { id: string; name: string; slug: string; color: string } | null;
   tenant: { id: string; name: string; slug: string } | null;
   sourceAlert: {
@@ -144,14 +150,14 @@ type CardForSerialize = {
     message: string | null;
   } | null;
   assignees: Array<{
-    user: { id: string; name: string | null; email: string };
+    user: { id: string; name: string | null; email: string; avatarUrl?: string | null };
   }>;
   activities?: Array<{
     id: string;
     type: string;
     message: string | null;
     createdAt: Date | string;
-    actor: { id: string; name: string | null; email: string } | null;
+    actor: { id: string; name: string | null; email: string; avatarUrl?: string | null } | null;
   }>;
 };
 
@@ -174,6 +180,7 @@ export function serializeBoardCard(card: CardForSerialize) {
           ? card.dueAt
           : card.dueAt.toISOString(),
     labels: card.labels ?? [],
+    images: card.images ?? [],
     sourceAlertId: card.sourceAlertId,
     assignees,
     assignee: assignees[0] ?? null,

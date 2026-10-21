@@ -12,6 +12,7 @@ import { adsSearch } from "@/lib/integrations/google/ads";
 import { getMetaSystemUserToken } from "@/lib/integrations/tokens";
 import { resolveAdsCustomerId } from "@/lib/panel/google-ads-customer-map";
 import { resolveMetaAccountId } from "@/lib/panel/meta-ad-account-map";
+import { resolveOpenAlertsOfType, upsertOpenAlert } from "@/lib/panel/alerts-engine";
 
 const GRAPH = "https://graph.facebook.com/v21.0";
 
@@ -68,6 +69,21 @@ function hasUtm(s: string | null | undefined): boolean {
   return Boolean(s && /utm_(source|medium|campaign)/i.test(s));
 }
 
+/** Meta içi / mesajlaşma hedefleri — UTM taşıyamaz (form, Messenger, WhatsApp, profil). */
+const NON_WEB_HOST =
+  /(^|\.)(fb\.me|facebook\.com|fb\.com|instagram\.com|whatsapp\.com|wa\.me|m\.me|messenger\.com)$/i;
+
+/** Reklam bir web sitesine mi gidiyor? UTM yalnızca bunlarda beklenir. */
+function isWebDestination(url: string | null | undefined): boolean {
+  if (!url) return false;
+  try {
+    const u = new URL(url);
+    return /^https?:$/.test(u.protocol) && !NON_WEB_HOST.test(u.hostname);
+  } catch {
+    return false;
+  }
+}
+
 function actId(id: string): string {
   return id.startsWith("act_") ? id : `act_${id}`;
 }
@@ -92,28 +108,38 @@ async function checkUtm(t: TenantForChecks): Promise<SetupCheckResult> {
       where: { tenantId: t.id, effectiveStatus: "ACTIVE" },
       select: { urlTags: true, linkUrl: true },
     });
-    if (ads.length > 0) {
+    // url_tags doluysa hedef ne olursa olsun say; yoksa yalnızca siteye giden reklamlar.
+    const webAds = ads.filter((a) => a.urlTags || isWebDestination(a.linkUrl));
+    if (webAds.length > 0) {
       anyKnown = true;
-      const withoutUtm = ads.filter(
+      const withoutUtm = webAds.filter(
         (a) => !hasUtm(a.urlTags) && !hasUtm(a.linkUrl),
       ).length;
       if (withoutUtm > 0) {
         anyMissing = true;
-        parts.push(`Meta: ${withoutUtm}/${ads.length} aktif reklamda UTM yok`);
+        parts.push(`Meta: siteye giden ${withoutUtm}/${webAds.length} aktif reklamda UTM yok`);
       } else {
-        parts.push("Meta: tüm aktif reklamlarda UTM var");
+        parts.push(`Meta: siteye giden ${webAds.length} aktif reklamın hepsinde UTM var`);
       }
+    } else if (ads.length > 0) {
+      parts.push("Meta: siteye giden aktif reklam yok (form / mesaj / etkileşim)");
     }
   }
 
   const customerId = off.has("google_ads") ? null : resolveAdsCustomerId(t);
   if (customerId) {
-    const { json } = await adsSearch({
+    // Google hatası Meta sonucunu silmesin.
+    const json = await adsSearch({
       customerId,
       query:
         "SELECT customer.auto_tagging_enabled, customer.tracking_url_template, customer.final_url_suffix FROM customer LIMIT 1",
-    });
-    const c = (json.results?.[0] as {
+    })
+      .then((r) => r.json)
+      .catch((e: unknown) => {
+        parts.push(`Google Ads: kontrol edilemedi (${(e instanceof Error ? e.message : String(e)).slice(0, 80)})`);
+        return null;
+      });
+    const c = (json?.results?.[0] as {
       customer?: {
         autoTaggingEnabled?: boolean;
         trackingUrlTemplate?: string;
@@ -214,31 +240,36 @@ async function checkMetaPixel(
 }
 
 async function checkMetaCapi(pixels: PixelRow[]): Promise<SetupCheckResult> {
-  const pixel = pixels.find((p) => p.id);
-  if (!pixel?.id) {
+  const withId = pixels.filter((p) => p.id);
+  if (withId.length === 0) {
     return { key: "meta_capi", status: "missing", detail: "Pixel yok — CAPI kurulamaz" };
   }
+  // Hesaptaki ilk Pixel çoğu zaman boş / çevrimdışı veri seti — tetiklenenlerin hepsine bak.
+  const fired = withId.filter((p) => p.last_fired_time);
+  const targets = (fired.length > 0 ? fired : withId).slice(0, 5);
   const start = Math.floor((Date.now() - 7 * 86_400_000) / 1000);
-  const params = new URLSearchParams({
-    access_token: getMetaSystemUserToken(),
-    aggregation: "event_source",
-    start_time: String(start),
-  });
-  const res = await fetch(`${GRAPH}/${pixel.id}/stats?${params}`);
-  const json = (await res.json()) as {
-    data?: Array<{ data?: Array<{ value?: string; count?: number | string }> }>;
-    error?: { message?: string };
-  };
-  if (!res.ok || json.error) {
-    throw new Error(json.error?.message ?? `Meta HTTP ${res.status}`);
-  }
   let server = 0;
   let web = 0;
-  for (const bucket of json.data ?? []) {
-    for (const row of bucket.data ?? []) {
-      const n = Number(row.count ?? 0);
-      if (/server|capi|conversions_api/i.test(row.value ?? "")) server += n;
-      else if (/web|browser|pixel/i.test(row.value ?? "")) web += n;
+  for (const pixel of targets) {
+    const params = new URLSearchParams({
+      access_token: getMetaSystemUserToken(),
+      aggregation: "event_source",
+      start_time: String(start),
+    });
+    const res = await fetch(`${GRAPH}/${pixel.id}/stats?${params}`);
+    const json = (await res.json()) as {
+      data?: Array<{ data?: Array<{ value?: string; count?: number | string }> }>;
+      error?: { message?: string };
+    };
+    if (!res.ok || json.error) {
+      throw new Error(json.error?.message ?? `Meta HTTP ${res.status}`);
+    }
+    for (const bucket of json.data ?? []) {
+      for (const row of bucket.data ?? []) {
+        const n = Number(row.count ?? 0);
+        if (/server|capi|conversions_api/i.test(row.value ?? "")) server += n;
+        else if (/web|browser|pixel/i.test(row.value ?? "")) web += n;
+      }
     }
   }
   if (server > 0) {
@@ -369,6 +400,28 @@ export async function runSetupChecks(tenantId: string): Promise<void> {
       status: "unknown",
       detail: "Google Ads hesabı bağlı değil",
     });
+  }
+
+  // Eksikler Analytics ekibine uyarı olarak düşer; tamamlanınca kapanır.
+  const rows = await prisma.setupCheck.findMany({ where: { tenantId, status: "missing" } });
+  if (rows.length) {
+    await upsertOpenAlert({
+      tenantId,
+      type: "setup_missing",
+      severity: "warn",
+      message: `Kurulum eksik: ${rows
+        .map((r) => `${SETUP_CHECK_SHORT[r.key as SetupCheckKey] ?? r.key}${r.detail ? ` (${r.detail})` : ""}`)
+        .join(" · ")}`,
+      details: {
+        topic: "Kurulum eksik",
+        detail: rows
+          .map((r) => `${SETUP_CHECK_LABEL[r.key as SetupCheckKey] ?? r.key}${r.detail ? `: ${r.detail}` : ""}`)
+          .join("; "),
+        action: "Marka detayındaki kurulum kontrol listesinden eksikleri tamamlayın",
+      },
+    });
+  } else {
+    await resolveOpenAlertsOfType(tenantId, "setup_missing", "Kurulum tamamlandı");
   }
 }
 

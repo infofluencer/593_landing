@@ -16,7 +16,7 @@ export default function BrandCoverUpload({
   brandName: string;
   coverUrl?: string | null;
   fallbackSrc?: string | null;
-  variant?: "settings" | "card";
+  variant?: "settings" | "card" | "menu";
   onChanged?: (coverUrl: string | null) => void;
 }) {
   const router = useRouter();
@@ -122,6 +122,24 @@ export default function BrandCoverUpload({
       }}
     />
   );
+
+  if (variant === "menu") {
+    return (
+      <>
+        {fileInput}
+        <button
+          type="button"
+          role="menuitem"
+          disabled={busy}
+          onClick={() => inputRef.current?.click()}
+          className="flex w-full items-center rounded-md px-2.5 py-1.5 text-left text-xs text-zinc-700 hover:bg-zinc-100 disabled:opacity-60"
+        >
+          {busy ? "Yükleniyor…" : localCover ? "Kapağı değiştir" : "Kapak ekle"}
+        </button>
+        {error ? <p className="px-2.5 pb-1 text-[10px] text-red-600">{error}</p> : null}
+      </>
+    );
+  }
 
   if (variant === "card") {
     return (

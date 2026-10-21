@@ -15,6 +15,7 @@ import BrandPanelLinkActions from "@/components/panel/BrandPanelLinkActions";
 import { StatusBadge } from "@/components/panel/StatusBadge";
 import TenantSettingsForm from "@/components/panel/TenantSettingsForm";
 import BrandSettingsDisclosure from "@/components/panel/BrandSettingsDisclosure";
+import BrandStatusExplainer from "@/components/panel/BrandStatusExplainer";
 import { PanelTable } from "@/components/panel/ui";
 import { prisma } from "@/lib/db";
 import {
@@ -30,6 +31,7 @@ import { meetingInclude, serializeMeeting } from "@/lib/panel/meetings";
 import { listBrandNotes, type SerializedNote } from "@/lib/panel/brand-notes";
 import { listBrandReports, type SerializedReport } from "@/lib/panel/brand-report";
 import { loadSetupChecks, type SetupCheckRow } from "@/lib/panel/setup-checks";
+import { listNotifications, type SerializedNotification } from "@/lib/panel/notify";
 import { fixedTeamOrderBy, fixedTeamWhere } from "@/lib/panel/teams";
 import { getTenantBundle } from "@/lib/panel/data";
 import { formatDateTime, formatNumber, formatTry } from "@/lib/panel/format";
@@ -37,6 +39,7 @@ import { isStaffRole, rootDomain } from "@/lib/panel/host";
 import { can } from "@/lib/panel/permissions";
 import { resolvePanelDateRange } from "@/lib/panel/period";
 import { loadTenantSettingsInitial } from "@/lib/panel/tenant-settings";
+import { loadTenantStatus } from "@/lib/panel/tenant-status";
 import { useMockPanelData } from "@/lib/integrations/tokens";
 import type { MockSyncJob } from "@/lib/panel/mock-data";
 
@@ -283,7 +286,10 @@ export default async function BrandDetailPage({ params, searchParams }: Props) {
         [],
       ];
   const disabledIntegrations = ownerRow?.disabledIntegrations ?? [];
-  const [notes, setupRows, noteTeams, recentReports, reportSettings] = existsInDb
+  const tenantStatus = bundle.tenant.visible
+    ? await loadTenantStatus(bundle, budgetPlan)
+    : null;
+  const [notes, setupRows, noteTeams, recentReports, reportSettings, notifications] = existsInDb
     ? await Promise.all([
         listBrandNotes(bundle.tenant.id),
         loadSetupChecks([bundle.tenant.id]).then((m) => m.get(bundle.tenant.id) ?? []),
@@ -297,6 +303,7 @@ export default async function BrandDetailPage({ params, searchParams }: Props) {
           where: { id: bundle.tenant.id },
           select: { reportFrequency: true, reportEmails: true },
         }),
+        listNotifications(bundle.tenant.id, 10),
       ])
     : [
         [] as SerializedNote[],
@@ -304,6 +311,7 @@ export default async function BrandDetailPage({ params, searchParams }: Props) {
         [] as Array<{ id: string; name: string; color: string }>,
         [] as SerializedReport[],
         null,
+        [] as SerializedNotification[],
       ];
   const missing = getBrandMissingIntegrations({
     disabled: disabledIntegrations,
@@ -342,9 +350,7 @@ export default async function BrandDetailPage({ params, searchParams }: Props) {
             {bundle.tenant.name}
           </h2>
           <div className="mt-2 flex flex-wrap items-center gap-2">
-            {bundle.tenant.visible ? (
-              <StatusBadge status={bundle.health} />
-            ) : (
+            {bundle.tenant.visible ? null : (
               <span className="rounded-md border border-zinc-200 bg-zinc-100 px-2 py-1 text-[11px] font-semibold text-zinc-600">
                 Devre dışı
               </span>
@@ -382,6 +388,10 @@ export default async function BrandDetailPage({ params, searchParams }: Props) {
           Bu marka devre dışı. Meta ve Google’dan yeni veri çekilmez. Ayarlardan
           tekrar aktif edebilirsiniz.
         </p>
+      ) : null}
+
+      {tenantStatus ? (
+        <BrandStatusExplainer status={tenantStatus} openAlerts={openAlerts} />
       ) : null}
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
@@ -508,7 +518,10 @@ export default async function BrandDetailPage({ params, searchParams }: Props) {
 
       <BrandBudgetPlanner plan={budgetPlan} existsInDb={existsInDb} />
 
-      <section className="space-y-4 rounded-xl border border-zinc-200 bg-white p-4 sm:p-5">
+      <section
+        id="uyarilar"
+        className="scroll-mt-20 space-y-4 rounded-xl border border-zinc-200 bg-white p-4 sm:p-5"
+      >
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
             <h3 className="flex items-center gap-2 text-sm font-semibold text-zinc-900">
@@ -519,7 +532,6 @@ export default async function BrandDetailPage({ params, searchParams }: Props) {
               Bu firmaya özel · eşikler · atama · çözüm
             </p>
           </div>
-          <StatusBadge status={bundle.health} />
         </div>
 
         <div className="flex flex-wrap gap-3">
@@ -566,6 +578,38 @@ export default async function BrandDetailPage({ params, searchParams }: Props) {
             ))}
           </PanelTable>
         )}
+
+        {notifications.length > 0 ? (
+          <div className="space-y-2 border-t border-zinc-100 pt-3">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-zinc-500">
+              Son bildirimler · kime, hangi kanaldan
+            </p>
+            <ul className="divide-y divide-zinc-100 text-xs">
+              {notifications.map((n) => (
+                <li key={n.id} className="flex flex-wrap items-center gap-2 py-1.5">
+                  <span
+                    className={`rounded px-1.5 py-0.5 font-semibold ${
+                      n.status === "sent"
+                        ? "bg-emerald-50 text-emerald-700"
+                        : n.status === "failed"
+                          ? "bg-rose-50 text-rose-700"
+                          : "bg-zinc-100 text-zinc-600"
+                    }`}
+                  >
+                    {n.channel === "whatsapp" ? "WhatsApp" : n.channel === "email" ? "E-posta" : "—"} ·{" "}
+                    {n.status === "sent" ? "gönderildi" : n.status === "failed" ? "başarısız" : "atlandı"}
+                  </span>
+                  <span className="text-zinc-700">{n.recipient}</span>
+                  {n.alertType ? (
+                    <span className="font-mono text-zinc-400">{n.alertType}</span>
+                  ) : null}
+                  {n.error ? <span className="text-zinc-500">{n.error}</span> : null}
+                  <span className="ml-auto text-zinc-400">{formatDateTime(n.createdAt)}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
       </section>
 
       <section className="space-y-4 rounded-xl border border-zinc-200 bg-white p-4 sm:p-5">

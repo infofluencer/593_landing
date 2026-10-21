@@ -73,8 +73,9 @@ export function proxy(request: NextRequest) {
   // and the request can hang or arrive truncated.
   if (
     request.method !== "GET" &&
-    pathname.includes("/api/panel/tenants/") &&
-    pathname.endsWith("/cover")
+    ((pathname.includes("/api/panel/tenants/") && pathname.endsWith("/cover")) ||
+      (pathname.includes("/api/panel/board/cards/") &&
+        pathname.endsWith("/images")))
   ) {
     return NextResponse.next();
   }

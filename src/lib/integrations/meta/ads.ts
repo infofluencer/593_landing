@@ -11,8 +11,11 @@ import { graphFetch } from "@/lib/integrations/meta/graph";
 
 const GRAPH = "https://graph.facebook.com/v21.0";
 
-/** Ad-level daily insights: same chunk size as campaign insights. */
-const META_AD_INSIGHTS_CHUNK_DAYS = 30;
+/**
+ * Reklam düzeyi günlük insight: kampanya çekiminden daha küçük pencere —
+ * 30 günlük ad × gün sorgusu büyük hesaplarda "Service temporarily unavailable" veriyor.
+ */
+const META_AD_INSIGHTS_CHUNK_DAYS = 10;
 
 export type MetaAdCreativeRow = {
   adId: string;
@@ -54,6 +57,25 @@ export type MetaAdInsightRow = {
   cpa: number | null;
   roas: number | null;
 };
+
+type GraphErr = {
+  message?: string;
+  code?: number;
+  error_subcode?: number;
+  error_user_title?: string;
+  error_user_msg?: string;
+};
+
+/** Meta hata gövdesi → okunur metin (kod + alt kod + kullanıcı mesajı). */
+function graphErrorText(err: GraphErr | undefined, fallback: string): string {
+  if (!err) return fallback;
+  const parts = [err.message || fallback];
+  if (err.error_user_msg) parts.push(err.error_user_msg);
+  const codes = [err.code != null ? `#${err.code}` : null, err.error_subcode != null ? `sub ${err.error_subcode}` : null]
+    .filter(Boolean)
+    .join(" ");
+  return `${parts.join(" — ")}${codes ? ` (${codes})` : ""}`;
+}
 
 function actId(metaAccountId: string): string {
   return metaAccountId.startsWith("act_")
@@ -152,21 +174,10 @@ export async function fetchMetaAdsWithCreatives(opts: {
     "creative{id}",
   ].join(",");
 
+  // Yalnızca yayındaki reklamlar — durdurulmuş/reddedilmiş binlerce reklamın
+  // kreatifini çekmek senkronu yavaşlatıyordu ve panelde zaten gösterilmiyor.
   const filtering = JSON.stringify([
-    {
-      field: "effective_status",
-      operator: "IN",
-      value: [
-        "ACTIVE",
-        "PAUSED",
-        "CAMPAIGN_PAUSED",
-        "ADSET_PAUSED",
-        "PENDING_REVIEW",
-        "DISAPPROVED",
-        "WITH_ISSUES",
-        "IN_PROCESS",
-      ],
-    },
+    { field: "effective_status", operator: "IN", value: ["ACTIVE"] },
   ]);
 
   type Listed = {
@@ -192,11 +203,10 @@ export async function fetchMetaAdsWithCreatives(opts: {
       const json = rawJson as {
         data?: GraphAd[];
         paging?: { next?: string };
-        error?: { message?: string };
+        error?: GraphErr;
       };
       if (!res.ok || json.error) {
-        const msg =
-          json.error?.message || `Meta ads ${res.status} for ${account}`;
+        const msg = graphErrorText(json.error, `Meta ads ${res.status} for ${account}`);
         if (/reduce the amount of data/i.test(msg) && limit > 15) {
           limit = 15;
           failed = true;
@@ -236,9 +246,15 @@ export async function fetchMetaAdsWithCreatives(opts: {
     const { json: rawJson } = await graphFetch(`${GRAPH}/?${params}`);
     const json = rawJson as Record<string, unknown>;
     if (json.error && typeof json.error === "object") {
-      const err = json.error as { message?: string };
-      // Fallback without object_story_spec if payload too large
-      if (/reduce the amount of data/i.test(err.message || "")) {
+      const err = json.error as GraphErr;
+      // object_story_spec'siz yeniden dene: gövde çok büyükse ("reduce the amount
+      // of data") veya Advantage+ kreatiflerde Graph'ın bilinen hatası
+      // (#100 sub 2446211, asset_feed_spec ↔ object_story_spec çakışması).
+      if (
+        /reduce the amount of data/i.test(err.message || "") ||
+        err.error_subcode === 2446211 ||
+        err.code === 100
+      ) {
         const light = new URLSearchParams({
           access_token: token,
           ids: batch.join(","),
@@ -250,9 +266,8 @@ export async function fetchMetaAdsWithCreatives(opts: {
         const res2 = await fetch(`${GRAPH}/?${light}`);
         const json2 = (await res2.json()) as Record<string, unknown>;
         if (json2.error && typeof json2.error === "object") {
-          const err2 = json2.error as { message?: string };
           throw new Error(
-            err2.message || `Meta creatives batch failed for ${account}`,
+            `Kreatif batch: ${graphErrorText(json2.error as GraphErr, `Meta creatives batch failed for ${account}`)}`,
           );
         }
         for (const id of batch) {
@@ -262,7 +277,7 @@ export async function fetchMetaAdsWithCreatives(opts: {
         continue;
       }
       throw new Error(
-        err.message || `Meta creatives batch failed for ${account}`,
+        `Kreatif batch: ${graphErrorText(err, `Meta creatives batch failed for ${account}`)}`,
       );
     }
     for (const id of batch) {

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import type { BoardCardPriority, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { audit } from "@/lib/panel/audit";
+import { deleteBoardImageFiles } from "@/lib/panel/board-images";
 import {
   boardCardInclude,
   serializeBoardCard,
@@ -323,6 +324,17 @@ export async function PATCH(
     });
   }
 
+  // Aynı kolonda sadece sıra değişimi aktivite üretmez → kayda düşmez.
+  if (activities.length > 0) {
+    await audit(session, {
+      action: "board_card.update",
+      entity: "board_card",
+      entityId: id,
+      tenantId: data.tenantId !== undefined ? (data.tenantId as string | null) : existing.tenantId,
+      summary: `${existing.title}: ${activities.map((a) => a.message).join(" · ")}`,
+    });
+  }
+
   const card = await prisma.boardCard.findUnique({
     where: { id },
     include: boardCardInclude,
@@ -403,6 +415,8 @@ export async function DELETE(
       });
     }
   });
+
+  await deleteBoardImageFiles(existing.images).catch(() => {});
 
   await audit(session, {
     action: "board_card.delete",

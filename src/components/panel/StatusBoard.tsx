@@ -29,13 +29,16 @@ import {
   Calendar,
   Clock,
   GripVertical,
+  ImagePlus,
   LayoutGrid,
   Rows3,
+  Trash2,
 } from "lucide-react";
 import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   useTransition,
   type CSSProperties,
@@ -53,6 +56,7 @@ type StaffUser = {
   name: string | null;
   email: string;
   role?: string;
+  avatarUrl?: string | null;
 };
 
 type TeamRef = {
@@ -88,6 +92,8 @@ type Card = {
   tenantId: string | null;
   dueAt: string | null;
   labels: string[];
+  /** Referans görselleri; ilki kart kapağı. */
+  images: string[];
   sourceAlertId: string | null;
   assignees: StaffUser[];
   assignee: StaffUser | null;
@@ -175,6 +181,7 @@ function normalizeCard(raw: Partial<Card> & { id: string }): Card {
     tenantId: raw.tenantId ?? null,
     dueAt: raw.dueAt ?? null,
     labels: raw.labels ?? [],
+    images: raw.images ?? [],
     sourceAlertId: raw.sourceAlertId ?? null,
     assignees,
     assignee: assignees[0] ?? null,
@@ -279,6 +286,7 @@ export default function StatusBoard({
   const [activeColumnId, setActiveColumnId] = useState<string | null>(null);
   const [composerColumnId, setComposerColumnId] = useState<string | null>(null);
   const [editing, setEditing] = useState<Card | null>(null);
+  const [uploadingImages, setUploadingImages] = useState(0);
   const reducedMotion = usePrefersReducedMotion();
 
   const [draftTitle, setDraftTitle] = useState("");
@@ -318,6 +326,13 @@ export default function StatusBoard({
     () => board.columns.map((c) => c.id),
     [board.columns],
   );
+
+  // Görsel yükleme `editing`i değiştirmez (taslak sıfırlanmasın); güncel liste board’dan.
+  const editingImages = editing
+    ? (board.columns
+        .flatMap((c) => c.cards)
+        .find((c) => c.id === editing.id)?.images ?? editing.images)
+    : [];
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -627,6 +642,62 @@ export default function StatusBoard({
     setEditing(null);
   }
 
+  function replaceCard(card: Card) {
+    setBoard((prev) => ({
+      ...prev,
+      columns: prev.columns.map((col) => ({
+        ...col,
+        cards: col.cards.map((c) => (c.id === card.id ? card : c)),
+      })),
+    }));
+  }
+
+  async function uploadCardImages(cardId: string, files: File[]) {
+    const images = files.filter((f) => f.type.startsWith("image/"));
+    if (images.length === 0) return;
+    setError(null);
+    for (const file of images) {
+      setUploadingImages((n) => n + 1);
+      try {
+        const form = new FormData();
+        form.append("file", file);
+        const res = await fetch(`/api/panel/board/cards/${cardId}/images`, {
+          method: "POST",
+          body: form,
+        });
+        const j = (await res.json().catch(() => null)) as {
+          card?: Card;
+          error?: string;
+        } | null;
+        if (!res.ok || !j?.card) {
+          setError(j?.error || "Görsel yüklenemedi");
+          return;
+        }
+        replaceCard(normalizeCard(j.card));
+      } finally {
+        setUploadingImages((n) => n - 1);
+      }
+    }
+  }
+
+  async function removeCardImage(cardId: string, url: string) {
+    if (!confirm("Bu görsel kaldırılsın mı?")) return;
+    setError(null);
+    const res = await fetch(
+      `/api/panel/board/cards/${cardId}/images?url=${encodeURIComponent(url)}`,
+      { method: "DELETE" },
+    );
+    const j = (await res.json().catch(() => null)) as {
+      card?: Card;
+      error?: string;
+    } | null;
+    if (!res.ok || !j?.card) {
+      setError(j?.error || "Görsel kaldırılamadı");
+      return;
+    }
+    replaceCard(normalizeCard(j.card));
+  }
+
   function toggleAssignee(userId: string) {
     setDraftAssigneeIds((prev) =>
       prev.includes(userId)
@@ -902,7 +973,7 @@ export default function StatusBoard({
                   {strip.columns.map((col) => (
                     <div
                       key={`${strip.key}-${col.id}`}
-                      className="flex w-64 shrink-0 flex-col rounded-xl border border-zinc-200 bg-zinc-100/70"
+                      className="flex w-64 shrink-0 flex-col rounded-xl border border-zinc-200 bg-white"
                       style={{ boxShadow: `inset 0 3px 0 ${strip.color}` }}
                     >
                       <div className="flex items-center gap-2 px-3 py-2">
@@ -922,16 +993,28 @@ export default function StatusBoard({
                       <ul className="flex min-h-[48px] flex-col gap-2 px-2 pb-2">
                         {col.cards.map((card) => (
                           <li key={card.id}>
-                            <button
-                              type="button"
+                            <div
+                              role="button"
+                              tabIndex={0}
                               onClick={() => setEditing(card)}
-                              className="w-full text-left"
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter" || e.key === " ") {
+                                  e.preventDefault();
+                                  setEditing(card);
+                                }
+                              }}
+                              className="w-full cursor-pointer text-left"
                             >
                               <CardFace
                                 card={card}
                                 columnName={col.name}
+                                onDelete={
+                                  canDeleteCards
+                                    ? () => void deleteCard(card.id)
+                                    : undefined
+                                }
                               />
-                            </button>
+                            </div>
                           </li>
                         ))}
                       </ul>
@@ -971,6 +1054,9 @@ export default function StatusBoard({
                 }}
                 onCreate={() => void createCard(col.id)}
                 onEditCard={setEditing}
+                onDeleteCard={
+                  canDeleteCards ? (id) => void deleteCard(id) : undefined
+                }
                 draftTitle={draftTitle}
                 setDraftTitle={setDraftTitle}
                 draftDesc={draftDesc}
@@ -1011,7 +1097,7 @@ export default function StatusBoard({
               />
             </div>
           ) : activeColumnId ? (
-            <div className="w-72 rounded-xl border border-zinc-300 bg-zinc-100 px-3 py-3 text-sm font-semibold shadow-lg">
+            <div className="w-72 rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm font-semibold shadow-lg">
               {board.columns.find((c) => c.id === activeColumnId)?.name}
             </div>
           ) : null}
@@ -1043,9 +1129,22 @@ export default function StatusBoard({
             <textarea
               value={draftDesc}
               onChange={(e) => setDraftDesc(e.target.value)}
+              onPaste={(e) => {
+                const files = Array.from(e.clipboardData.files);
+                if (files.some((f) => f.type.startsWith("image/"))) {
+                  e.preventDefault();
+                  void uploadCardImages(editing.id, files);
+                }
+              }}
               rows={4}
-              placeholder="Açıklama"
+              placeholder="Açıklama (görsel yapıştırabilirsiniz)"
               className="w-full resize-none rounded-md border border-zinc-200 px-3 py-2 text-sm outline-none focus:border-[#e91825]"
+            />
+            <CardImagesField
+              images={editingImages}
+              uploading={uploadingImages > 0}
+              onAdd={(files) => void uploadCardImages(editing.id, files)}
+              onRemove={(url) => void removeCardImage(editing.id, url)}
             />
             <div className="grid grid-cols-2 gap-2">
               <label className="col-span-2 text-[11px] font-medium text-zinc-500">
@@ -1113,12 +1212,13 @@ export default function StatusBoard({
                       key={u.id}
                       type="button"
                       onClick={() => toggleAssignee(u.id)}
-                      className={`rounded-full border px-2.5 py-1 text-xs ${
+                      className={`inline-flex items-center gap-1.5 rounded-full border py-0.5 pl-0.5 pr-2.5 text-xs ${
                         on
                           ? "border-[#e91825]/40 bg-[#e91825]/10 text-[#e91825]"
                           : "border-zinc-200 text-zinc-600 hover:border-zinc-300"
                       }`}
                     >
+                      <StaffAvatar user={u} className="h-6 w-6 text-[9px]" />
                       {displayName(u)}
                     </button>
                   );
@@ -1203,6 +1303,7 @@ function BoardColumn({
   onCloseComposer,
   onCreate,
   onEditCard,
+  onDeleteCard,
   draftTitle,
   setDraftTitle,
   draftDesc,
@@ -1230,6 +1331,7 @@ function BoardColumn({
   onCloseComposer: () => void;
   onCreate: () => void;
   onEditCard: (card: Card) => void;
+  onDeleteCard?: (cardId: string) => void;
   draftTitle: string;
   setDraftTitle: (v: string) => void;
   draftDesc: string;
@@ -1279,7 +1381,7 @@ function BoardColumn({
         setDropRef(node);
       }}
       style={style}
-      className={`flex w-72 shrink-0 flex-col rounded-xl border bg-zinc-100/70 ${
+      className={`flex max-h-[calc(100dvh-19rem)] min-h-[24rem] w-72 shrink-0 flex-col rounded-xl border bg-white ${
         isOver
           ? "border-[#e91825]/60 bg-rose-50/40 ring-2 ring-[#e91825]/20"
           : "border-zinc-200"
@@ -1288,7 +1390,7 @@ function BoardColumn({
       <header className="flex items-center gap-2 px-2 py-3">
         <button
           type="button"
-          className="cursor-grab touch-none rounded p-1 text-zinc-400 hover:bg-white hover:text-zinc-600 active:cursor-grabbing"
+          className="cursor-grab touch-none rounded p-1 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-600 active:cursor-grabbing"
           aria-label={`${column.name} kolonunu taşı`}
           {...attributes}
           {...listeners}
@@ -1317,7 +1419,7 @@ function BoardColumn({
       </header>
 
       <SortableContext items={cardIds} strategy={verticalListSortingStrategy}>
-        <ul className="flex min-h-[120px] flex-1 flex-col gap-2 px-2 pb-2">
+        <ul className="flex min-h-[120px] flex-1 flex-col gap-2 overflow-y-auto overscroll-contain px-2 pb-2 pt-0.5">
           {column.cards.map((card) => (
             <SortableCard
               key={card.id}
@@ -1325,6 +1427,7 @@ function BoardColumn({
               columnName={column.name}
               reducedMotion={reducedMotion}
               onEdit={() => onEditCard(card)}
+              onDelete={onDeleteCard ? () => onDeleteCard(card.id) : undefined}
             />
           ))}
         </ul>
@@ -1378,12 +1481,13 @@ function BoardColumn({
                   key={u.id}
                   type="button"
                   onClick={() => toggleAssignee(u.id)}
-                  className={`rounded-full border px-2 py-0.5 text-[11px] ${
+                  className={`inline-flex items-center gap-1 rounded-full border py-0.5 pl-0.5 pr-2 text-[11px] ${
                     on
                       ? "border-[#e91825]/40 bg-[#e91825]/10 text-[#e91825]"
                       : "border-zinc-200 text-zinc-600"
                   }`}
                 >
+                  <StaffAvatar user={u} className="h-5 w-5 text-[8px]" />
                   {displayName(u)}
                 </button>
               );
@@ -1437,7 +1541,7 @@ function BoardColumn({
         <button
           type="button"
           onClick={onOpenComposer}
-          className="m-2 rounded-lg border border-dashed border-zinc-300 px-3 py-2 text-left text-sm text-zinc-500 hover:border-zinc-400 hover:bg-white hover:text-zinc-700"
+          className="m-2 rounded-lg border border-dashed border-zinc-300 px-3 py-2 text-left text-sm text-zinc-500 hover:border-zinc-400 hover:bg-zinc-50 hover:text-zinc-700"
         >
           + Görev ekle
         </button>
@@ -1451,11 +1555,13 @@ function SortableCard({
   columnName,
   reducedMotion,
   onEdit,
+  onDelete,
 }: {
   card: Card;
   columnName: string;
   reducedMotion: boolean;
   onEdit: () => void;
+  onDelete?: () => void;
 }) {
   const {
     attributes,
@@ -1484,133 +1590,322 @@ function SortableCard({
             onEdit();
           }
         }}
-        className="cursor-grab touch-none text-left outline-none active:cursor-grabbing focus-visible:ring-2 focus-visible:ring-[#e91825]/40 focus-visible:ring-offset-1"
+        className="cursor-grab touch-none rounded-2xl text-left outline-none active:cursor-grabbing focus-visible:ring-2 focus-visible:ring-[#e91825]/40 focus-visible:ring-offset-1"
         aria-label={`${card.title} — sürükle veya düzenle`}
       >
         <CardFace
           card={card}
           columnName={columnName}
           dragging={isDragging}
+          onDelete={onDelete}
         />
       </div>
     </li>
   );
 }
 
+/** Profil fotoğrafı varsa onu, yoksa baş harfleri gösterir. */
+function StaffAvatar({
+  user,
+  className = "",
+  style,
+}: {
+  user: StaffUser;
+  className?: string;
+  style?: CSSProperties;
+}) {
+  const label = displayName(user) || undefined;
+  if (user.avatarUrl) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={user.avatarUrl}
+        alt={label ?? ""}
+        title={label}
+        draggable={false}
+        className={`shrink-0 rounded-full object-cover ${className}`}
+        style={style}
+      />
+    );
+  }
+  return (
+    <span
+      title={label}
+      className={`inline-flex shrink-0 items-center justify-center rounded-full font-bold text-white ${avatarTone(user.id)} ${className}`}
+      style={style}
+    >
+      {initials(user)}
+    </span>
+  );
+}
+
+/** Hex zemin üstünde okunur yazı için açık mı? (WCAG göreli parlaklık) */
+function isLightColor(hex: string): boolean {
+  const m = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(hex.trim());
+  if (!m) return true;
+  const h =
+    m[1].length === 3
+      ? m[1]
+          .split("")
+          .map((c) => c + c)
+          .join("")
+      : m[1];
+  const [r, g, b] = [0, 2, 4].map((i) => {
+    const c = parseInt(h.slice(i, i + 2), 16) / 255;
+    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b > 0.4;
+}
+
 function CardFace({
   card,
   columnName,
   dragging,
+  onDelete,
 }: {
   card: Card;
   columnName?: string;
   dragging?: boolean;
+  onDelete?: () => void;
 }) {
-  const teamColor = card.team?.color ?? "#d6d3d1";
+  // Ekip rengi kartın zemini olur; ekipsiz kart beyaz kalır.
+  const bg = card.team?.color ?? "#ffffff";
+  const light = isLightColor(bg);
+  const fg = light ? "text-zinc-900" : "text-white";
+  const muted = light ? "text-zinc-900/60" : "text-white/70";
+  const chip = light ? "bg-black/[0.07]" : "bg-white/20";
   const overdue =
     card.dueAt &&
     isCardOverdue({ dueAt: card.dueAt, columnName: columnName ?? null });
   const days = overdue && card.dueAt ? overdueDays(card.dueAt) : 0;
+  const subtitle = [card.tenant?.name, card.team?.name]
+    .filter(Boolean)
+    .join(" · ");
 
   return (
     <article
       className={[
-        "rounded-lg border bg-white p-3 pl-3.5 shadow-sm transition",
+        "group relative overflow-hidden rounded-2xl p-3.5 transition",
+        fg,
+        card.team ? "" : "border border-zinc-200",
         dragging
-          ? "border-zinc-300 shadow-xl"
-          : "border-zinc-200 hover:-translate-y-0.5 hover:border-zinc-300 hover:shadow-md",
-        "motion-reduce:hover:translate-y-0",
+          ? "rotate-2 shadow-2xl"
+          : "shadow-sm hover:-translate-y-0.5 hover:shadow-md",
+        "motion-reduce:rotate-0 motion-reduce:hover:translate-y-0",
       ].join(" ")}
-      style={{
-        boxShadow: dragging
-          ? `inset 4px 0 0 ${teamColor}, 0 12px 24px rgba(28,25,23,0.14)`
-          : `inset 4px 0 0 ${teamColor}`,
-      }}
+      style={{ backgroundColor: bg }}
     >
-      <div className="flex items-start gap-2">
-        <p className="flex-1 text-sm font-semibold leading-snug text-zinc-900">
-          {card.title}
-        </p>
-        {card.sourceAlertId || card.sourceAlert ? (
-          <AlertTriangle
-            className="size-3.5 shrink-0 text-amber-600"
-            aria-label="Uyarıdan türedi"
-          />
-        ) : null}
-        <span
-          className={`shrink-0 rounded-md px-1.5 py-0.5 text-[10px] font-bold tracking-wide ${PRIORITY_STYLE[card.priority]}`}
-        >
-          {PRIORITY_LABEL[card.priority]}
-        </span>
-      </div>
+      {card.images.length > 0 ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={card.images[0]}
+          alt=""
+          loading="lazy"
+          draggable={false}
+          className="-mx-3.5 -mt-3.5 mb-3 block max-h-40 w-[calc(100%+1.75rem)] max-w-none object-cover"
+        />
+      ) : null}
 
-      <div className="mt-2 flex flex-wrap items-center gap-1.5">
-        {card.team ? (
-          <span
-            className="inline-flex items-center gap-1 rounded-full py-0.5 pl-1 pr-2 text-[10px] font-bold text-white"
-            style={{ backgroundColor: card.team.color }}
-          >
-            <span className="flex size-4 items-center justify-center rounded-full bg-white/20">
-              <TeamPlatformIcon
-                name={card.team.name}
-                slug={card.team.slug}
-                className="size-2.5 brightness-0 invert"
-              />
+      <div className="flex min-h-7 items-center gap-2">
+        {card.dueAt ? (
+          overdue ? (
+            <span className="inline-flex items-center gap-1 rounded-full bg-rose-600 px-2 py-0.5 text-[10px] font-bold text-white">
+              <Clock className="size-3" aria-hidden />
+              {days} gün gecikti
             </span>
+          ) : (
+            <span className={`inline-flex items-center gap-1 text-[11px] font-medium ${muted}`}>
+              <Calendar className="size-3" aria-hidden />
+              Son{" "}
+              {new Date(card.dueAt).toLocaleDateString("tr-TR", {
+                day: "numeric",
+                month: "short",
+              })}
+            </span>
+          )
+        ) : card.team ? (
+          <span className={`inline-flex items-center gap-1 text-[11px] font-medium ${muted}`}>
+            <TeamPlatformIcon
+              name={card.team.name}
+              slug={card.team.slug}
+              className={`size-3 ${light ? "" : "brightness-0 invert"}`}
+            />
             {card.team.name}
           </span>
         ) : null}
-        {card.tenant ? (
-          <span className="rounded-full border border-zinc-200 bg-zinc-50 px-2 py-0.5 text-[10px] font-semibold text-zinc-700">
-            {card.tenant.name}
-          </span>
+        {card.sourceAlertId || card.sourceAlert ? (
+          <AlertTriangle
+            className={`size-3.5 shrink-0 ${light ? "text-amber-700" : "text-amber-300"}`}
+            aria-label="Uyarıdan türedi"
+          />
         ) : null}
-        {(card.labels ?? []).map((label) => (
-          <span
-            key={label}
-            className="rounded bg-zinc-100 px-1.5 py-0.5 text-[10px] font-medium text-zinc-600"
+        {onDelete ? (
+          <button
+            type="button"
+            title="Kartı sil"
+            aria-label={`${card.title} kartını sil`}
+            onPointerDown={(e) => e.stopPropagation()}
+            onKeyDown={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation();
+              onDelete();
+            }}
+            className={[
+              "ml-auto inline-flex size-7 shrink-0 items-center justify-center rounded-full border opacity-0 transition focus-visible:opacity-100 group-hover:opacity-100",
+              light
+                ? "border-black/15 hover:border-rose-600 hover:bg-rose-600 hover:text-white"
+                : "border-white/30 hover:border-rose-600 hover:bg-rose-600",
+            ].join(" ")}
           >
-            {label}
-          </span>
-        ))}
+            <Trash2 className="size-3.5" aria-hidden />
+          </button>
+        ) : null}
       </div>
 
-      <div className="mt-2.5 flex items-center gap-2">
+      <p className="mt-1.5 text-[15px] font-semibold leading-snug">
+        {card.title}
+      </p>
+      {subtitle ? (
+        <p className={`mt-0.5 truncate text-xs ${muted}`}>{subtitle}</p>
+      ) : null}
+
+      <div className="mt-3 flex items-end gap-2">
+        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1">
+          <span
+            className={`rounded-full px-2 py-0.5 text-[10px] font-bold tracking-wide ${PRIORITY_STYLE[card.priority]}`}
+          >
+            {PRIORITY_LABEL[card.priority]}
+          </span>
+          {(card.labels ?? []).map((label) => (
+            <span
+              key={label}
+              className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${chip}`}
+            >
+              {label}
+            </span>
+          ))}
+        </div>
         {card.assignees.length > 0 ? (
-          <div className="flex -space-x-1.5">
+          <div className="flex shrink-0 -space-x-1.5">
             {card.assignees.slice(0, 4).map((u) => (
-              <span
+              <StaffAvatar
                 key={u.id}
-                title={displayName(u) || undefined}
-                className={`inline-flex h-6 w-6 items-center justify-center rounded-full text-[10px] font-bold text-white ring-2 ring-white ${avatarTone(u.id)}`}
-              >
-                {initials(u)}
-              </span>
+                user={u}
+                className="h-7 w-7 text-[10px]"
+                style={{ boxShadow: `0 0 0 2px ${bg}` }}
+              />
             ))}
             {card.assignees.length > 4 ? (
-              <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-zinc-300 text-[10px] font-bold text-zinc-700 ring-2 ring-white">
+              <span
+                className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-zinc-300 text-[10px] font-bold text-zinc-700"
+                style={{ boxShadow: `0 0 0 2px ${bg}` }}
+              >
                 +{card.assignees.length - 4}
               </span>
             ) : null}
           </div>
         ) : (
-          <span className="text-[11px] text-zinc-400">Atanmadı</span>
+          <span className={`shrink-0 text-[11px] ${muted}`}>Atanmadı</span>
         )}
-        {card.dueAt ? (
-          overdue ? (
-            <span className="ml-auto inline-flex items-center gap-1 rounded-md bg-rose-600 px-1.5 py-0.5 text-[10px] font-bold text-white">
-              <Clock className="size-3" aria-hidden />
-              {days} gün gecikti
-            </span>
-          ) : (
-            <span className="ml-auto inline-flex items-center gap-1 text-[11px] font-medium text-zinc-500">
-              <Calendar className="size-3" aria-hidden />
-              {new Date(card.dueAt).toLocaleDateString("tr-TR")}
-            </span>
-          )
-        ) : null}
       </div>
     </article>
   );
 }
 
+function CardImagesField({
+  images,
+  uploading,
+  onAdd,
+  onRemove,
+}: {
+  images: string[];
+  uploading: boolean;
+  onAdd: (files: File[]) => void;
+  onRemove: (url: string) => void;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [dragOver, setDragOver] = useState(false);
+
+  return (
+    <div
+      onDragOver={(e) => {
+        if (!e.dataTransfer.types.includes("Files")) return;
+        e.preventDefault();
+        setDragOver(true);
+      }}
+      onDragLeave={() => setDragOver(false)}
+      onDrop={(e) => {
+        e.preventDefault();
+        setDragOver(false);
+        onAdd(Array.from(e.dataTransfer.files));
+      }}
+      className={[
+        "rounded-md border border-dashed p-2",
+        dragOver ? "border-[#e91825] bg-rose-50/50" : "border-zinc-200",
+      ].join(" ")}
+    >
+      <div className="flex items-center gap-2">
+        <span className="text-[11px] font-medium text-zinc-500">
+          Referans görselleri
+        </span>
+        <span className="text-[10px] text-zinc-400">
+          İlk görsel kart kapağı olur
+        </span>
+        <button
+          type="button"
+          onClick={() => inputRef.current?.click()}
+          disabled={uploading}
+          className="ml-auto inline-flex items-center gap-1 rounded-md border border-zinc-200 px-2 py-1 text-xs text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
+        >
+          <ImagePlus className="size-3.5" aria-hidden />
+          {uploading ? "Yükleniyor…" : "Görsel ekle"}
+        </button>
+        <input
+          ref={inputRef}
+          type="file"
+          accept="image/jpeg,image/png,image/webp,image/gif"
+          multiple
+          hidden
+          onChange={(e) => {
+            onAdd(Array.from(e.target.files ?? []));
+            e.target.value = "";
+          }}
+        />
+      </div>
+      {images.length > 0 ? (
+        <ul className="mt-2 grid grid-cols-3 gap-2">
+          {images.map((url, i) => (
+            <li key={url} className="group relative">
+              <a href={url} target="_blank" rel="noreferrer">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={url}
+                  alt={`Referans görseli ${i + 1}`}
+                  className="aspect-video w-full rounded border border-zinc-200 object-cover"
+                />
+              </a>
+              {i === 0 ? (
+                <span className="absolute left-1 top-1 rounded bg-black/60 px-1 text-[9px] font-semibold text-white">
+                  Kapak
+                </span>
+              ) : null}
+              <button
+                type="button"
+                title="Görseli kaldır"
+                aria-label="Görseli kaldır"
+                onClick={() => onRemove(url)}
+                className="absolute right-1 top-1 rounded bg-black/60 p-0.5 text-white opacity-0 transition hover:bg-rose-600 focus-visible:opacity-100 group-hover:opacity-100"
+              >
+                <Trash2 className="size-3" aria-hidden />
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="mt-1.5 text-[11px] text-zinc-400">
+          Sürükleyip bırakın, açıklamaya yapıştırın veya “Görsel ekle”ye tıklayın.
+        </p>
+      )}
+    </div>
+  );
+}

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/db";
 import { assignAlert, resolveAlert } from "@/lib/panel/alerts-engine";
+import { audit } from "@/lib/panel/audit";
 
 export const runtime = "nodejs";
 
@@ -37,6 +38,13 @@ export async function PATCH(request: Request, ctx: Ctx) {
       assigneeEmail: body.assignee.trim(),
       by: session.user.email || session.user.id,
     });
+    await audit(session, {
+      action: "alert.assign",
+      entity: "alert",
+      entityId: id,
+      tenantId: alert.tenantId,
+      summary: `Uyarı atandı → ${body.assignee.trim()}: ${alert.message ?? alert.type}`,
+    });
     return NextResponse.json({ ok: true, alert: updated });
   }
 
@@ -45,6 +53,13 @@ export async function PATCH(request: Request, ctx: Ctx) {
       alertId: id,
       by: session.user.email || session.user.id,
       note: body.note,
+    });
+    await audit(session, {
+      action: "alert.resolve",
+      entity: "alert",
+      entityId: id,
+      tenantId: alert.tenantId,
+      summary: `Uyarı çözüldü: ${alert.message ?? alert.type}${body.note?.trim() ? ` — ${body.note.trim()}` : ""}`,
     });
     return NextResponse.json({ ok: true, alert: updated });
   }

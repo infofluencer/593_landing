@@ -44,7 +44,7 @@ const ROLE_PERMISSIONS: Record<PanelRole, readonly Permission[]> = {
     "meetings.manage",
     "meetings.delete",
   ],
-  team: ["staff.access", "brands.edit", "meetings.manage"],
+  team: ["staff.access", "brands.edit", "board.deleteCards", "meetings.manage"],
   client: [],
 };
 

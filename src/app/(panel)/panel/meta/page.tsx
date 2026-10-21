@@ -1,6 +1,7 @@
 import { headers } from "next/headers";
 import { Suspense } from "react";
 import BudgetPlanVsActual from "@/components/panel/BudgetPlanVsActual";
+import CreativeImage from "@/components/panel/CreativeImage";
 import PeriodFilterBar from "@/components/panel/PeriodFilterBar";
 import { TimezoneNotice } from "@/components/panel/TimezoneNotice";
 import { StatusBadge } from "@/components/panel/StatusBadge";
@@ -133,48 +134,16 @@ function CreativeCard({
     conv: ad.conv,
     convValue: ad.convValue,
   });
-  // Tam boy görsel yoksa 720px küçük resim (senkronda büyük istenir).
-  const thumb = ad.imageUrl || ad.thumbnailUrl;
   const publishedUrl = ad.permalinkUrl;
   const destinationUrl = ad.linkUrl;
   return (
     <article className="overflow-hidden rounded-xl border border-zinc-200 bg-white">
-      <div className="relative aspect-[4/3] bg-zinc-100">
-        {thumb ? (
-          publishedUrl ? (
-            <a
-              href={publishedUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="block h-full w-full"
-              title="Yayındaki içeriği aç"
-            >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={thumb}
-                alt=""
-                className="h-full w-full object-cover transition hover:opacity-95"
-                referrerPolicy="no-referrer"
-                loading="lazy"
-                decoding="async"
-              />
-            </a>
-          ) : (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={thumb}
-              alt=""
-              className="h-full w-full object-cover"
-              referrerPolicy="no-referrer"
-              loading="lazy"
-              decoding="async"
-            />
-          )
-        ) : (
-          <div className="flex h-full items-center justify-center text-xs text-zinc-400">
-            Görsel yok
-          </div>
-        )}
+      <div className="relative bg-zinc-100">
+        <CreativeImage
+          src={ad.imageUrl}
+          fallback={ad.thumbnailUrl}
+          href={publishedUrl}
+        />
         <span className="pointer-events-none absolute left-2 top-2 rounded-md bg-emerald-600 px-2 py-0.5 text-[10px] font-medium text-white">
           {statusTr(ad.effectiveStatus)}
         </span>

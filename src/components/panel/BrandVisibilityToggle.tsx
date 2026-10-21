@@ -11,7 +11,7 @@ export default function BrandVisibilityToggle({
 }: {
   tenantSlug: string;
   visible: boolean;
-  variant?: "card" | "settings";
+  variant?: "card" | "settings" | "menu";
   onChanged?: (visible: boolean) => void;
 }) {
   const router = useRouter();
@@ -76,6 +76,29 @@ export default function BrandVisibilityToggle({
         </p>
         {error ? <p className="text-[11px] text-red-600">{error}</p> : null}
       </div>
+    );
+  }
+
+  if (variant === "menu") {
+    return (
+      <>
+        <button
+          type="button"
+          role="menuitem"
+          disabled={pending}
+          onClick={() => setVisible(!visible)}
+          className={`flex w-full items-center rounded-md px-2.5 py-1.5 text-left text-xs hover:bg-zinc-100 disabled:opacity-60 ${
+            visible ? "text-zinc-700" : "text-emerald-700"
+          }`}
+        >
+          {pending
+            ? "Kaydediliyor…"
+            : visible
+              ? "Devre dışı bırak"
+              : "Aktifleştir"}
+        </button>
+        {error ? <p className="px-2.5 pb-1 text-[10px] text-red-600">{error}</p> : null}
+      </>
     );
   }
 

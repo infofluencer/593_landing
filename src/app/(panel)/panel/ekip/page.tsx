@@ -12,6 +12,7 @@ import {
   teamInclude,
 } from "@/lib/panel/teams";
 import { prisma } from "@/lib/db";
+import { whatsappConfigured } from "@/lib/panel/notify";
 
 /** Yalnızca admin.* ajans portalı — marka subdomain’de yok. */
 export default async function TeamPage() {
@@ -47,6 +48,7 @@ export default async function TeamPage() {
       canManageUsers={can(role, "users.manage")}
       canManageMembers={can(role, "teams.manageMembers")}
       permissions={permissionMatrix()}
+      whatsappReady={whatsappConfigured()}
     />
   );
 }

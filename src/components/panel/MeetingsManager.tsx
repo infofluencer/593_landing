@@ -3,9 +3,6 @@
 import {
   ArrowUpRight,
   CalendarDays,
-  CalendarRange,
-  LayoutGrid,
-  List,
   Check,
   ClipboardList,
   MapPin,
@@ -17,12 +14,6 @@ import {
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { EmptyState } from "@/components/panel/ds/EmptyState";
-import {
-  CalendarLegend,
-  CalendarToolbar,
-  MonthView,
-  WeekView,
-} from "@/components/panel/MeetingsCalendar";
 import {
   btnGhost,
   btnPrimary,
@@ -67,7 +58,6 @@ const SCOPE_LABEL: Record<MeetingScope, string> = {
 };
 
 type Tab = "upcoming" | "past" | "all";
-type ViewMode = "month" | "week" | "list";
 
 function userLabel(u: { name: string | null; email: string }) {
   return u.name?.trim() || u.email;
@@ -252,9 +242,6 @@ export default function MeetingsManager({
   const [error, setError] = useState<string | null>(null);
   /** Sayfa açılış anı — "yaklaşan / geçmiş" ayrımı için sabit referans. */
   const [now] = useState(() => Date.now());
-  const [view, setView] = useState<ViewMode>("month");
-  const [cursor, setCursor] = useState(() => new Date(now));
-  const [createAt, setCreateAt] = useState<Date | null>(null);
 
   const selected = useMemo(
     () => meetings.find((m) => m.id === selectedId) ?? null,
@@ -328,10 +315,9 @@ export default function MeetingsManager({
     if (selectedId === id) setSelectedId(null);
   }
 
-  function openCreate(at: Date | null) {
+  function openCreate() {
     setError(null);
     setSelectedId(null);
-    setCreateAt(at);
     setCreating(true);
   }
 
@@ -354,7 +340,7 @@ export default function MeetingsManager({
         {canManage ? (
           <button
             type="button"
-            onClick={() => openCreate(null)}
+            onClick={openCreate}
             className={btnPrimary}
           >
             <Plus className="size-4" aria-hidden />
@@ -363,58 +349,23 @@ export default function MeetingsManager({
         ) : null}
       </div>
 
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        {view === "list" ? (
-          <div className="flex flex-wrap items-center gap-2">
-            {(
-              [
-                ["upcoming", "Yaklaşan"],
-                ["past", "Geçmiş"],
-                ["all", "Tümü"],
-              ] as Array<[Tab, string]>
-            ).map(([k, l]) => (
-              <button
-                key={k}
-                type="button"
-                onClick={() => setTab(k)}
-                className={chipClass(tab === k)}
-              >
-                {l}
-              </button>
-            ))}
-          </div>
-        ) : (
-          <CalendarToolbar view={view} cursor={cursor} onCursor={setCursor} />
-        )}
-        <div
-          role="tablist"
-          aria-label="Görünüm"
-          className="inline-flex rounded-full border border-zinc-300 bg-white p-1"
-        >
-          {(
-            [
-              ["month", "Ay", LayoutGrid],
-              ["week", "Hafta", CalendarRange],
-              ["list", "Liste", List],
-            ] as const
-          ).map(([k, l, Icon]) => (
-            <button
-              key={k}
-              type="button"
-              role="tab"
-              aria-selected={view === k}
-              onClick={() => setView(k)}
-              className={`inline-flex min-h-8 items-center gap-1.5 rounded-full px-3 text-sm font-semibold transition ${
-                view === k
-                  ? "bg-[#141111] text-white"
-                  : "text-zinc-600 hover:text-[#141111]"
-              }`}
-            >
-              <Icon className="size-3.5" aria-hidden />
-              {l}
-            </button>
-          ))}
-        </div>
+      <div className="flex flex-wrap items-center gap-2">
+        {(
+          [
+            ["upcoming", "Yaklaşan"],
+            ["past", "Geçmiş"],
+            ["all", "Tümü"],
+          ] as Array<[Tab, string]>
+        ).map(([k, l]) => (
+          <button
+            key={k}
+            type="button"
+            onClick={() => setTab(k)}
+            className={chipClass(tab === k)}
+          >
+            {l}
+          </button>
+        ))}
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
@@ -483,41 +434,6 @@ export default function MeetingsManager({
         </p>
       ) : null}
 
-      {view !== "list" ? (
-        <div className="space-y-3">
-          {view === "month" ? (
-            <MonthView
-              meetings={baseFiltered}
-              cursor={cursor}
-              today={new Date(now)}
-              onSelect={(id) => {
-                setError(null);
-                setCreating(false);
-                setSelectedId(id);
-              }}
-              onCreateAt={canManage ? (d) => openCreate(d) : undefined}
-              onOpenDay={(d) => {
-                setCursor(d);
-                setView("week");
-              }}
-            />
-          ) : (
-            <WeekView
-              meetings={baseFiltered}
-              cursor={cursor}
-              now={new Date(now)}
-              onSelect={(id) => {
-                setError(null);
-                setCreating(false);
-                setSelectedId(id);
-              }}
-              onCreateAt={canManage ? (d) => openCreate(d) : undefined}
-            />
-          )}
-          <CalendarLegend teams={teams} />
-        </div>
-      ) : (
-      <>
       <p className="text-xs text-zinc-500">
         {filtered.length} toplantı · {openActionTotal} açık aksiyon
       </p>
@@ -534,7 +450,7 @@ export default function MeetingsManager({
             canManage ? (
               <button
                 type="button"
-                onClick={() => openCreate(null)}
+                onClick={openCreate}
                 className={btnSecondary}
               >
                 <Plus className="size-4" aria-hidden />
@@ -618,18 +534,12 @@ export default function MeetingsManager({
           ))}
         </div>
       )}
-      </>
-      )}
 
       {creating || selected ? (
         <MeetingDrawer
-          key={creating ? `new-${createAt?.getTime() ?? 0}` : selected?.id}
+          key={creating ? "new" : selected?.id}
           meeting={creating ? null : selected}
           seed={{
-            startsAt: createAt ? createAt.toISOString() : undefined,
-            endsAt: createAt
-              ? new Date(createAt.getTime() + 60 * 60 * 1000).toISOString()
-              : undefined,
             tenantId: tenantFilter || undefined,
             teamId: teamFilter || undefined,
             attendeeIds: currentUserId ? [currentUserId] : [],

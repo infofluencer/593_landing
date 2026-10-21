@@ -365,6 +365,18 @@ export async function runAgencySync(opts?: {
               },
             });
           }
+          // Yalnızca ACTIVE çekiliyor: dönmeyen satır artık yayında değil.
+          // Hata durumunda fetch fırlatır, bu yüzden boş liste = hiç aktif reklam
+          // yok (hepsi durdurulduysa eski kartlar ACTIVE kalmasın). Satır
+          // silinmez — bütçe ekranı kampanyanın reklamı olup olmadığına bakıyor.
+          await prisma.metaAd.updateMany({
+            where: {
+              tenantId: tenant.id,
+              adId: { notIn: creatives.map((ad) => ad.adId) },
+              effectiveStatus: "ACTIVE",
+            },
+            data: { effectiveStatus: "INACTIVE", syncedAt },
+          });
           return { creatives: creatives.length };
         },
       );
