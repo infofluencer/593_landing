@@ -1,6 +1,6 @@
 /**
  * Sabit ajans ekipleri — UI'dan eklenip silinmez.
- * DB satırları migration 20261001120000_fixed_teams ile oluşturulur.
+ * DB satırları migration 20261001120000_fixed_teams (+ 20261024120000_software_team) ile oluşturulur.
  */
 
 export type FixedTeam = {
@@ -40,6 +40,12 @@ export const FIXED_TEAMS: readonly FixedTeam[] = [
     name: "Google",
     description: "Google Ads & Search",
     color: "#34A853",
+  },
+  {
+    slug: "yazilim",
+    name: "Yazılım",
+    description: "Web sitesi, entegrasyon ve panel geliştirme",
+    color: "#0F766E",
   },
 ];
 

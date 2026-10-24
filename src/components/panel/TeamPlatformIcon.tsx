@@ -1,6 +1,7 @@
 import {
   CheckCircle2,
   Circle,
+  Code2,
   Eye,
   Handshake,
   Loader,
@@ -43,6 +44,13 @@ export function TeamPlatformIcon({
     key.includes("creative")
   ) {
     return <Palette className={className} aria-hidden strokeWidth={2} />;
+  }
+  if (
+    key.includes("yazilim") ||
+    key.includes("yazılım") ||
+    key.includes("software")
+  ) {
+    return <Code2 className={className} aria-hidden strokeWidth={2} />;
   }
   if (
     key.includes("hesap") ||

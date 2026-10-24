@@ -73,6 +73,7 @@ export const TEAM_TITLE: Record<string, string> = {
   analytics: "Analytics ekibi",
   "sosyal-medya": "Sosyal Medya ekibi",
   "grafik-tasarim": "Grafik Tasarım ekibi",
+  yazilim: "Yazılım ekibi",
 };
 
 /** Haritadaki her tip bildirilir; "ok" seviyesi asla. */
