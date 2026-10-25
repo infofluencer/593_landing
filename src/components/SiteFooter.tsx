@@ -10,6 +10,7 @@ const pageLinks = [
   { label: "Ana Sayfa", href: "/" },
   { label: "Hakkımızda", href: "/hakkimizda" },
   { label: "Hizmetler", href: "/hizmetlerimiz" },
+  { label: "Kariyer", href: "/kariyer" },
 ];
 
 export default function SiteFooter() {

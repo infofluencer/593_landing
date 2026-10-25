@@ -108,6 +108,12 @@ export default function SiteHeader({
               Hizmetler
               <OutArrow className="size-3 text-current" />
             </Link>
+            <Link
+              href="/kariyer"
+              className="inline-flex min-h-11 items-center text-[11px] font-semibold uppercase tracking-[0.14em] text-[#f4f1ea]/70 transition hover:text-[#e91825] lg:min-h-0 lg:pb-0.5"
+            >
+              Kariyer
+            </Link>
             <ContactTrigger className="rounded-full bg-[#f4f1ea] px-5 py-2.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#141111] transition duration-300 hover:bg-[#e91825] hover:text-white lg:px-6 lg:py-3">
               İletişim
             </ContactTrigger>
@@ -172,7 +178,10 @@ export default function SiteHeader({
         >
           <nav aria-label="Ana menü">
             <ul>
-              {[{ label: "Hizmetler", href: "/hizmetlerimiz" }].map((item) => (
+              {[
+                { label: "Hizmetler", href: "/hizmetlerimiz" },
+                { label: "Kariyer", href: "/kariyer" },
+              ].map((item) => (
                 <li key={item.href}>
                   <Link
                     href={item.href}

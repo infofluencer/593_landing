@@ -6,7 +6,6 @@ const permanentRedirects: Array<{
 }> = [
   { source: "/ekibimiz", destination: "/hakkimizda" },
   { source: "/iletisim", destination: "/" },
-  { source: "/kariyer", destination: "/" },
   { source: "/blog", destination: "/" },
   { source: "/projeler", destination: "/" },
   { source: "/hizmetler", destination: "/hizmetlerimiz" },
