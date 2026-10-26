@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { audit } from "@/lib/panel/audit";
 import {
   allStaffIds,
+  cleanIdList,
   loadMeeting,
   parseDateInput,
   serializeMeeting,
@@ -15,7 +16,7 @@ type Ctx = { params: Promise<{ id: string }> };
 
 type CreateBody = {
   text?: string;
-  assigneeId?: string | null;
+  assigneeIds?: string[];
   dueAt?: string | null;
 };
 
@@ -45,8 +46,8 @@ export async function POST(request: Request, ctx: Ctx) {
     return NextResponse.json({ error: "Madde metni gerekli" }, { status: 400 });
   }
 
-  const assigneeId = body.assigneeId?.trim() || null;
-  if (assigneeId && !(await allStaffIds([assigneeId]))) {
+  const assigneeIds = cleanIdList(body.assigneeIds);
+  if (!(await allStaffIds(assigneeIds))) {
     return NextResponse.json({ error: "Atanan kişi staff olmalı" }, { status: 400 });
   }
 
@@ -64,8 +65,11 @@ export async function POST(request: Request, ctx: Ctx) {
     data: {
       meetingId: id,
       text,
-      assigneeId,
       dueAt,
+      assignees:
+        assigneeIds.length > 0
+          ? { create: assigneeIds.map((userId) => ({ userId })) }
+          : undefined,
       position: (maxPos._max.position ?? -1) + 1,
     },
   });

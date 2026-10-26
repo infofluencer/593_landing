@@ -22,7 +22,10 @@ export const meetingInclude = {
   actionItems: {
     orderBy: { position: "asc" as const },
     include: {
-      assignee: { select: staffSelect },
+      assignees: {
+        include: { user: { select: staffSelect } },
+        orderBy: { createdAt: "asc" as const },
+      },
       boardCard: {
         select: { id: true, title: true, column: { select: { name: true } } },
       },
@@ -87,8 +90,8 @@ export function serializeMeeting(m: MeetingRow) {
     actionItems: m.actionItems.map((it) => ({
       id: it.id,
       text: it.text,
-      assigneeId: it.assigneeId,
-      assignee: it.assignee,
+      assigneeIds: it.assignees.map((a) => a.userId),
+      assignees: it.assignees.map((a) => a.user),
       dueAt: it.dueAt ? it.dueAt.toISOString() : null,
       done: it.done,
       position: it.position,

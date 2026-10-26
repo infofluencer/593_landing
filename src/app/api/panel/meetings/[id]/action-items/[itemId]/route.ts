@@ -5,6 +5,7 @@ import { ensureAgencyBoard } from "@/lib/panel/board";
 import { formatDateTime } from "@/lib/panel/format";
 import {
   allStaffIds,
+  cleanIdList,
   loadMeeting,
   parseDateInput,
   serializeMeeting,
@@ -20,7 +21,7 @@ type Ctx = { params: Promise<{ id: string; itemId: string }> };
 
 type PatchBody = {
   text?: string;
-  assigneeId?: string | null;
+  assigneeIds?: string[];
   dueAt?: string | null;
   done?: boolean;
   /** true → Durum panosunda kart aç ve maddeye bağla. */
@@ -36,6 +37,7 @@ export async function PATCH(request: Request, ctx: Ctx) {
   const item = await prisma.meetingActionItem.findFirst({
     where: { id: itemId, meetingId: id },
     include: {
+      assignees: { select: { userId: true } },
       meeting: {
         select: {
           id: true,
@@ -67,15 +69,18 @@ export async function PATCH(request: Request, ctx: Ctx) {
     }
     data.text = text;
   }
-  if (body.assigneeId !== undefined) {
-    const assigneeId = body.assigneeId?.trim() || null;
-    if (assigneeId && !(await allStaffIds([assigneeId]))) {
+  if (body.assigneeIds !== undefined) {
+    const assigneeIds = cleanIdList(body.assigneeIds);
+    if (!(await allStaffIds(assigneeIds))) {
       return NextResponse.json(
         { error: "Atanan kişi staff olmalı" },
         { status: 400 },
       );
     }
-    data.assigneeId = assigneeId;
+    data.assignees = {
+      deleteMany: {},
+      create: assigneeIds.map((userId) => ({ userId })),
+    };
   }
   if (body.dueAt !== undefined) {
     const d = parseDateInput(body.dueAt);
@@ -110,9 +115,10 @@ export async function PATCH(request: Request, ctx: Ctx) {
     }
     const fresh = await prisma.meetingActionItem.findUnique({
       where: { id: itemId },
+      include: { assignees: { select: { userId: true } } },
     });
     const text = fresh?.text ?? item.text;
-    const assigneeId = fresh?.assigneeId ?? item.assigneeId;
+    const assigneeIds = (fresh?.assignees ?? item.assignees).map((a) => a.userId);
     const dueAt = fresh?.dueAt ?? item.dueAt;
     const actorId = await resolveStaffUserId(session);
     const maxPos = await prisma.boardCard.aggregate({
@@ -133,7 +139,10 @@ export async function PATCH(request: Request, ctx: Ctx) {
         dueAt,
         labels: ["toplantı"],
         createdById: actorId,
-        assignees: assigneeId ? { create: [{ userId: assigneeId }] } : undefined,
+        assignees:
+          assigneeIds.length > 0
+            ? { create: assigneeIds.map((userId) => ({ userId })) }
+            : undefined,
         activities: {
           create: {
             actorId,

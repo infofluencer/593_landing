@@ -4,6 +4,7 @@ import {
   ArrowUpRight,
   CalendarDays,
   Check,
+  ChevronDown,
   ClipboardList,
   MapPin,
   Plus,
@@ -12,7 +13,7 @@ import {
   X,
 } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { EmptyState } from "@/components/panel/ds/EmptyState";
 import {
   btnGhost,
@@ -61,6 +62,104 @@ type Tab = "upcoming" | "past" | "all";
 
 function userLabel(u: { name: string | null; email: string }) {
   return u.name?.trim() || u.email;
+}
+
+/** Aksiyon maddesi için çoklu sorumlu seçici; her işaretleme anında kaydedilir. */
+function AssigneePicker({
+  staff,
+  value,
+  disabled,
+  onChange,
+}: {
+  staff: StaffUser[];
+  value: string[];
+  disabled?: boolean;
+  onChange: (ids: string[]) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function onDown(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setOpen(false);
+    }
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  const selected = staff.filter((u) => value.includes(u.id));
+  const summary =
+    selected.length === 0
+      ? "Sorumlu yok"
+      : selected.length <= 2
+        ? selected.map(userLabel).join(", ")
+        : `${userLabel(selected[0])} +${selected.length - 1}`;
+
+  function toggle(id: string) {
+    onChange(value.includes(id) ? value.filter((v) => v !== id) : [...value, id]);
+  }
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => setOpen((o) => !o)}
+        aria-label="Sorumlular"
+        aria-expanded={open}
+        title={selected.map(userLabel).join(", ") || undefined}
+        className="inline-flex max-w-48 items-center gap-1 rounded-md border border-zinc-200 bg-white px-2 py-1 text-xs text-zinc-700 disabled:opacity-60"
+      >
+        <span className="truncate">{summary}</span>
+        <ChevronDown className="size-3 shrink-0" aria-hidden />
+      </button>
+      {open ? (
+        <div className="absolute left-0 top-full z-20 mt-1 max-h-64 w-56 overflow-y-auto rounded-lg border border-zinc-200 bg-white p-1 shadow-lg">
+          {staff.map((u) => {
+            const on = value.includes(u.id);
+            return (
+              <button
+                key={u.id}
+                type="button"
+                disabled={disabled}
+                onClick={() => toggle(u.id)}
+                className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs text-zinc-700 hover:bg-zinc-100 disabled:opacity-60"
+              >
+                <span
+                  className={`flex size-4 shrink-0 items-center justify-center rounded border ${
+                    on
+                      ? "border-[#141111] bg-[#141111] text-white"
+                      : "border-zinc-300 bg-white text-transparent"
+                  }`}
+                >
+                  <Check className="size-3" aria-hidden />
+                </span>
+                <span className="truncate">{userLabel(u)}</span>
+              </button>
+            );
+          })}
+          {value.length > 0 ? (
+            <button
+              type="button"
+              disabled={disabled}
+              onClick={() => onChange([])}
+              className="mt-1 w-full rounded-md border-t border-zinc-100 px-2 py-1.5 text-left text-[11px] text-zinc-500 hover:bg-zinc-100"
+            >
+              Tümünü kaldır
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  );
 }
 
 function teamColor(c?: string | null) {
@@ -1133,22 +1232,12 @@ function MeetingDrawer({
                       >
                         {it.text}
                       </span>
-                      <select
-                        value={it.assigneeId ?? ""}
+                      <AssigneePicker
+                        staff={staff}
+                        value={it.assigneeIds}
                         disabled={readOnly || busyItem === it.id}
-                        onChange={(e) =>
-                          patchItem(it, { assigneeId: e.target.value || null })
-                        }
-                        className="rounded-md border border-zinc-200 px-2 py-1 text-xs text-zinc-700"
-                        aria-label="Sorumlu"
-                      >
-                        <option value="">Sorumlu yok</option>
-                        {staff.map((u) => (
-                          <option key={u.id} value={u.id}>
-                            {userLabel(u)}
-                          </option>
-                        ))}
-                      </select>
+                        onChange={(ids) => patchItem(it, { assigneeIds: ids })}
+                      />
                       <input
                         type="date"
                         value={toLocalDateInput(it.dueAt)}
