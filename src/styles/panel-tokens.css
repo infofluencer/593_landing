@@ -62,6 +62,8 @@
 
   /* Spacing */
   --panel-sidebar-w: 260px;
+  /* Üst çubuk ve kenar çubuğu logo bloğu aynı yükseklikte — çizgiler hizalı */
+  --panel-header-h: 64px;
   --panel-content-max: 1280px;
   --panel-pad: 1.5rem;
   --panel-gap: 1.5rem;

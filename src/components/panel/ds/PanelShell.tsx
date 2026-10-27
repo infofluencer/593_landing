@@ -32,6 +32,17 @@ import {
   type PanelNavLink,
 } from "./nav-config";
 import { PeriodNavIndicator } from "../period-nav/PeriodNavUi";
+import HeaderQuote from "./HeaderQuote";
+import HeaderClock from "./HeaderClock";
+import dynamic from "next/dynamic";
+
+/** Landing'deki 3B logo — yalnızca istemcide (three.js). */
+const LogoOrb = dynamic(() => import("@/components/LogoOrb"), {
+  ssr: false,
+  loading: () => (
+    <span className="block size-full rounded-full bg-panel-surface-muted" />
+  ),
+});
 
 const PERIOD_KEYS = ["period", "start", "end", "compare"] as const;
 
@@ -160,7 +171,7 @@ export default function PanelShell({
       ) : null}
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center gap-3 border-b border-panel-border bg-panel-surface/95 px-4 backdrop-blur-sm sm:px-6 lg:px-8">
+        <header className="sticky top-0 z-30 flex h-[var(--panel-header-h)] shrink-0 items-center gap-3 border-b border-panel-border bg-panel-surface/95 px-4 backdrop-blur-sm sm:px-6 lg:px-8">
           <button
             type="button"
             className="rounded-panel-btn p-2 text-panel-fg-secondary hover:bg-panel-surface-muted hover:text-panel-fg lg:hidden"
@@ -171,14 +182,9 @@ export default function PanelShell({
             <Menu className="size-5" aria-hidden />
             <span className="sr-only">Menü</span>
           </button>
-          <div className="mr-auto min-w-0">
-            <p className="hidden text-[10px] font-semibold uppercase tracking-[0.14em] text-panel-fg-muted sm:block">
-              {variant === "staff" ? "Ajans paneli" : "Marka paneli"}
-            </p>
-            <h1 className="truncate text-sm font-semibold text-panel-fg sm:text-base">
-              {pageTitle}
-            </h1>
-          </div>
+          <h1 className="sr-only">{pageTitle}</h1>
+          <HeaderQuote className="mr-auto flex-1" />
+          <HeaderClock />
           {topBarExtra ? (
             <div className="hidden items-center gap-2 md:flex">{topBarExtra}</div>
           ) : null}
@@ -211,14 +217,14 @@ function SidebarChrome({
 }) {
   return (
     <>
-      <div className="border-b border-panel-border px-5 py-5">
+      <div className="flex h-[var(--panel-header-h)] shrink-0 items-center border-b border-panel-border px-5">
         {variant === "staff" ? (
-          <div>
-            <p className="font-logo text-lg font-extrabold tracking-tight text-panel-fg">
-              593
-            </p>
-            <p className="mt-0.5 text-[11px] font-medium uppercase tracking-[0.14em] text-panel-fg-muted">
-              Panel · ajans
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="size-10 shrink-0" aria-hidden>
+              <LogoOrb />
+            </div>
+            <p className="truncate font-logo text-[15px] font-bold leading-none tracking-[-0.02em] text-panel-fg">
+              593 E-MARKETİNG
             </p>
           </div>
         ) : (
@@ -227,7 +233,7 @@ function SidebarChrome({
               {brandName}
             </p>
             {brandTypeLabel ? (
-              <span className="mt-2 inline-flex rounded-md border border-panel-border bg-panel-surface-muted px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.12em] text-panel-fg-secondary">
+              <span className="mt-1 inline-flex rounded-md border border-panel-border bg-panel-surface-muted px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.12em] text-panel-fg-secondary">
                 {brandTypeLabel}
               </span>
             ) : null}
