@@ -1,4 +1,5 @@
 import { istanbulYmd } from "@/lib/date/tr";
+import { runScheduledBackup } from "@/lib/panel/backup";
 import { runScheduledDailySync } from "@/lib/panel/daily-sync";
 import { runScheduledReports } from "@/lib/panel/brand-report";
 import { runLockedHourlySync } from "@/lib/panel/hourly-sync";
@@ -11,6 +12,8 @@ const SLOT_WINDOW_MINUTES = 15;
 const HOURLY_MINUTE_FROM = 5;
 const HOURLY_MINUTE_TO = 15;
 const HOURLY_MIN_INTERVAL_MS = 40 * 60 * 1000;
+/** Günlük yedek: İstanbul bu saatten sonra, gün içinde bir kez (DB kontrolü). */
+const BACKUP_FROM_HOUR = 3;
 
 type GlobalScheduler = typeof globalThis & {
   __593DailySyncScheduler?: boolean;
@@ -53,6 +56,25 @@ export function startDailySyncScheduler() {
   let inFlight = false;
   let lastHourly: string | null = null;
   let hourlyInFlight = false;
+  let lastBackupDay: string | null = null;
+  let backupInFlight = false;
+
+  // Yedek penceresi kaçırılsa (yeniden başlatma vb.) gün içinde telafi edilir;
+  // aynı gün tekrarı runScheduledBackup içindeki DB kontrolü engeller.
+  const backupTick = async () => {
+    const { hour } = istanbulClock();
+    const day = istanbulYmd();
+    if (hour < BACKUP_FROM_HOUR || day === lastBackupDay || backupInFlight) return;
+    backupInFlight = true;
+    try {
+      await runScheduledBackup();
+      lastBackupDay = day;
+    } catch (err) {
+      console.error("[backup scheduler]", err);
+    } finally {
+      backupInFlight = false;
+    }
+  };
 
   const hourlyTick = async () => {
     const { hour, minute } = istanbulClock();
@@ -96,8 +118,10 @@ export function startDailySyncScheduler() {
 
   void tick();
   void hourlyTick();
+  void backupTick();
   setInterval(() => {
     void tick();
     void hourlyTick();
+    void backupTick();
   }, TICK_MS);
 }

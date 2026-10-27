@@ -5,6 +5,7 @@ import {
   S3_SIGNED_URL_TTL,
   s3Delete,
   s3Enabled,
+  s3Get,
   s3Put,
   s3SignedGetUrl,
 } from "@/lib/storage/s3";
@@ -43,6 +44,21 @@ export async function deleteUpload(dir: string, file: string): Promise<void> {
     if (code !== "ENOENT") throw err;
   }
   if (s3Enabled()) await s3Delete(`${dir}/${file}`);
+}
+
+/** Dosya içeriğini okur (yerel → S3); yoksa null. */
+export async function readUpload(
+  dir: string,
+  file: string,
+): Promise<Buffer | null> {
+  try {
+    return await readFile(fsPath(dir, file));
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code !== "ENOENT") throw err;
+  }
+  if (!s3Enabled()) return null;
+  return s3Get(`${dir}/${file}`);
 }
 
 /** Yerel dosya varsa onu döner; yoksa S3’e imzalı URL ile yönlendirir. */

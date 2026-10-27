@@ -30,7 +30,9 @@ export type Permission =
   /** Toplantı silme. */
   | "meetings.delete"
   /** Öneri kutusuna gelenleri görme / yönetme (göndermek herkese açık). */
-  | "suggestions.view";
+  | "suggestions.view"
+  /** Yedek alma, indirme, geri yükleme ve silme. */
+  | "backups.manage";
 
 const ROLE_PERMISSIONS: Record<PanelRole, readonly Permission[]> = {
   admin: [
@@ -46,6 +48,7 @@ const ROLE_PERMISSIONS: Record<PanelRole, readonly Permission[]> = {
     "meetings.manage",
     "meetings.delete",
     "suggestions.view",
+    "backups.manage",
   ],
   team: ["staff.access", "brands.edit", "board.deleteCards", "meetings.manage"],
   client: [],
@@ -70,6 +73,7 @@ export const PERMISSION_LABELS: Record<Permission, string> = {
   "meetings.manage": "Toplantı oluşturma, not ve aksiyon yazma",
   "meetings.delete": "Toplantı silme",
   "suggestions.view": "Öneri kutusuna gelenleri görme",
+  "backups.manage": "Yedek alma ve geri yükleme",
 };
 
 export function isPanelRole(role: unknown): role is PanelRole {

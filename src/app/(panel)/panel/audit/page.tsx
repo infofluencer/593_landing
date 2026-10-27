@@ -20,6 +20,7 @@ const ENTITY_OPTIONS = [
   { value: "content_post", label: "İçerik takvimi" },
   { value: "brand_note", label: "Marka notları" },
   { value: "alert", label: "Uyarılar" },
+  { value: "backup", label: "Yedekler" },
 ];
 
 type Props = {

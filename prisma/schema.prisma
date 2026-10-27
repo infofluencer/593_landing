@@ -327,6 +327,7 @@ model User {
   meetingAttendances MeetingAttendee[]
   actionItemAssignments MeetingActionItemAssignee[]
   suggestions        Suggestion[]
+  backups            Backup[]            @relation("BackupCreator")
 }
 
 /// Ajans içi sabit ekip (src/lib/panel/teams.ts). Üye çoka-çok (TeamMember).
@@ -1095,4 +1096,23 @@ model Suggestion {
   author User? @relation(fields: [authorId], references: [id], onDelete: SetNull)
 
   @@index([status, createdAt])
+}
+
+/// Panel içi verilerin (durum panosu, notlar, toplantılar, içerik takvimi,
+/// öneriler) JSON anlık görüntüsü. Dosya S3’te `backups/<id>.json`.
+model Backup {
+  id             String   @id @default(cuid())
+  /// manual | cron
+  trigger        String   @default("manual")
+  createdById    String?
+  /// Kullanıcı silinse de kim aldığı kalsın.
+  createdByEmail String?
+  /// Bölüm → kayıt sayısı, ör. { "cards": 120, "notes": 30 }.
+  counts         Json     @default("{}")
+  sizeBytes      Int      @default(0)
+  createdAt      DateTime @default(now())
+
+  createdBy User? @relation("BackupCreator", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([createdAt])
 }

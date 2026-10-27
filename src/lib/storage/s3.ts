@@ -58,6 +58,25 @@ export async function s3Delete(key: string): Promise<void> {
   await s3().send(new DeleteObjectCommand({ Bucket: bucket()!, Key: key }));
 }
 
+/** Nesneyi okur; yoksa null. */
+export async function s3Get(key: string): Promise<Buffer | null> {
+  try {
+    const res = await s3().send(
+      new GetObjectCommand({ Bucket: bucket()!, Key: key }),
+    );
+    if (!res.Body) return null;
+    return Buffer.from(await res.Body.transformToByteArray());
+  } catch (err) {
+    const name = (err as { name?: string }).name;
+    if (name === "NoSuchKey" || name === "NotFound") return null;
+    // ListBucket izni yoksa S3 eksik anahtar için 403 döner.
+    const status = (err as { $metadata?: { httpStatusCode?: number } })
+      .$metadata?.httpStatusCode;
+    if (status === 403 || status === 404) return null;
+    throw err;
+  }
+}
+
 export async function s3SignedGetUrl(key: string): Promise<string> {
   return getSignedUrl(
     s3(),

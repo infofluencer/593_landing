@@ -26,6 +26,7 @@ export const STAFF_NAV_LINKS: PanelNavLink[] = [
   { href: "/ekip", label: "Ekip" },
   { href: "/audit", label: "İşlem kaydı" },
   { href: "/oneriler", label: "Öneriler" },
+  { href: "/yedekler", label: "Yedekler" },
   { href: "/settings", label: "Ayarlar" },
 ];
 
@@ -55,6 +56,7 @@ export function staffPageTitle(rawPath: string): string {
   if (matches(path, "/settings")) return "Ayarlar";
   if (matches(path, "/oneriler")) return "Öneri kutusu";
   if (matches(path, "/audit")) return "İşlem kaydı";
+  if (matches(path, "/yedekler")) return "Yedekler";
   if (matches(path, "/brands/sync")) return "Veri çekimi";
   if (path.startsWith("/brands/")) return "Marka detayı";
   return "Markalar";
