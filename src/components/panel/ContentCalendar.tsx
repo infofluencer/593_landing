@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  memo,
   useCallback,
   useEffect,
   useMemo,
@@ -49,10 +50,12 @@ const TR_MONTHS_SHORT = [
   "Oca", "Şub", "Mar", "Nis", "May", "Haz", "Tem", "Ağu", "Eyl", "Eki", "Kas", "Ara",
 ];
 
-/** Marka renkleri — Google Takvim paletine yakın, sıra markaya göre sabit. */
+/** Marka renkleri — Google Takvim paletine yakın; 24 ayrı ton, sıra markaya göre sabit. */
 const BRAND_PALETTE = [
   "#039be5", "#0b8043", "#8e24aa", "#f4511e", "#3f51b5", "#e67c73",
   "#33b679", "#f6bf26", "#7986cb", "#d50000", "#616161", "#009688",
+  "#ad1457", "#ef6c00", "#4285f4", "#7cb342", "#5e35b1", "#c0ca33",
+  "#00acc1", "#8d6e63", "#f09300", "#1e88e5", "#43a047", "#d81b60",
 ];
 
 const PLATFORM_DOT: Record<ContentPlatform, string> = {
@@ -292,13 +295,18 @@ export default function ContentCalendar({
     return new Date(y!, m! - 1, 1);
   });
   const [posts, setPosts] = useState(initialPosts);
-  const [hiddenTenants, setHiddenTenants] = useState<Set<string>>(
-    () =>
-      new Set(
-        initialTenantId ? tenants.filter((t) => t.id !== initialTenantId).map((t) => t.id) : [],
-      ),
+  // Seçim kümeleri — boş küme "tümü" demek. Tıkla: yalnızca o; tekrar tıkla:
+  // tümüne dön; başka birine tıkla: seçime ekle.
+  const [selectedTenants, setSelectedTenants] = useState<Set<string>>(
+    () => new Set(initialTenantId ? [initialTenantId] : []),
   );
-  const [hiddenPlatforms, setHiddenPlatforms] = useState<Set<string>>(() => new Set());
+  const [selectedPlatforms, setSelectedPlatforms] = useState<Set<string>>(() => new Set());
+  const toggleIn = (prev: Set<string>, id: string) => {
+    const n = new Set(prev);
+    if (n.has(id)) n.delete(id);
+    else n.add(id);
+    return n;
+  };
   const [status, setStatus] = useState<string>("");
   const [query, setQuery] = useState("");
   // auto: masaüstünde açık, mobilde kapalı (hidrasyon için ekran ölçmeden).
@@ -440,15 +448,15 @@ export default function ContentCalendar({
     const q = query.trim().toLocaleLowerCase("tr");
     return posts.filter(
       (p) =>
-        !hiddenTenants.has(p.tenantId) &&
-        !hiddenPlatforms.has(p.platform) &&
+        (selectedTenants.size === 0 || selectedTenants.has(p.tenantId)) &&
+        (selectedPlatforms.size === 0 || selectedPlatforms.has(p.platform)) &&
         (!status || p.status === status) &&
         (!q ||
           p.title.toLocaleLowerCase("tr").includes(q) ||
           p.tenantName.toLocaleLowerCase("tr").includes(q) ||
           p.caption.toLocaleLowerCase("tr").includes(q)),
     );
-  }, [posts, hiddenTenants, hiddenPlatforms, status, query]);
+  }, [posts, selectedTenants, selectedPlatforms, status, query]);
 
   const byDay = useMemo(() => {
     const m = new Map<string, SerializedPost[]>();
@@ -460,8 +468,7 @@ export default function ContentCalendar({
     return m;
   }, [filtered]);
 
-  const visibleTenantIds = tenants.filter((t) => !hiddenTenants.has(t.id)).map((t) => t.id);
-  const defaultTenantId = visibleTenantIds.length === 1 ? visibleTenantIds[0]! : "";
+  const defaultTenantId = selectedTenants.size === 1 ? [...selectedTenants][0]! : "";
   const designers = staff.filter((s) => s.teams.includes("grafik-tasarim"));
   const social = staff.filter((s) => s.teams.includes("sosyal-medya"));
 
@@ -726,50 +733,39 @@ export default function ContentCalendar({
               <SidebarSection
                 title="Markalar"
                 actions={
-                  <>
-                    <button type="button" className="hover:underline" onClick={() => setHiddenTenants(new Set())}>
-                      Tümü
+                  selectedTenants.size > 0 ? (
+                    <button type="button" className="hover:underline" onClick={() => setSelectedTenants(new Set())}>
+                      Tümünü göster
                     </button>
-                    <span aria-hidden>·</span>
-                    <button
-                      type="button"
-                      className="hover:underline"
-                      onClick={() => setHiddenTenants(new Set(tenants.map((t) => t.id)))}
-                    >
-                      Hiçbiri
-                    </button>
-                  </>
+                  ) : (
+                    <span>Tıkla → yalnızca o</span>
+                  )
                 }
               >
                 <ul className="space-y-0.5">
                   {tenants.map((t) => {
-                    const on = !hiddenTenants.has(t.id);
+                    const all = selectedTenants.size === 0;
+                    const on = all || selectedTenants.has(t.id);
                     const color = colorOf(t.id);
                     return (
                       <li key={t.id}>
                         <label
-                          className={`flex cursor-pointer items-center gap-2.5 rounded-md px-2 py-1.5 text-sm hover:bg-zinc-100 ${
+                          className={`group/row flex cursor-pointer items-center gap-2.5 rounded-md px-2 py-1.5 text-sm hover:bg-zinc-100 ${
                             t.visible === false ? "text-zinc-400" : "text-zinc-800"
-                          }`}
+                          } ${!all && on ? "bg-zinc-100 font-medium" : ""}`}
                         >
                           <input
                             type="checkbox"
                             className="sr-only"
                             checked={on}
-                            onChange={() =>
-                              setHiddenTenants((prev) => {
-                                const n = new Set(prev);
-                                if (n.has(t.id)) n.delete(t.id);
-                                else n.add(t.id);
-                                return n;
-                              })
-                            }
+                            onChange={() => setSelectedTenants((prev) => toggleIn(prev, t.id))}
                           />
                           <span
                             className="flex size-4 shrink-0 items-center justify-center rounded-[4px] border"
                             style={{
                               background: on ? color : "transparent",
                               borderColor: color,
+                              opacity: all ? 0.55 : 1,
                             }}
                             aria-hidden
                           >
@@ -786,31 +782,39 @@ export default function ContentCalendar({
                 </ul>
               </SidebarSection>
 
-              <SidebarSection title="Platformlar">
+              <SidebarSection
+                title="Platformlar"
+                actions={
+                  selectedPlatforms.size > 0 ? (
+                    <button type="button" className="hover:underline" onClick={() => setSelectedPlatforms(new Set())}>
+                      Tümünü göster
+                    </button>
+                  ) : null
+                }
+              >
                 <ul className="space-y-0.5">
                   {CONTENT_PLATFORMS.map((p) => {
-                    const on = !hiddenPlatforms.has(p);
+                    const all = selectedPlatforms.size === 0;
+                    const on = all || selectedPlatforms.has(p);
                     return (
                       <li key={p}>
-                        <label className="flex cursor-pointer items-center gap-2.5 rounded-md px-2 py-1.5 text-sm text-zinc-800 hover:bg-zinc-100">
+                        <label
+                          className={`flex cursor-pointer items-center gap-2.5 rounded-md px-2 py-1.5 text-sm text-zinc-800 hover:bg-zinc-100 ${
+                            !all && on ? "bg-zinc-100 font-medium" : ""
+                          }`}
+                        >
                           <input
                             type="checkbox"
                             className="sr-only"
                             checked={on}
-                            onChange={() =>
-                              setHiddenPlatforms((prev) => {
-                                const n = new Set(prev);
-                                if (n.has(p)) n.delete(p);
-                                else n.add(p);
-                                return n;
-                              })
-                            }
+                            onChange={() => setSelectedPlatforms((prev) => toggleIn(prev, p))}
                           />
                           <span
                             className="flex size-4 shrink-0 items-center justify-center rounded-[4px] border"
                             style={{
                               background: on ? PLATFORM_DOT[p] : "transparent",
                               borderColor: PLATFORM_DOT[p],
+                              opacity: all ? 0.55 : 1,
                             }}
                             aria-hidden
                           >
@@ -841,6 +845,8 @@ export default function ContentCalendar({
                 </div>
                 <p className="mt-3 text-[11px] leading-relaxed text-zinc-400">
                   Renk = marka · dolu = paylaşıldı · kesik = taslak
+                  <br />
+                  Marka / platforma tıkla: yalnızca o · tekrar tıkla: tümü
                   <br />
                   Kısayollar: T bugün · ← → gezin · M/W/D görünüm
                 </p>
@@ -897,6 +903,24 @@ export default function ContentCalendar({
         </div>
       </div>
 
+      {filtered.length === 0 && posts.length > 0 ? (
+        <div className="flex items-center gap-3 border-t border-amber-100 bg-amber-50 px-4 py-2 text-xs text-amber-800">
+          Bu dönemde seçili marka / platform / durum filtrelerine uyan içerik yok.
+          <button
+            type="button"
+            className="ml-auto font-semibold underline"
+            onClick={() => {
+              setSelectedTenants(new Set());
+              setSelectedPlatforms(new Set());
+              setStatus("");
+              setQuery("");
+            }}
+          >
+            Filtreleri temizle
+          </button>
+        </div>
+      ) : null}
+
       {error && !draft ? (
         <div className="flex items-center gap-3 border-t border-rose-100 bg-rose-50 px-4 py-2 text-xs text-rose-700">
           {error}
@@ -917,7 +941,7 @@ export default function ContentCalendar({
             role="dialog"
             aria-modal="true"
             aria-label="Günün içerikleri"
-            className="flex max-h-[85vh] w-full max-w-lg flex-col overflow-hidden rounded-t-2xl bg-white shadow-xl sm:rounded-2xl"
+            className="flex max-h-[85vh] w-full max-w-xl flex-col overflow-hidden rounded-t-2xl bg-white shadow-xl sm:rounded-2xl"
             onClick={(e) => e.stopPropagation()}
           >
             {(() => {
@@ -1006,6 +1030,11 @@ export default function ContentCalendar({
                   <h3 className="text-base font-semibold text-zinc-900">
                     {draft.id ? "İçerik detayı" : "Yeni içerik"}
                   </h3>
+                  {draft.id && current?.title ? (
+                    <p className="mt-0.5 break-words text-sm leading-snug text-zinc-600">
+                      {current.title}
+                    </p>
+                  ) : null}
                   {current?.boardCard ? (
                     <a href="/board" className="mt-0.5 inline-flex items-center gap-1 text-xs text-[#e91825] hover:underline">
                       <ClipboardList className="size-3.5" aria-hidden />
@@ -1338,7 +1367,7 @@ function MiniCalendar({
 
 /* ───────────────────────── içerik çipi ───────────────────────── */
 
-function EventChip({
+const EventChip = memo(function EventChip({
   post,
   color,
   size = "sm",
@@ -1404,7 +1433,7 @@ function EventChip({
         aria-hidden
       />
       <span className="min-w-0 flex-1">
-        <span className={`block truncate ${size === "lg" ? "font-semibold" : "font-medium"}`}>
+        <span className={`block ${size === "lg" ? "whitespace-normal break-words font-semibold leading-snug" : "truncate font-medium"}`}>
           {size === "sm" ? (
             <>
               <span className={published ? "opacity-80" : "text-zinc-500"}>{fmtTime(post.scheduledAt)}</span>{" "}
@@ -1415,7 +1444,7 @@ function EventChip({
           )}
         </span>
         {size !== "sm" ? (
-          <span className={`block truncate ${published ? "opacity-85" : "text-zinc-600"} ${size === "lg" ? "text-xs" : "text-[10px]"}`}>
+          <span className={`block ${size === "lg" ? "mt-0.5 whitespace-normal break-words text-xs" : "truncate text-[10px]"} ${published ? "opacity-85" : "text-zinc-600"}`}>
             {fmtTime(post.scheduledAt)} · {post.tenantName} · {platform}
             {size === "lg" ? ` · ${STATUS_LABEL[post.status]}` : ""}
           </span>
@@ -1423,7 +1452,7 @@ function EventChip({
       </span>
     </button>
   );
-}
+});
 
 /* ───────────────────────── ay görünümü ───────────────────────── */
 
