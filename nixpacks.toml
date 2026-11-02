@@ -1,11 +1,17 @@
 # Dokploy / Nixpacks: Next.js 16 requires Node >= 20.9
-# cache-bust: 2026-08-04-launchfolio
+# cache-bust: 2026-11-02-install-heap
 [variables]
 NIXPACKS_NODE_VERSION = "20"
 NIXPACKS_NO_CACHE = "1"
 
 [phases.setup]
 nixPkgs = ["nodejs_20", "npm-9_x"]
+
+[phases.install]
+# Sunucuda Node'un varsayılan heap sınırı ~190 MB; `npm ci` lock dosyasını
+# çözerken bu sınırı aşıp çöküyordu (exit 139). Build ile aynı sınır verilir;
+# audit/fund kapalı → daha az bellek ve ağ.
+cmds = ["NODE_OPTIONS=--max-old-space-size=2048 npm ci --no-audit --no-fund"]
 
 [phases.build]
 # TypeScript adımı varsayılan heap sınırında (~190 MB) OOM oluyordu.
