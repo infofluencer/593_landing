@@ -71,6 +71,7 @@ export default async function PanelLayout({
       browserPath.startsWith("/brands/") ||
       browserPath === "/board" ||
       browserPath.startsWith("/board/") ||
+      browserPath === "/kampanyalar" ||
       browserPath === "/ekip" ||
       browserPath.startsWith("/ekip/") ||
       browserPath === "/toplantilar" ||
@@ -95,6 +96,7 @@ export default async function PanelLayout({
           <PanelShell
             variant="staff"
             nav={STAFF_NAV_LINKS}
+            wide={browserPath === "/takvim"}
             userEmail={session.user.email ?? ""}
             userRoleLabel={session.user.role}
           >

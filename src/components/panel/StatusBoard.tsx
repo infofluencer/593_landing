@@ -290,6 +290,7 @@ export default function StatusBoard({
   const [composerColumnId, setComposerColumnId] = useState<string | null>(null);
   const [editing, setEditing] = useState<Card | null>(null);
   const [uploadingImages, setUploadingImages] = useState(0);
+  const dialogRef = useRef<HTMLDivElement>(null);
   const reducedMotion = usePrefersReducedMotion();
 
   const [draftTitle, setDraftTitle] = useState("");
@@ -313,16 +314,37 @@ export default function StatusBoard({
     setDraftLabels("");
   }, []);
 
+  // Düzenleme penceresini kartla birlikte açar — taslak aynı render'da dolar
+  // (açıklama ilk kareden okunur modda gelsin diye efekt değil).
+  const openEditor = useCallback((card: Card) => {
+    setDraftTitle(card.title);
+    setDraftDesc(card.description ?? "");
+    setDraftAssigneeIds(card.assignees.map((a) => a.id));
+    setDraftTeamId(card.teamId ?? "");
+    setDraftTenantId(card.tenantId ?? "");
+    setDraftPriority(card.priority);
+    setDraftDue(card.dueAt ? card.dueAt.slice(0, 10) : "");
+    setDraftLabels((card.labels ?? []).join(", "));
+    setEditing(card);
+  }, []);
+
+  // Pencere açılınca odak panodaki karttan pencereye geçer (kart vurgulu
+  // kalmasın), arka plan kaydırılamaz; kapanınca eski hâline döner.
   useEffect(() => {
     if (!editing) return;
-    setDraftTitle(editing.title);
-    setDraftDesc(editing.description ?? "");
-    setDraftAssigneeIds(editing.assignees.map((a) => a.id));
-    setDraftTeamId(editing.teamId ?? "");
-    setDraftTenantId(editing.tenantId ?? "");
-    setDraftPriority(editing.priority);
-    setDraftDue(editing.dueAt ? editing.dueAt.slice(0, 10) : "");
-    setDraftLabels((editing.labels ?? []).join(", "));
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    if (document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur();
+    }
+    const t = window.setTimeout(() => {
+      dialogRef.current?.focus({ preventScroll: true });
+      dialogRef.current?.scrollTo?.({ top: 0 });
+    }, 0);
+    return () => {
+      window.clearTimeout(t);
+      document.body.style.overflow = prevOverflow;
+    };
   }, [editing]);
 
   const columnIds = useMemo(
@@ -972,11 +994,11 @@ export default function StatusBoard({
                             <div
                               role="button"
                               tabIndex={0}
-                              onClick={() => setEditing(card)}
+                              onClick={() => openEditor(card)}
                               onKeyDown={(e) => {
                                 if (e.key === "Enter" || e.key === " ") {
                                   e.preventDefault();
-                                  setEditing(card);
+                                  openEditor(card);
                                 }
                               }}
                               className="w-full cursor-pointer text-left"
@@ -1029,7 +1051,7 @@ export default function StatusBoard({
                   resetDraft();
                 }}
                 onCreate={() => void createCard(col.id)}
-                onEditCard={setEditing}
+                onEditCard={openEditor}
                 onDeleteCard={
                   canDeleteCards ? (id) => void deleteCard(id) : undefined
                 }
@@ -1088,38 +1110,43 @@ export default function StatusBoard({
           onClick={() => setEditing(null)}
         >
           <div
+            ref={dialogRef}
+            tabIndex={-1}
             role="dialog"
             aria-modal
             aria-labelledby="card-edit-title"
-            className="max-h-[90vh] w-full max-w-lg space-y-3 overflow-y-auto rounded-xl border border-zinc-200 bg-white p-5 shadow-xl"
+            className="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-xl outline-none"
             onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") setEditing(null);
+            }}
           >
-            <h3 id="card-edit-title" className="text-base font-semibold">
-              Görevi düzenle
-            </h3>
+            <div className="flex items-center justify-between gap-3 border-b border-zinc-100 px-5 py-3">
+              <h3 id="card-edit-title" className="text-base font-semibold">
+                Görevi düzenle
+              </h3>
+              <button
+                type="button"
+                onClick={() => setEditing(null)}
+                aria-label="Kapat"
+                className="rounded-full p-1.5 text-zinc-500 hover:bg-zinc-100"
+              >
+                <X className="size-4" aria-hidden />
+              </button>
+            </div>
+            <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-5 py-4">
             <input
               value={draftTitle}
               onChange={(e) => setDraftTitle(e.target.value)}
-              className="w-full rounded-md border border-zinc-200 px-3 py-2 text-sm outline-none focus:border-[#e91825]"
+              placeholder="Görev başlığı"
+              className="w-full rounded-md border border-zinc-200 px-3 py-2 text-base font-semibold outline-none focus:border-[#e91825]"
             />
-            <textarea
+            <DescriptionField
+              key={editing.id}
               value={draftDesc}
-              onChange={(e) => setDraftDesc(e.target.value)}
-              onPaste={(e) => {
-                // Linkler çoğu uygulamadan önizleme görseliyle birlikte kopyalanır;
-                // metin varsa normal yapıştır, yalnızca saf görseli yükle.
-                if (e.clipboardData.getData("text/plain").trim()) return;
-                const files = Array.from(e.clipboardData.files);
-                if (files.some((f) => f.type.startsWith("image/"))) {
-                  e.preventDefault();
-                  void uploadCardImages(editing.id, files);
-                }
-              }}
-              rows={4}
-              placeholder="Açıklama (görsel yapıştırabilirsiniz)"
-              className="w-full resize-none rounded-md border border-zinc-200 px-3 py-2 text-sm outline-none focus:border-[#e91825]"
+              onChange={setDraftDesc}
+              onPasteImages={(files) => void uploadCardImages(editing.id, files)}
             />
-            <DescriptionLinks text={draftDesc} />
             <CardImagesField
               images={editingImages}
               uploading={uploadingImages > 0}
@@ -1243,7 +1270,8 @@ export default function StatusBoard({
               </div>
             ) : null}
 
-            <div className="flex flex-wrap gap-2 pt-1">
+            </div>
+            <div className="flex flex-wrap gap-2 border-t border-zinc-100 px-5 py-3">
               <button
                 type="button"
                 onClick={() => void saveEdit()}
@@ -1630,6 +1658,139 @@ function DescriptionLinks({ text }: { text: string }) {
           );
         })}
       </ul>
+    </div>
+  );
+}
+
+/** Metin içindeki linkleri yerinde tıklanabilir yapar; satır sonları korunur. */
+function RichText({ text }: { text: string }) {
+  const parts: Array<{ kind: "text" | "link"; value: string }> = [];
+  let last = 0;
+  for (const m of text.matchAll(URL_RE)) {
+    const start = m.index ?? 0;
+    let url = m[0];
+    const trimmed = url.replace(/[.,;:!?]+$/, "");
+    url = trimmed;
+    if (start > last) parts.push({ kind: "text", value: text.slice(last, start) });
+    parts.push({ kind: "link", value: url });
+    last = start + url.length;
+  }
+  if (last < text.length) parts.push({ kind: "text", value: text.slice(last) });
+  return (
+    <>
+      {parts.map((p, i) =>
+        p.kind === "link" ? (
+          <a
+            key={i}
+            href={p.value}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={(e) => e.stopPropagation()}
+            className="break-all text-sky-700 underline decoration-sky-300 underline-offset-2 hover:text-sky-900"
+          >
+            {p.value}
+          </a>
+        ) : (
+          <span key={i}>{p.value}</span>
+        ),
+      )}
+    </>
+  );
+}
+
+/**
+ * Açıklama — doluysa okunaklı büyük metin olarak gösterilir (linkler tıklanır),
+ * üzerine tıklayınca veya "Düzenle" ile kendiliğinden büyüyen alana geçer.
+ */
+function DescriptionField({
+  value,
+  onChange,
+  onPasteImages,
+}: {
+  value: string;
+  onChange: (next: string) => void;
+  onPasteImages: (files: File[]) => void;
+}) {
+  const [mode, setMode] = useState<"read" | "edit">(
+    value.trim() ? "read" : "edit",
+  );
+  const focusOnEdit = useRef(false);
+  const ref = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    if (mode !== "edit") return;
+    const el = ref.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(Math.max(el.scrollHeight, 140), 520)}px`;
+    if (focusOnEdit.current) {
+      focusOnEdit.current = false;
+      el.focus({ preventScroll: true });
+      el.setSelectionRange(el.value.length, el.value.length);
+    }
+  }, [mode, value]);
+
+  function startEdit() {
+    focusOnEdit.current = true;
+    setMode("edit");
+  }
+
+  if (mode === "read") {
+    return (
+      <div className="space-y-2">
+        <div className="rounded-lg border border-zinc-200 bg-zinc-50/70">
+          <div className="flex items-center justify-between px-3 pt-2">
+            <span className="text-[11px] font-medium text-zinc-500">Açıklama</span>
+            <button
+              type="button"
+              onClick={startEdit}
+              className="rounded-md px-2 py-0.5 text-[11px] font-medium text-zinc-600 hover:bg-zinc-200/70 hover:text-zinc-900"
+            >
+              Düzenle
+            </button>
+          </div>
+          <div
+            role="button"
+            tabIndex={0}
+            onClick={startEdit}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") startEdit();
+            }}
+            title="Düzenlemek için tıklayın"
+            className="max-h-[40vh] cursor-text overflow-y-auto whitespace-pre-wrap break-words px-3 pb-3 pt-1 text-[15px] leading-relaxed text-zinc-800 outline-none focus-visible:ring-2 focus-visible:ring-[#e91825]/30"
+          >
+            <RichText text={value} />
+          </div>
+        </div>
+        <DescriptionLinks text={value} />
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      <textarea
+        ref={ref}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        onBlur={() => {
+          if (value.trim()) setMode("read");
+        }}
+        onPaste={(e) => {
+          // Linkler çoğu uygulamadan önizleme görseliyle birlikte kopyalanır;
+          // metin varsa normal yapıştır, yalnızca saf görseli yükle.
+          if (e.clipboardData.getData("text/plain").trim()) return;
+          const files = Array.from(e.clipboardData.files);
+          if (files.some((f) => f.type.startsWith("image/"))) {
+            e.preventDefault();
+            onPasteImages(files);
+          }
+        }}
+        rows={5}
+        placeholder="Açıklama — link ve ekran görüntüsü yapıştırabilirsiniz"
+        className="w-full resize-y rounded-lg border border-zinc-200 px-3 py-2.5 text-[15px] leading-relaxed outline-none focus:border-[#e91825]"
+      />
+      <DescriptionLinks text={value} />
     </div>
   );
 }

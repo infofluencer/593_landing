@@ -18,6 +18,7 @@ import {
   LogOut,
   Menu,
   Lightbulb,
+  Megaphone,
   Receipt,
   Settings,
   Users,
@@ -52,6 +53,7 @@ const NAV_ICONS: Record<string, LucideIcon> = {
   "/faturalar": Receipt,
   "/brands": Building2,
   "/board": ClipboardList,
+  "/kampanyalar": Megaphone,
   "/takvim": CalendarDays,
   "/ekip": Users,
   "/audit": History,
@@ -71,6 +73,8 @@ type ShellProps = {
   userEmail: string;
   userRoleLabel: string;
   topBarExtra?: ReactNode;
+  /** Geniş sayfa (takvim gibi): içerik genişlik sınırı yok, dikey boşluk az. */
+  wide?: boolean;
   children: ReactNode;
 };
 
@@ -82,6 +86,7 @@ export default function PanelShell({
   userEmail,
   userRoleLabel,
   topBarExtra,
+  wide = false,
   children,
 }: ShellProps) {
   const [open, setOpen] = useState(false);
@@ -190,8 +195,20 @@ export default function PanelShell({
           ) : null}
         </header>
 
-        <main className="flex-1 px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
-          <div className="mx-auto w-full max-w-[var(--panel-content-max)] space-y-6 sm:space-y-8">
+        <main
+          className={
+            wide
+              ? "flex-1 px-3 py-3 sm:px-4 sm:py-4"
+              : "flex-1 px-4 py-6 sm:px-6 sm:py-8 lg:px-8"
+          }
+        >
+          <div
+            className={
+              wide
+                ? "w-full"
+                : "mx-auto w-full max-w-[var(--panel-content-max)] space-y-6 sm:space-y-8"
+            }
+          >
             {children}
           </div>
         </main>
