@@ -1013,7 +1013,7 @@ export default function ContentCalendar({
           <div
             role="dialog"
             aria-modal="true"
-            className="flex max-h-[92vh] w-full max-w-2xl flex-col overflow-hidden rounded-t-2xl bg-white shadow-xl sm:rounded-2xl"
+            className="flex max-h-[92vh] w-full max-w-3xl flex-col overflow-hidden rounded-t-2xl bg-white shadow-xl sm:rounded-2xl"
             onClick={(e) => e.stopPropagation()}
             onKeyDown={(e) => {
               if (e.key === "Escape") setDraft(null);
@@ -1151,12 +1151,10 @@ export default function ContentCalendar({
                 </label>
                 <label className="text-xs text-zinc-600 sm:col-span-2">
                   Brief
-                  <textarea
-                    className="mt-1 min-h-20 w-full rounded-xl border border-zinc-300 bg-white px-4 py-2 text-sm text-[#141111] focus:border-[#141111] focus:outline-none"
+                  <BriefField
                     value={draft.brief}
                     disabled={!canEdit}
-                    onChange={(e) => setDraft({ ...draft, brief: e.target.value })}
-                    placeholder="Tasarımcıya / içerik üreticisine not"
+                    onChange={(brief) => setDraft({ ...draft, brief })}
                   />
                 </label>
                 <label className="text-xs text-zinc-600 sm:col-span-2">
@@ -1257,6 +1255,45 @@ function miniChip(active: boolean): string {
   return active
     ? "rounded-full border border-[#141111] bg-[#141111] px-2.5 py-1 text-[11px] font-semibold text-white"
     : "rounded-full border border-zinc-300 bg-white px-2.5 py-1 text-[11px] font-medium text-zinc-700 hover:border-[#141111]";
+}
+
+/**
+ * Metne göre boyutlanan brief alanı: görünmez kopya yüksekliği belirler, textarea onu doldurur.
+ * Tıklanınca büyür ve pencere kapanana kadar büyük kalır; blur'da küçülseydi altındaki
+ * alanlar tıklama sırasında yer değiştirirdi.
+ */
+function BriefField({
+  value,
+  disabled,
+  onChange,
+}: {
+  value: string;
+  disabled: boolean;
+  onChange: (value: string) => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const box = "rounded-xl border px-4 py-3 text-sm leading-relaxed [grid-area:1/1]";
+  return (
+    <span className="mt-1 grid">
+      <span
+        aria-hidden
+        className={`${box} invisible block overflow-hidden whitespace-pre-wrap break-words border-transparent transition-[min-height,max-height] duration-200 ${
+          expanded ? "min-h-80" : "min-h-44"
+        } ${expanded || disabled ? "max-h-[60vh]" : "max-h-72"}`}
+      >
+        {value}{" "}
+      </span>
+      <textarea
+        rows={1}
+        className={`${box} h-full min-h-0 w-full resize-none border-zinc-300 bg-white text-[#141111] focus:border-[#141111] focus:outline-none`}
+        value={value}
+        disabled={disabled}
+        onFocus={() => setExpanded(true)}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder="Tasarımcıya / içerik üreticisine not"
+      />
+    </span>
+  );
 }
 
 function SidebarSection({
