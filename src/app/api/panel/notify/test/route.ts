@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
 import { sendTestWhatsApp, whatsappConfigured } from "@/lib/panel/notify";
-import { requireStaffApi } from "@/lib/panel/staff-auth";
+import { requirePermissionApi } from "@/lib/panel/staff-auth";
 
 export const runtime = "nodejs";
 
-/** POST {phone} — WhatsApp kanalını doğrulamak için şablon test mesajı. */
+/** POST {phone} — WhatsApp kanalını doğrulamak için şablon test mesajı (yalnızca admin). */
 export async function POST(request: Request) {
-  const { session, error } = await requireStaffApi();
+  const { session, error } = await requirePermissionApi("users.manage");
   if (error || !session) return error;
   if (!whatsappConfigured()) {
     return NextResponse.json(

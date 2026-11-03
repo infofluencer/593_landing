@@ -275,20 +275,36 @@ export default function BudgetPlanVsActual({
       <div>
         <div className="mb-2 flex flex-wrap items-end justify-between gap-2">
           <h4 className="text-sm font-semibold text-zinc-900">
-            Aktif kampanyalar
+            {provider === "meta"
+              ? "Aktif reklam setleri"
+              : provider === "google"
+                ? "Aktif kampanyalar"
+                : "Aktif kampanyalar ve reklam setleri"}
           </h4>
           <p className="text-xs text-zinc-500">
-            {activeCampaigns.length} kampanya · kapalı kampanyalar listelenmez
+            {activeCampaigns.length}{" "}
+            {provider === "meta"
+              ? "reklam seti"
+              : provider === "google"
+                ? "kampanya"
+                : "kayıt"}{" "}
+            · kapalı olanlar listelenmez
           </p>
         </div>
         {activeCampaigns.length === 0 ? (
           <div className="rounded-lg border border-zinc-200 bg-zinc-100 px-4 py-3 text-sm text-zinc-700">
-            Bu dönemde aktif kampanya yok.
+            {provider === "meta"
+              ? "Bu dönemde aktif reklam seti yok."
+              : "Bu dönemde aktif kampanya yok."}
           </div>
         ) : (
           <PanelTable
             headers={[
-              "Kampanya",
+              provider === "meta"
+                ? "Reklam seti"
+                : provider === "google"
+                  ? "Kampanya"
+                  : "Kampanya / reklam seti",
               ...(provider ? [] : ["Platform"]),
               "Planlanan aylık",
               "Harcanan",
@@ -303,6 +319,11 @@ export default function BudgetPlanVsActual({
                 <tr key={`${row.provider}-${row.campaignId}`}>
                   <td className="font-medium text-panel-fg">
                     <span>{displayCampaignName(row)}</span>
+                    {row.parentCampaignName ? (
+                      <span className="mt-0.5 block text-[10px] font-normal text-panel-fg-muted">
+                        {row.parentCampaignName}
+                      </span>
+                    ) : null}
                     {isManualCampaignId(row.campaignId) ? (
                       <span className="mt-0.5 block text-[10px] font-normal text-panel-fg-muted">
                         Elle eklendi

@@ -17,9 +17,12 @@ export type BudgetProvider = "google" | "meta";
 
 export type BudgetCampaignRow = {
   provider: BudgetProvider;
+  /** Google: kampanya kimliği. Meta: reklam seti kimliği (eski planlar ve reklam seti verisi olmayan günler için kampanya kimliği). */
   campaignId: string;
   /** API'den gelen orijinal ad */
   campaignName: string;
+  /** Meta reklam setinin bağlı olduğu kampanya */
+  parentCampaignName: string | null;
   /** Kullanıcının verdiği görünen ad */
   label: string | null;
   audience: string | null;
@@ -361,12 +364,14 @@ export async function loadBrandBudgetPlan(
   const [
     googleRows,
     metaRows,
+    metaAdsetRows,
     brandRows,
     campaignRows,
     aliases,
     metaAds,
     recentGoogle,
     recentMeta,
+    recentMetaAdsets,
     yearBudgetRows,
     yearSpendRows,
     paceDaily,
@@ -389,12 +394,23 @@ export async function loadBrandBudgetPlan(
         spend: true,
       },
     }),
+    prisma.metaAdsetInsight.findMany({
+      where: { tenantId: tenant.id, date: { gte: fromDate, lte: toDate } },
+      select: {
+        adsetId: true,
+        adsetName: true,
+        campaignId: true,
+        campaignName: true,
+        date: true,
+        spend: true,
+      },
+    }),
     listTenantBudgets(tenant.id, months),
     listCampaignBudgets(tenant.id, months),
     listCampaignAliases(tenant.id),
     prisma.metaAd.findMany({
       where: { tenantId: tenant.id },
-      select: { campaignId: true, effectiveStatus: true },
+      select: { adsetId: true, campaignId: true, effectiveStatus: true },
     }),
     prisma.googleAdsMetric.findMany({
       where: { tenantId: tenant.id, date: { gte: recentDate } },
@@ -406,6 +422,11 @@ export async function loadBrandBudgetPlan(
       select: { campaignId: true },
       distinct: ["campaignId"],
     }),
+    prisma.metaAdsetInsight.findMany({
+      where: { tenantId: tenant.id, date: { gte: recentDate } },
+      select: { adsetId: true },
+      distinct: ["adsetId"],
+    }),
     listTenantBudgets(tenant.id, yearMonths),
     listMonthlySpend(tenant.id, `${yearNum}-01-01`, `${yearNum}-12-31`),
     listDailySpend(tenant.id, paceFrom, paceTo < today ? paceTo : today),
@@ -414,16 +435,20 @@ export async function loadBrandBudgetPlan(
   const metaHasAd = new Set<string>();
   const metaLive = new Set<string>();
   for (const ad of metaAds) {
-    const id = ad.campaignId.trim();
-    if (!id) continue;
-    metaHasAd.add(id);
-    if (ad.effectiveStatus === "ACTIVE") metaLive.add(id);
+    for (const id of [ad.adsetId.trim(), ad.campaignId.trim()]) {
+      if (!id) continue;
+      metaHasAd.add(id);
+      if (ad.effectiveStatus === "ACTIVE") metaLive.add(id);
+    }
   }
   const googleLive = new Set(
     recentGoogle.map((row) => row.campaignId.trim()).filter(Boolean),
   );
   const metaRecent = new Set(
-    recentMeta.map((row) => row.campaignId.trim()).filter(Boolean),
+    [
+      ...recentMeta.map((row) => row.campaignId.trim()),
+      ...recentMetaAdsets.map((row) => row.adsetId.trim()),
+    ].filter(Boolean),
   );
 
   const map = new Map<string, BudgetCampaignRow>();
@@ -443,6 +468,7 @@ export async function loadBrandBudgetPlan(
         provider,
         campaignId: id,
         campaignName: campaignName.trim() || id,
+        parentCampaignName: null,
         label: null,
         audience: null,
         location: null,
@@ -458,7 +484,15 @@ export async function loadBrandBudgetPlan(
     if (campaignName.trim()) prev.campaignName = campaignName.trim();
   }
 
-  function addSpend(
+  function addDailySpend(provider: BudgetProvider, date: Date, amount: number) {
+    if (!Number.isFinite(amount) || date < spendFrom || date > spendTo) return;
+    const ymd = utcDateYmd(date);
+    const day = dailyMap.get(ymd) ?? { date: ymd, google: 0, meta: 0 };
+    day[provider] += amount;
+    dailyMap.set(ymd, day);
+  }
+
+  function addRowSpend(
     provider: BudgetProvider,
     campaignId: string,
     campaignName: string,
@@ -472,10 +506,6 @@ export async function loadBrandBudgetPlan(
     if (!row || !Number.isFinite(amount)) return;
     if (date >= spendFrom && date <= spendTo) {
       row.monthSpend += amount;
-      const ymd = utcDateYmd(date);
-      const day = dailyMap.get(ymd) ?? { date: ymd, google: 0, meta: 0 };
-      day[provider] += amount;
-      dailyMap.set(ymd, day);
       if (utcDateYmd(date) === today) {
         row.todaySpend += amount;
       }
@@ -483,16 +513,32 @@ export async function loadBrandBudgetPlan(
   }
 
   for (const row of googleRows) {
-    addSpend(
-      "google",
-      row.campaignId,
-      row.campaignName,
-      row.date,
-      Number(row.cost),
-    );
+    if (!row.campaignId.trim()) continue;
+    const cost = Number(row.cost);
+    addRowSpend("google", row.campaignId, row.campaignName, row.date, cost);
+    addDailySpend("google", row.date, cost);
+  }
+  // Meta satırları reklam seti bazında; günlük toplam kampanya tablosundan gelir.
+  const metaAdsetDays = new Set<string>();
+  for (const row of metaAdsetRows) {
+    const adsetId = row.adsetId.trim();
+    if (!adsetId) continue;
+    metaAdsetDays.add(`${row.campaignId.trim()}|${utcDateYmd(row.date)}`);
+    addRowSpend("meta", adsetId, row.adsetName, row.date, Number(row.spend));
+    const adset = map.get(campaignKey("meta", adsetId));
+    if (adset && row.campaignName.trim()) {
+      adset.parentCampaignName = row.campaignName.trim();
+    }
   }
   for (const row of metaRows) {
-    addSpend("meta", row.campaignId, row.campaignName, row.date, Number(row.spend));
+    const id = row.campaignId.trim();
+    if (!id) continue;
+    const spend = Number(row.spend);
+    addDailySpend("meta", row.date, spend);
+    // Reklam seti verisi olmayan günler (ör. 90 günden eski) kampanya satırında kalır.
+    if (spend > 0 && !metaAdsetDays.has(`${id}|${utcDateYmd(row.date)}`)) {
+      addRowSpend("meta", id, row.campaignName, row.date, spend);
+    }
   }
   for (const row of campaignRows) {
     const provider = row.provider as BudgetProvider;

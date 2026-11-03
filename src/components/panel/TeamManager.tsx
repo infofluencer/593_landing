@@ -255,13 +255,15 @@ export default function TeamManager({
               : " Sunucuda WHATSAPP_ACCESS_TOKEN, WHATSAPP_PHONE_NUMBER_ID ve onaylı şablon adı tanımlanmalı."}
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => void testWhatsApp()}
-          className="rounded-md border border-current/30 px-3 py-1.5 text-xs font-semibold hover:bg-white/60"
-        >
-          Test mesajı gönder
-        </button>
+        {canManageUsers ? (
+          <button
+            type="button"
+            onClick={() => void testWhatsApp()}
+            className="rounded-md border border-current/30 px-3 py-1.5 text-xs font-semibold hover:bg-white/60"
+          >
+            Test mesajı gönder
+          </button>
+        ) : null}
       </div>
 
       {error ? (

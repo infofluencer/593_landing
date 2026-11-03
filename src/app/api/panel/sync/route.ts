@@ -107,6 +107,8 @@ export async function POST(request: Request) {
         tenantSlug,
         siteVerify,
         providers: resolvedProviders,
+        // Tam sync BM'deki yeni hesaplardan marka açar; bu yetkisi olmayan rol tetikleyemez.
+        skipProvision: !can(session.user.role, "brands.create"),
       });
       for (const t of tenants) {
         for (const provider of resolvedProviders) {

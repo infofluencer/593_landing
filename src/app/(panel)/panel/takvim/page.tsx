@@ -23,7 +23,7 @@ export default async function ContentCalendarPage({
 }) {
   const session = await auth();
   if (!session?.user) redirect("/login");
-  if (!isStaffRole(session.user.role)) redirect("/");
+  if (!isStaffRole(session.user.role) && !session.user.viewOnly) redirect("/");
   const h = await headers();
   if (h.get("x-panel-mode") !== "staff") redirect("/login?error=AccessDenied");
 
@@ -38,7 +38,7 @@ export default async function ContentCalendarPage({
   const [tenants, staff] = await Promise.all([
     // Pasif (gizli) markalar da listelenir — içerik planı görünürlükten bağımsız.
     prisma.tenant.findMany({
-      select: { id: true, name: true, slug: true, visible: true },
+      select: { id: true, name: true, slug: true, visible: true, coverUrl: true },
       orderBy: [{ visible: "desc" }, { name: "asc" }],
     }),
     prisma.user.findMany({

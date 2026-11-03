@@ -17,7 +17,7 @@ import { fixedTeamOrderBy, fixedTeamWhere } from "@/lib/panel/teams";
 export default async function BoardPage() {
   const session = await auth();
   if (!session?.user) redirect("/login");
-  if (!isStaffRole(session.user.role)) redirect("/");
+  if (!isStaffRole(session.user.role) && !session.user.viewOnly) redirect("/");
 
   const h = await headers();
   if (h.get("x-panel-mode") !== "staff") {
@@ -71,6 +71,7 @@ export default async function BoardPage() {
         teams={teams}
         tenants={tenants}
         canDeleteCards={can(session.user.role, "board.deleteCards")}
+        canEdit={can(session.user.role, "staff.access")}
       />
     </Suspense>
     </>

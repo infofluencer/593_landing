@@ -27,6 +27,8 @@ import {
 } from "lucide-react";
 import type { ContentPostStatus } from "@prisma/client";
 import { btnPrimary, btnSecondary, fieldClass } from "@/components/panel/ds/buttons";
+import { RichText } from "@/components/panel/RichText";
+import { brandInitials, resolveBrandCover } from "@/lib/panel/brand-logos";
 import {
   CONTENT_PLATFORMS,
   CONTENT_STATUSES,
@@ -81,7 +83,14 @@ const HOUR_PX = 56;
 const EVENT_MIN = 60; // dakika — içeriğin zaman ızgarasında kapladığı süre
 const SCROLL_TO_HOUR = 8;
 
-type TenantOpt = { id: string; name: string; slug: string; visible?: boolean };
+type TenantOpt = {
+  id: string;
+  name: string;
+  slug: string;
+  visible?: boolean;
+  coverUrl?: string | null;
+};
+type BrandMedia = ReturnType<typeof resolveBrandCover>;
 type StaffOpt = { id: string; label: string; teams: string[] };
 
 type Draft = {
@@ -336,6 +345,14 @@ export default function ContentCalendar({
   const colorOf = useCallback(
     (tenantId: string) => tenantColor.get(tenantId) ?? "#616161",
     [tenantColor],
+  );
+  const tenantMedia = useMemo(
+    () => new Map(tenants.map((t) => [t.id, resolveBrandCover(t)] as const)),
+    [tenants],
+  );
+  const mediaOf = useCallback(
+    (tenantId: string) => tenantMedia.get(tenantId) ?? null,
+    [tenantMedia],
   );
 
   /* ── görünür aralık ── */
@@ -865,6 +882,7 @@ export default function ContentCalendar({
               todayKey={todayKey}
               canEdit={canEdit}
               colorOf={colorOf}
+              mediaOf={mediaOf}
               dragId={dragId}
               dropKey={dropKey}
               setDropKey={setDropKey}
@@ -891,6 +909,7 @@ export default function ContentCalendar({
               nowMin={nowMin}
               canEdit={canEdit}
               colorOf={colorOf}
+              mediaOf={mediaOf}
               dragId={dragId}
               onOpenPost={(p) => setDraft(draftFromPost(p))}
               onCreate={(d) => openNew(d)}
@@ -987,6 +1006,7 @@ export default function ContentCalendar({
                         <EventChip
                           post={p}
                           color={colorOf(p.tenantId)}
+                          media={mediaOf(p.tenantId)}
                           size="lg"
                           onClick={() => {
                             setDayOpen(null);
@@ -1258,9 +1278,10 @@ function miniChip(active: boolean): string {
 }
 
 /**
- * Metne göre boyutlanan brief alanı: görünmez kopya yüksekliği belirler, textarea onu doldurur.
- * Tıklanınca büyür ve pencere kapanana kadar büyük kalır; blur'da küçülseydi altındaki
- * alanlar tıklama sırasında yer değiştirirdi.
+ * Metne göre boyutlanan brief alanı: okuma katmanı yüksekliği belirler, textarea onu doldurur.
+ * Odakta değilken okuma katmanı linkleri tıklanabilir gösterir; metne tıklayınca aynı noktada
+ * düzenlemeye geçer. Tıklanınca büyür ve pencere kapanana kadar büyük kalır; blur'da küçülseydi
+ * altındaki alanlar tıklama sırasında yer değiştirirdi.
  */
 function BriefField({
   value,
@@ -1272,26 +1293,61 @@ function BriefField({
   onChange: (value: string) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
-  const box = "rounded-xl border px-4 py-3 text-sm leading-relaxed [grid-area:1/1]";
+  const [editing, setEditing] = useState(false);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const viewRef = useRef<HTMLSpanElement>(null);
+  const box =
+    "rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm leading-relaxed text-[#141111] [grid-area:1/1]";
+
+  function startEditing(e: ReactMouseEvent) {
+    // Çevreleyen <label> odağı metnin sonuna taşımasın; metin seçip kopyalamak da serbest kalsın.
+    e.preventDefault();
+    const input = inputRef.current;
+    const view = viewRef.current;
+    const selection = window.getSelection();
+    if (disabled || !input || !view || selection?.isCollapsed === false) return;
+    let caret = value.length;
+    if (selection?.anchorNode && view.contains(selection.anchorNode)) {
+      const range = document.createRange();
+      range.selectNodeContents(view);
+      range.setEnd(selection.anchorNode, selection.anchorOffset);
+      caret = Math.min(range.toString().length, value.length);
+    }
+    input.scrollTop = view.scrollTop;
+    input.focus();
+    input.setSelectionRange(caret, caret);
+  }
+
   return (
     <span className="mt-1 grid">
-      <span
-        aria-hidden
-        className={`${box} invisible block overflow-hidden whitespace-pre-wrap break-words border-transparent transition-[min-height,max-height] duration-200 ${
-          expanded ? "min-h-80" : "min-h-44"
-        } ${expanded || disabled ? "max-h-[60vh]" : "max-h-72"}`}
-      >
-        {value}{" "}
-      </span>
       <textarea
+        ref={inputRef}
         rows={1}
-        className={`${box} h-full min-h-0 w-full resize-none border-zinc-300 bg-white text-[#141111] focus:border-[#141111] focus:outline-none`}
+        className={`${box} h-full min-h-0 w-full resize-none focus:border-[#141111] focus:outline-none`}
         value={value}
         disabled={disabled}
-        onFocus={() => setExpanded(true)}
+        onFocus={() => {
+          setExpanded(true);
+          setEditing(true);
+        }}
+        onBlur={(e) => {
+          if (viewRef.current) viewRef.current.scrollTop = e.currentTarget.scrollTop;
+          setEditing(false);
+        }}
         onChange={(e) => onChange(e.target.value)}
         placeholder="Tasarımcıya / içerik üreticisine not"
       />
+      <span
+        ref={viewRef}
+        onClick={startEditing}
+        className={`${box} block overflow-y-auto whitespace-pre-wrap break-words transition-[min-height,max-height] duration-200 ${
+          editing || !value ? "invisible" : ""
+        } ${disabled ? "" : "cursor-text"} ${expanded ? "min-h-80" : "min-h-44"} ${
+          expanded || disabled ? "max-h-[60vh]" : "max-h-72"
+        }`}
+      >
+        <RichText text={value} />{" "}
+      </span>
     </span>
   );
 }
@@ -1407,6 +1463,7 @@ function MiniCalendar({
 const EventChip = memo(function EventChip({
   post,
   color,
+  media,
   size = "sm",
   dragging,
   draggable,
@@ -1418,6 +1475,7 @@ const EventChip = memo(function EventChip({
 }: {
   post: SerializedPost;
   color: string;
+  media: BrandMedia;
   size?: "sm" | "md" | "lg";
   dragging?: boolean;
   draggable?: boolean;
@@ -1464,11 +1522,32 @@ const EventChip = memo(function EventChip({
         className,
       ].join(" ")}
     >
-      <span
-        className="mt-[5px] size-2 shrink-0 rounded-full ring-1 ring-white/70"
-        style={{ background: PLATFORM_DOT[post.platform as ContentPlatform] ?? "#71717a" }}
-        aria-hidden
-      />
+      <span className={`relative shrink-0 ${size === "lg" ? "size-5" : "size-4"}`} aria-hidden>
+        {media ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={media.src}
+            alt=""
+            draggable={false}
+            loading="lazy"
+            decoding="async"
+            className={`pointer-events-none size-full rounded-[4px] bg-white ${
+              media.fit === "contain" ? "object-contain p-px" : "object-cover"
+            }`}
+          />
+        ) : (
+          <span
+            className="flex size-full items-center justify-center rounded-[4px] bg-white text-[7px] font-bold leading-none"
+            style={{ color }}
+          >
+            {brandInitials(post.tenantName)}
+          </span>
+        )}
+        <span
+          className="absolute -bottom-px -right-px size-[7px] rounded-full ring-1 ring-white"
+          style={{ background: PLATFORM_DOT[post.platform as ContentPlatform] ?? "#71717a" }}
+        />
+      </span>
       <span className="min-w-0 flex-1">
         <span className={`block ${size === "lg" ? "whitespace-normal break-words font-semibold leading-snug" : "truncate font-medium"}`}>
           {size === "sm" ? (
@@ -1500,6 +1579,7 @@ function MonthView({
   todayKey,
   canEdit,
   colorOf,
+  mediaOf,
   dragId,
   dropKey,
   setDropKey,
@@ -1517,6 +1597,7 @@ function MonthView({
   todayKey: string | null;
   canEdit: boolean;
   colorOf: (tenantId: string) => string;
+  mediaOf: (tenantId: string) => BrandMedia;
   dragId: string | null;
   dropKey: string | null;
   setDropKey: (k: string | null) => void;
@@ -1623,6 +1704,7 @@ function MonthView({
                     <EventChip
                       post={p}
                       color={colorOf(p.tenantId)}
+                      media={mediaOf(p.tenantId)}
                       size="sm"
                       draggable={canEdit}
                       dragging={dragId === p.id}
@@ -1664,6 +1746,7 @@ function TimeGridView({
   nowMin,
   canEdit,
   colorOf,
+  mediaOf,
   dragId,
   onOpenPost,
   onCreate,
@@ -1678,6 +1761,7 @@ function TimeGridView({
   nowMin: number | null;
   canEdit: boolean;
   colorOf: (tenantId: string) => string;
+  mediaOf: (tenantId: string) => BrandMedia;
   dragId: string | null;
   onOpenPost: (p: SerializedPost) => void;
   onCreate: (d: Date) => void;
@@ -1829,6 +1913,7 @@ function TimeGridView({
                       key={post.id}
                       post={post}
                       color={colorOf(post.tenantId)}
+                      media={mediaOf(post.tenantId)}
                       size="md"
                       draggable={canEdit}
                       dragging={dragId === post.id}

@@ -8,28 +8,9 @@ import PeriodFilterBar from "@/components/panel/PeriodFilterBar";
 import { formatTry } from "@/lib/panel/format";
 import {
   budgetPacePct,
-  isManualCampaignId,
   summarizeBudgetPlan,
   type BrandBudgetPlan,
-  type BudgetProvider,
 } from "@/lib/panel/brand-budget";
-
-type Filter = "all" | BudgetProvider;
-
-type DraftRow = {
-  provider: BudgetProvider;
-  campaignId: string;
-  campaignName: string;
-  label: string;
-  audience: string;
-  location: string;
-  monthly: string;
-  daily: string;
-  monthSpend: number;
-  todaySpend: number;
-  avgDailySpend: number;
-  active: boolean;
-};
 
 function moneyToInput(value: number | null): string {
   if (value == null) return "";
@@ -111,7 +92,6 @@ function PlannerForm({ plan }: { plan: BrandBudgetPlan }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [saving, setSaving] = useState(false);
-  const [filter, setFilter] = useState<Filter>("all");
   const [brandMonthly, setBrandMonthly] = useState(
     moneyToInput(plan.brand.monthlyBudget),
   );
@@ -125,39 +105,8 @@ function PlannerForm({ plan }: { plan: BrandBudgetPlan }) {
     moneyToInput(plan.brand.metaBudget),
   );
   const [brandNote, setBrandNote] = useState(plan.brand.note);
-  const [rows, setRows] = useState<DraftRow[]>(() =>
-    plan.campaigns.map((c) => ({
-      provider: c.provider,
-      campaignId: c.campaignId,
-      campaignName: c.campaignName,
-      label: c.label ?? "",
-      audience: c.audience ?? "",
-      location: c.location ?? "",
-      monthly: moneyToInput(c.monthlyBudget),
-      daily: moneyToInput(c.dailyBudget),
-      monthSpend: c.monthSpend,
-      todaySpend: c.todaySpend,
-      avgDailySpend: c.avgDailySpend,
-      active: c.active,
-    })),
-  );
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [removed, setRemoved] = useState<
-    Array<{ provider: BudgetProvider; campaignId: string }>
-  >([]);
-  const [draftName, setDraftName] = useState("");
-  const [draftProvider, setDraftProvider] = useState<BudgetProvider>("meta");
-
-  const visible = useMemo(
-    () => (filter === "all" ? rows : rows.filter((r) => r.provider === filter)),
-    [filter, rows],
-  );
-  const activeRows = useMemo(() => visible.filter((r) => r.active), [visible]);
-  const inactiveRows = useMemo(
-    () => visible.filter((r) => !r.active),
-    [visible],
-  );
 
   const summary = useMemo(
     () =>
@@ -170,22 +119,16 @@ function PlannerForm({ plan }: { plan: BrandBudgetPlan }) {
               metaBudget: parseDraft(brandMeta),
             }
           : plan.rangeBrand,
-        rows.map((row) => ({
-          provider: row.provider,
-          monthlyBudget: parseDraft(row.monthly),
-          dailyBudget: parseDraft(row.daily),
-          monthSpend: row.monthSpend,
-          todaySpend: row.todaySpend,
-        })),
+        plan.campaigns,
       ),
     [
       brandDaily,
       brandGoogle,
       brandMeta,
       brandMonthly,
+      plan.campaigns,
       plan.canEdit,
       plan.rangeBrand,
-      rows,
     ],
   );
 
@@ -197,58 +140,6 @@ function PlannerForm({ plan }: { plan: BrandBudgetPlan }) {
     summary.plannedMonthly != null && summary.plannedMonthly > 0
       ? summary.plannedMonthly / plan.daysInMonth
       : null;
-
-  function setRow(
-    provider: BudgetProvider,
-    campaignId: string,
-    field: "monthly" | "daily" | "label" | "audience" | "location",
-    value: string,
-  ) {
-    setRows((prev) =>
-      prev.map((row) =>
-        row.provider === provider && row.campaignId === campaignId
-          ? { ...row, [field]: value }
-          : row,
-      ),
-    );
-  }
-
-  function addManualCampaign() {
-    const name = draftName.trim();
-    if (!name) {
-      setError("Elle eklemek için kampanya adı yazın");
-      return;
-    }
-    const campaignId = `manual_${crypto.randomUUID().replace(/-/g, "").slice(0, 16)}`;
-    setError(null);
-    setRows((prev) => [
-      {
-        provider: draftProvider,
-        campaignId,
-        campaignName: name,
-        label: name,
-        audience: "",
-        location: "",
-        monthly: "",
-        daily: "",
-        monthSpend: 0,
-        todaySpend: 0,
-        avgDailySpend: 0,
-        active: true,
-      },
-      ...prev,
-    ]);
-    setDraftName("");
-  }
-
-  function removeManualCampaign(provider: BudgetProvider, campaignId: string) {
-    setRows((prev) =>
-      prev.filter(
-        (row) => !(row.provider === provider && row.campaignId === campaignId),
-      ),
-    );
-    setRemoved((prev) => [...prev, { provider, campaignId }]);
-  }
 
   async function onSave() {
     if (saving || !plan.canEdit) return;
@@ -268,17 +159,6 @@ function PlannerForm({ plan }: { plan: BrandBudgetPlan }) {
             googleBudget: brandGoogle,
             metaBudget: brandMeta,
             note: brandNote,
-            campaigns: rows.map((row) => ({
-              provider: row.provider,
-              campaignId: row.campaignId,
-              campaignName: row.campaignName,
-              label: row.label,
-              audience: row.audience,
-              location: row.location,
-              monthlyBudget: row.monthly,
-              dailyBudget: row.daily,
-            })),
-            removeCampaigns: removed,
           }),
         },
       );
@@ -288,7 +168,6 @@ function PlannerForm({ plan }: { plan: BrandBudgetPlan }) {
         return;
       }
       setMessage("Planlanan bütçe kaydedildi.");
-      setRemoved([]);
       startTransition(() => {
         router.refresh();
       });
@@ -504,183 +383,9 @@ function PlannerForm({ plan }: { plan: BrandBudgetPlan }) {
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <p className="text-sm font-semibold text-zinc-900">
-            Kampanya planı
-          </p>
-          <p className="mt-0.5 text-xs text-zinc-500">
-            Aktif olanlar ayrı · durdurulanlar altta
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-1.5">
-          {(
-            [
-              ["all", "Tümü"],
-              ["meta", "Meta"],
-              ["google", "Google"],
-            ] as const
-          ).map(([id, label]) => (
-            <button
-              key={id}
-              type="button"
-              onClick={() => setFilter(id)}
-              className={`rounded-md border px-2.5 py-1 text-xs font-medium transition ${
-                filter === id
-                  ? "border-[#e91825]/40 bg-[#e91825]/10 text-[#e91825]"
-                  : "border-zinc-200 bg-white text-zinc-600 hover:border-zinc-300 hover:text-zinc-900"
-              }`}
-            >
-              {label}
-            </button>
-          ))}
-          <span className="pl-1 text-[11px] text-zinc-500">
-            {activeRows.length} aktif · {inactiveRows.length} değil ·{" "}
-            {plan.isCurrentMonth
-              ? `${plan.dayOfMonth}/${plan.daysInMonth} gün`
-              : `${plan.daysInMonth} gün`}
-          </span>
-        </div>
-      </div>
-
-      {plan.canEdit ? (
-        <div className="flex flex-wrap items-end gap-2 rounded-lg border border-dashed border-zinc-200 bg-zinc-50 px-3 py-2.5">
-          <label className="min-w-[7rem] space-y-1">
-            <span className="text-[10px] font-medium uppercase tracking-[0.1em] text-zinc-500">
-              Platform
-            </span>
-            <select
-              className={nameInputClass}
-              value={draftProvider}
-              onChange={(e) =>
-                setDraftProvider(e.target.value as BudgetProvider)
-              }
-            >
-              <option value="meta">Meta</option>
-              <option value="google">Google</option>
-            </select>
-          </label>
-          <label className="min-w-[12rem] flex-1 space-y-1">
-            <span className="text-[10px] font-medium uppercase tracking-[0.1em] text-zinc-500">
-              Yeni kampanya
-            </span>
-            <input
-              className={nameInputClass}
-              placeholder="API’de yok — plan için ad yazın"
-              value={draftName}
-              onChange={(e) => setDraftName(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  addManualCampaign();
-                }
-              }}
-            />
-          </label>
-          <button
-            type="button"
-            onClick={addManualCampaign}
-            className="rounded-md border border-zinc-200 bg-white px-3 py-1.5 text-xs font-semibold text-zinc-800 hover:border-zinc-300"
-          >
-            Kampanya ekle
-          </button>
-        </div>
-      ) : null}
-
-      {visible.length === 0 ? (
-        <p className="rounded-lg border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-600">
-          Bu dönemde API kampanyası yok. Yukarıdan plan kampanyası
-          ekleyebilirsiniz.
-        </p>
-      ) : (
-        <div className="overflow-x-auto rounded-lg border border-zinc-200">
-          <table className="min-w-full text-left text-sm">
-            <thead className="bg-zinc-50 text-[11px] font-semibold uppercase tracking-[0.1em] text-zinc-500">
-              <tr>
-                <th className="px-3 py-2" rowSpan={2}>
-                  Kampanya
-                </th>
-                <th className="px-3 py-2" rowSpan={2}>
-                  Platform
-                </th>
-                <th
-                  className="border-l border-zinc-200 px-3 py-2 text-center text-[#e91825]"
-                  colSpan={2}
-                >
-                  Planlama
-                </th>
-                <th
-                  className="border-l border-zinc-200 px-3 py-2 text-center text-[#e91825]"
-                  colSpan={2}
-                >
-                  Planlanan
-                </th>
-                <th
-                  className="border-l border-zinc-200 px-3 py-2 text-center"
-                  colSpan={2}
-                >
-                  Gerçekleşen
-                </th>
-                <th className="border-l border-zinc-200 px-3 py-2 text-right" rowSpan={2}>
-                  Tempo
-                </th>
-              </tr>
-              <tr>
-                <th className="border-l border-zinc-200 px-3 py-2">
-                  Hedef kitle
-                </th>
-                <th className="px-3 py-2">Konum</th>
-                <th className="border-l border-zinc-200 px-3 py-2 text-right">
-                  Günlük
-                </th>
-                <th className="px-3 py-2 text-right">Aylık</th>
-                <th className="border-l border-zinc-200 px-3 py-2 text-right">
-                  Günlük
-                </th>
-                <th className="px-3 py-2 text-right">Ay</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-zinc-100">
-              {activeRows.length > 0 ? (
-                <GroupHeader
-                  label="Aktif · planlanan"
-                  count={activeRows.length}
-                />
-              ) : null}
-              {activeRows.map((row) => (
-                <PlannerRow
-                  key={`${row.provider}-${row.campaignId}`}
-                  row={row}
-                  plan={plan}
-                  muted={false}
-                  onChange={setRow}
-                  onRemove={removeManualCampaign}
-                />
-              ))}
-              {inactiveRows.length > 0 ? (
-                <GroupHeader
-                  label="Aktif değil"
-                  count={inactiveRows.length}
-                />
-              ) : null}
-              {inactiveRows.map((row) => (
-                <PlannerRow
-                  key={`${row.provider}-${row.campaignId}`}
-                  row={row}
-                  plan={plan}
-                  muted
-                  onChange={setRow}
-                  onRemove={removeManualCampaign}
-                />
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-xs text-zinc-500">
           {plan.canEdit
-            ? "Planlanan rakam Ads’e yazılmaz. Boş satır plansız kalır."
+            ? "Planlanan rakam Ads’e yazılmaz."
             : "Bu aralıkta düzenleme yok — tek ay seçin."}
         </p>
         <button
@@ -695,187 +400,6 @@ function PlannerForm({ plan }: { plan: BrandBudgetPlan }) {
       {error ? <p className="text-sm text-rose-600">{error}</p> : null}
       {message ? <p className="text-sm text-emerald-700">{message}</p> : null}
     </section>
-  );
-}
-
-function GroupHeader({ label, count }: { label: string; count: number }) {
-  return (
-    <tr className="bg-zinc-50">
-      <td
-        colSpan={9}
-        className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-zinc-500"
-      >
-        {label}
-        <span className="ml-1.5 font-medium normal-case tracking-normal text-zinc-400">
-          {count}
-        </span>
-      </td>
-    </tr>
-  );
-}
-
-/** API'den gelen kampanya adı: tam metin, seçilebilir + kopyala. */
-function CampaignApiName({ name }: { name: string }) {
-  const [copied, setCopied] = useState(false);
-  async function copy() {
-    try {
-      await navigator.clipboard.writeText(name);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    } catch {
-      // Pano erişimi yoksa metin yine seçilip kopyalanabilir.
-    }
-  }
-  return (
-    <div className="mt-1 flex items-start gap-1.5">
-      <p
-        className="min-w-0 flex-1 select-text break-all text-[11px] leading-snug text-zinc-500"
-        title={name}
-      >
-        <span className="font-semibold text-zinc-400">API:</span> {name}
-      </p>
-      <button
-        type="button"
-        onClick={copy}
-        title="Kampanya adını kopyala"
-        className="shrink-0 rounded border border-zinc-200 px-1.5 py-0.5 text-[10px] font-medium text-zinc-500 hover:border-zinc-300 hover:text-zinc-900"
-      >
-        {copied ? "Kopyalandı" : "Kopyala"}
-      </button>
-    </div>
-  );
-}
-
-function PlannerRow({
-  row,
-  plan,
-  muted,
-  onChange,
-  onRemove,
-}: {
-  row: DraftRow;
-  plan: BrandBudgetPlan;
-  muted: boolean;
-  onChange: (
-    provider: BudgetProvider,
-    campaignId: string,
-    field: "monthly" | "daily" | "label" | "audience" | "location",
-    value: string,
-  ) => void;
-  onRemove: (provider: BudgetProvider, campaignId: string) => void;
-}) {
-  const monthly = parseDraft(row.monthly);
-  const rowPace = budgetPacePct(row.monthSpend, monthly);
-  return (
-    <tr className={muted ? "bg-zinc-50/70 text-zinc-500" : undefined}>
-      <td className="min-w-[14rem] max-w-[20rem] px-3 py-2 align-middle">
-        <input
-          className={nameInputClass}
-          placeholder={
-            isManualCampaignId(row.campaignId)
-              ? row.campaignName
-              : "Görünen adı özelleştir"
-          }
-          title={row.label || row.campaignName}
-          disabled={!plan.canEdit}
-          value={row.label}
-          onChange={(e) =>
-            onChange(row.provider, row.campaignId, "label", e.target.value)
-          }
-        />
-        {isManualCampaignId(row.campaignId) ? (
-          <div className="mt-1 flex flex-wrap items-center gap-2">
-            <span className="rounded bg-zinc-100 px-1.5 py-0.5 text-[10px] font-semibold text-zinc-600">
-              Elle eklendi
-            </span>
-            {plan.canEdit ? (
-              <button
-                type="button"
-                onClick={() => onRemove(row.provider, row.campaignId)}
-                className="text-[10px] font-medium text-rose-600 hover:underline"
-              >
-                Kaldır
-              </button>
-            ) : null}
-          </div>
-        ) : (
-          <CampaignApiName name={row.campaignName} />
-        )}
-      </td>
-      <td className="px-3 py-2 align-middle">
-        <span
-          className={`rounded-md px-1.5 py-0.5 text-[10px] font-semibold ${
-            row.provider === "meta"
-              ? "bg-blue-50 text-blue-800"
-              : "bg-emerald-50 text-emerald-800"
-          }`}
-        >
-          {row.provider === "meta" ? "Meta" : "Google"}
-        </span>
-      </td>
-      <td className="border-l border-zinc-100 px-3 py-2 align-middle">
-        <input
-          className={nameInputClass}
-          placeholder="ör. 25–34, kadın"
-          disabled={!plan.canEdit}
-          value={row.audience}
-          onChange={(e) =>
-            onChange(row.provider, row.campaignId, "audience", e.target.value)
-          }
-        />
-      </td>
-      <td className="px-3 py-2 align-middle">
-        <input
-          className={nameInputClass}
-          placeholder="ör. İstanbul, Ankara"
-          disabled={!plan.canEdit}
-          value={row.location}
-          onChange={(e) =>
-            onChange(row.provider, row.campaignId, "location", e.target.value)
-          }
-        />
-      </td>
-      <td className="border-l border-zinc-100 px-3 py-2 align-middle">
-        <input
-          className={inputClass}
-          inputMode="decimal"
-          placeholder="—"
-          disabled={!plan.canEdit}
-          value={row.daily}
-          onChange={(e) =>
-            onChange(row.provider, row.campaignId, "daily", e.target.value)
-          }
-        />
-      </td>
-      <td className="px-3 py-2 align-middle">
-        <input
-          className={inputClass}
-          inputMode="decimal"
-          placeholder="—"
-          disabled={!plan.canEdit}
-          value={row.monthly}
-          onChange={(e) =>
-            onChange(row.provider, row.campaignId, "monthly", e.target.value)
-          }
-        />
-      </td>
-      <td className="border-l border-zinc-100 px-3 py-2 text-right align-middle tabular-nums text-zinc-800">
-        {formatTry(row.avgDailySpend, plan.currency)}
-        {plan.isCurrentMonth ? (
-          <p className="mt-0.5 text-[10px] text-zinc-500">
-            Bugün {formatTry(row.todaySpend, plan.currency)}
-          </p>
-        ) : null}
-      </td>
-      <td className="px-3 py-2 text-right align-middle font-medium tabular-nums text-zinc-800">
-        {formatTry(row.monthSpend, plan.currency)}
-      </td>
-      <td
-        className={`border-l border-zinc-100 px-3 py-2 text-right align-middle text-xs font-semibold tabular-nums ${paceTone(rowPace, plan.warnPct)}`}
-      >
-        {rowPace == null ? "—" : `%${rowPace}`}
-      </td>
-    </tr>
   );
 }
 
@@ -917,7 +441,7 @@ function ChannelCompare({
         </div>
       </div>
       <p className={`mt-2 text-xs font-semibold tabular-nums ${paceTone(pace, warnPct)}`}>
-        {pace == null ? "Kampanya planı yok" : `%${pace} tempo`}
+        {pace == null ? "Plan yok" : `%${pace} tempo`}
       </p>
     </div>
   );

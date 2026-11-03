@@ -82,6 +82,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           email: string;
           name: string | null;
           role: Role;
+          viewOnly: boolean;
           passwordHash: string;
           memberships: { tenantId: string }[];
         };
@@ -149,6 +150,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           email: user.email,
           name: user.name ?? undefined,
           role: user.role,
+          viewOnly: user.viewOnly,
           tenantIds: user.memberships.map((m) => m.tenantId),
         };
       },
@@ -166,7 +168,35 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       if (user) {
         token.id = user.id;
         token.role = user.role;
+        token.viewOnly = user.viewOnly;
         token.tenantIds = user.tenantIds;
+      } else {
+        // JWT 30 gün geçerli: silinen kullanıcı veya değişen rol anında etkili olsun.
+        // id reseed sonrası bayat olabilir, e-posta yedek. Geçici DB hatası oturumu kapatmaz.
+        const id = typeof token.id === "string" ? token.id : token.sub;
+        try {
+          const current = await prisma.user.findFirst({
+            where: {
+              OR: [
+                ...(id ? [{ id }] : []),
+                ...(token.email ? [{ email: token.email }] : []),
+              ],
+            },
+            select: {
+              id: true,
+              role: true,
+              viewOnly: true,
+              memberships: { select: { tenantId: true } },
+            },
+          });
+          if (!current) return null;
+          token.id = current.id;
+          token.role = current.role;
+          token.viewOnly = current.viewOnly;
+          token.tenantIds = current.memberships.map((m) => m.tenantId);
+        } catch (err) {
+          console.error("[auth] oturum doğrulanamadı", err);
+        }
       }
       if (!token.id && typeof token.sub === "string") {
         token.id = token.sub;
@@ -182,13 +212,14 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
               ? token.sub
               : "";
         session.user.id = id;
+        // Görüntüleyici: tüm yetki kontrolleri üyeliksiz en kısıtlı hesabı görür; DB'deki rol ve ekipler değişmez.
+        const viewOnly = token.viewOnly === true;
+        session.user.viewOnly = viewOnly;
         session.user.role =
-          token.role === "admin" ||
-          token.role === "team" ||
-          token.role === "client"
+          !viewOnly && (token.role === "admin" || token.role === "team")
             ? token.role
             : "client";
-        session.user.tenantIds = Array.isArray(token.tenantIds)
+        session.user.tenantIds = !viewOnly && Array.isArray(token.tenantIds)
           ? token.tenantIds.filter((id): id is string => typeof id === "string")
           : [];
       }

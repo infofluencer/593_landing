@@ -7,12 +7,14 @@ declare module "next-auth" {
       id: string;
       role: Role;
       tenantIds: string[];
+      viewOnly: boolean;
     } & DefaultSession["user"];
   }
 
   interface User {
     role: Role;
     tenantIds: string[];
+    viewOnly: boolean;
   }
 }
 
@@ -21,5 +23,6 @@ declare module "next-auth/jwt" {
     id?: string;
     role?: Role;
     tenantIds?: string[];
+    viewOnly?: boolean;
   }
 }

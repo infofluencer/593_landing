@@ -53,6 +53,7 @@ import {
   avatarTone,
   getColumnStatusMeta,
 } from "@/components/panel/TeamPlatformIcon";
+import { RichText, URL_RE } from "@/components/panel/RichText";
 
 type StaffUser = {
   id: string;
@@ -251,12 +252,14 @@ export default function StatusBoard({
   teams,
   tenants,
   canDeleteCards,
+  canEdit,
 }: {
   initialBoard: Board;
   staff: StaffUser[];
   teams: TeamRef[];
   tenants: TenantRef[];
   canDeleteCards: boolean;
+  canEdit: boolean;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -940,9 +943,11 @@ export default function StatusBoard({
 
       {filters.group === "team" ? (
         <div className="space-y-6">
-          <p className="text-xs text-zinc-500">
-            Takım görünümü — sürükle-bırak için “Durum” moduna geçin.
-          </p>
+          {canEdit ? (
+            <p className="text-xs text-zinc-500">
+              Takım görünümü — sürükle-bırak için “Durum” moduna geçin.
+            </p>
+          ) : null}
           {(teamStrips?.length ?? 0) === 0 ? (
             <p className="rounded-xl border border-dashed border-zinc-200 bg-zinc-50 px-4 py-8 text-center text-sm text-zinc-500">
               Bu filtrelerle kart yok.
@@ -1040,6 +1045,7 @@ export default function StatusBoard({
               <BoardColumn
                 key={col.id}
                 column={col}
+                canEdit={canEdit}
                 reducedMotion={reducedMotion}
                 composerOpen={composerColumnId === col.id}
                 onOpenComposer={() => {
@@ -1123,7 +1129,7 @@ export default function StatusBoard({
           >
             <div className="flex items-center justify-between gap-3 border-b border-zinc-100 px-5 py-3">
               <h3 id="card-edit-title" className="text-base font-semibold">
-                Görevi düzenle
+                {canEdit ? "Görevi düzenle" : "Görev"}
               </h3>
               <button
                 type="button"
@@ -1135,6 +1141,7 @@ export default function StatusBoard({
               </button>
             </div>
             <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-5 py-4">
+            <fieldset disabled={!canEdit} className="min-w-0 space-y-3">
             <input
               value={draftTitle}
               onChange={(e) => setDraftTitle(e.target.value)}
@@ -1144,12 +1151,14 @@ export default function StatusBoard({
             <DescriptionField
               key={editing.id}
               value={draftDesc}
+              readOnly={!canEdit}
               onChange={setDraftDesc}
               onPasteImages={(files) => void uploadCardImages(editing.id, files)}
             />
             <CardImagesField
               images={editingImages}
               uploading={uploadingImages > 0}
+              readOnly={!canEdit}
               onAdd={(files) => void uploadCardImages(editing.id, files)}
               onRemove={(url) => void removeCardImage(editing.id, url)}
             />
@@ -1214,6 +1223,7 @@ export default function StatusBoard({
               <div className="flex max-h-28 flex-wrap gap-1.5 overflow-y-auto">
                 {staff.map((u) => {
                   const on = draftAssigneeIds.includes(u.id);
+                  if (!canEdit && !on) return null;
                   return (
                     <button
                       key={u.id}
@@ -1242,6 +1252,7 @@ export default function StatusBoard({
                 className="mt-1 w-full rounded-md border border-zinc-200 px-3 py-2 text-sm outline-none focus:border-[#e91825]"
               />
             </label>
+            </fieldset>
 
             {(editing.activities?.length ?? 0) > 0 ? (
               <div>
@@ -1272,13 +1283,15 @@ export default function StatusBoard({
 
             </div>
             <div className="flex flex-wrap gap-2 border-t border-zinc-100 px-5 py-3">
-              <button
-                type="button"
-                onClick={() => void saveEdit()}
-                className="rounded-md bg-[#e91825] px-3 py-2 text-sm font-medium text-white hover:bg-[#c91420]"
-              >
-                Kaydet
-              </button>
+              {canEdit ? (
+                <button
+                  type="button"
+                  onClick={() => void saveEdit()}
+                  className="rounded-md bg-[#e91825] px-3 py-2 text-sm font-medium text-white hover:bg-[#c91420]"
+                >
+                  Kaydet
+                </button>
+              ) : null}
               <button
                 type="button"
                 onClick={() => setEditing(null)}
@@ -1305,6 +1318,7 @@ export default function StatusBoard({
 
 function BoardColumn({
   column,
+  canEdit,
   reducedMotion,
   composerOpen,
   onOpenComposer,
@@ -1333,6 +1347,7 @@ function BoardColumn({
   tenants,
 }: {
   column: Column;
+  canEdit: boolean;
   reducedMotion: boolean;
   composerOpen: boolean;
   onOpenComposer: () => void;
@@ -1367,7 +1382,11 @@ function BoardColumn({
     transform,
     transition,
     isDragging,
-  } = useSortable({ id: column.id, data: { type: "column" } });
+  } = useSortable({
+    id: column.id,
+    data: { type: "column" },
+    disabled: !canEdit,
+  });
 
   const { setNodeRef: setDropRef, isOver } = useDroppable({
     id: column.id,
@@ -1392,15 +1411,17 @@ function BoardColumn({
       className="flex max-h-[calc(100dvh-19rem)] min-h-[24rem] w-72 shrink-0 flex-col gap-2"
     >
       <header className="flex items-center gap-2 rounded-xl border border-zinc-200 bg-white px-2 py-2.5 shadow-sm">
-        <button
-          type="button"
-          className="cursor-grab touch-none rounded p-1 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-600 active:cursor-grabbing"
-          aria-label={`${column.name} kolonunu taşı`}
-          {...attributes}
-          {...listeners}
-        >
-          <GripVertical className="size-4" aria-hidden />
-        </button>
+        {canEdit ? (
+          <button
+            type="button"
+            className="cursor-grab touch-none rounded p-1 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-600 active:cursor-grabbing"
+            aria-label={`${column.name} kolonunu taşı`}
+            {...attributes}
+            {...listeners}
+          >
+            <GripVertical className="size-4" aria-hidden />
+          </button>
+        ) : null}
         {(() => {
           const meta = getColumnStatusMeta(column.name);
           const Icon = meta.Icon;
@@ -1437,6 +1458,7 @@ function BoardColumn({
               key={card.id}
               card={card}
               columnName={column.name}
+              canEdit={canEdit}
               reducedMotion={reducedMotion}
               onEdit={() => onEditCard(card)}
               onDelete={onDeleteCard ? () => onDeleteCard(card.id) : undefined}
@@ -1549,7 +1571,7 @@ function BoardColumn({
             </button>
           </div>
         </div>
-      ) : (
+      ) : canEdit ? (
         <button
           type="button"
           onClick={onOpenComposer}
@@ -1557,7 +1579,7 @@ function BoardColumn({
         >
           + Görev ekle
         </button>
-      )}
+      ) : null}
       </div>
     </section>
   );
@@ -1566,12 +1588,14 @@ function BoardColumn({
 function SortableCard({
   card,
   columnName,
+  canEdit,
   reducedMotion,
   onEdit,
   onDelete,
 }: {
   card: Card;
   columnName: string;
+  canEdit: boolean;
   reducedMotion: boolean;
   onEdit: () => void;
   onDelete?: () => void;
@@ -1583,7 +1607,11 @@ function SortableCard({
     transform,
     transition,
     isDragging,
-  } = useSortable({ id: card.id, data: { type: "card", card } });
+  } = useSortable({
+    id: card.id,
+    data: { type: "card", card },
+    disabled: !canEdit,
+  });
 
   const style: CSSProperties = {
     transform: CSS.Transform.toString(transform),
@@ -1594,7 +1622,7 @@ function SortableCard({
   return (
     <li ref={setNodeRef} style={style}>
       <div
-        {...attributes}
+        {...(canEdit ? attributes : { role: "button", tabIndex: 0 })}
         {...listeners}
         onClick={onEdit}
         onKeyDown={(e) => {
@@ -1603,8 +1631,10 @@ function SortableCard({
             onEdit();
           }
         }}
-        className="cursor-grab touch-none rounded-2xl text-left outline-none active:cursor-grabbing focus-visible:ring-2 focus-visible:ring-[#e91825]/40 focus-visible:ring-offset-1"
-        aria-label={`${card.title} — sürükle veya düzenle`}
+        className={`rounded-2xl text-left outline-none focus-visible:ring-2 focus-visible:ring-[#e91825]/40 focus-visible:ring-offset-1 ${
+          canEdit ? "cursor-grab touch-none active:cursor-grabbing" : "cursor-pointer"
+        }`}
+        aria-label={canEdit ? `${card.title} — sürükle veya düzenle` : `${card.title} — görüntüle`}
       >
         <CardFace
           card={card}
@@ -1616,8 +1646,6 @@ function SortableCard({
     </li>
   );
 }
-
-const URL_RE = /https?:\/\/[^\s<>"'()]+/gi;
 
 /** Açıklamadaki http(s) bağlantıları (sondaki noktalama hariç, tekrarsız). */
 function extractLinks(text: string | null | undefined): string[] {
@@ -1662,52 +1690,18 @@ function DescriptionLinks({ text }: { text: string }) {
   );
 }
 
-/** Metin içindeki linkleri yerinde tıklanabilir yapar; satır sonları korunur. */
-function RichText({ text }: { text: string }) {
-  const parts: Array<{ kind: "text" | "link"; value: string }> = [];
-  let last = 0;
-  for (const m of text.matchAll(URL_RE)) {
-    const start = m.index ?? 0;
-    let url = m[0];
-    const trimmed = url.replace(/[.,;:!?]+$/, "");
-    url = trimmed;
-    if (start > last) parts.push({ kind: "text", value: text.slice(last, start) });
-    parts.push({ kind: "link", value: url });
-    last = start + url.length;
-  }
-  if (last < text.length) parts.push({ kind: "text", value: text.slice(last) });
-  return (
-    <>
-      {parts.map((p, i) =>
-        p.kind === "link" ? (
-          <a
-            key={i}
-            href={p.value}
-            target="_blank"
-            rel="noopener noreferrer"
-            onClick={(e) => e.stopPropagation()}
-            className="break-all text-sky-700 underline decoration-sky-300 underline-offset-2 hover:text-sky-900"
-          >
-            {p.value}
-          </a>
-        ) : (
-          <span key={i}>{p.value}</span>
-        ),
-      )}
-    </>
-  );
-}
-
 /**
  * Açıklama — doluysa okunaklı büyük metin olarak gösterilir (linkler tıklanır),
  * üzerine tıklayınca veya "Düzenle" ile kendiliğinden büyüyen alana geçer.
  */
 function DescriptionField({
   value,
+  readOnly,
   onChange,
   onPasteImages,
 }: {
   value: string;
+  readOnly: boolean;
   onChange: (next: string) => void;
   onPasteImages: (files: File[]) => void;
 }) {
@@ -1733,6 +1727,18 @@ function DescriptionField({
   function startEdit() {
     focusOnEdit.current = true;
     setMode("edit");
+  }
+
+  if (readOnly) {
+    if (!value.trim()) return null;
+    return (
+      <div className="space-y-2">
+        <div className="max-h-[40vh] overflow-y-auto whitespace-pre-wrap break-words rounded-lg border border-zinc-200 bg-zinc-50/70 px-3 py-2 text-[15px] leading-relaxed text-zinc-800">
+          <RichText text={value} />
+        </div>
+        <DescriptionLinks text={value} />
+      </div>
+    );
   }
 
   if (mode === "read") {
@@ -2058,21 +2064,25 @@ function CardFace({
 function CardImagesField({
   images,
   uploading,
+  readOnly,
   onAdd,
   onRemove,
 }: {
   images: string[];
   uploading: boolean;
+  readOnly: boolean;
   onAdd: (files: File[]) => void;
   onRemove: (url: string) => void;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragOver, setDragOver] = useState(false);
 
+  if (readOnly && images.length === 0) return null;
+
   return (
     <div
       onDragOver={(e) => {
-        if (!e.dataTransfer.types.includes("Files")) return;
+        if (readOnly || !e.dataTransfer.types.includes("Files")) return;
         e.preventDefault();
         setDragOver(true);
       }}
@@ -2080,6 +2090,7 @@ function CardImagesField({
       onDrop={(e) => {
         e.preventDefault();
         setDragOver(false);
+        if (readOnly) return;
         onAdd(Array.from(e.dataTransfer.files));
       }}
       className={[
@@ -2091,29 +2102,33 @@ function CardImagesField({
         <span className="text-[11px] font-medium text-zinc-500">
           Referans görselleri
         </span>
-        <span className="text-[10px] text-zinc-400">
-          İlk görsel kart kapağı olur
-        </span>
-        <button
-          type="button"
-          onClick={() => inputRef.current?.click()}
-          disabled={uploading}
-          className="ml-auto inline-flex items-center gap-1 rounded-md border border-zinc-200 px-2 py-1 text-xs text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
-        >
-          <ImagePlus className="size-3.5" aria-hidden />
-          {uploading ? "Yükleniyor…" : "Görsel ekle"}
-        </button>
-        <input
-          ref={inputRef}
-          type="file"
-          accept="image/jpeg,image/png,image/webp,image/gif"
-          multiple
-          hidden
-          onChange={(e) => {
-            onAdd(Array.from(e.target.files ?? []));
-            e.target.value = "";
-          }}
-        />
+        {readOnly ? null : (
+          <>
+            <span className="text-[10px] text-zinc-400">
+              İlk görsel kart kapağı olur
+            </span>
+            <button
+              type="button"
+              onClick={() => inputRef.current?.click()}
+              disabled={uploading}
+              className="ml-auto inline-flex items-center gap-1 rounded-md border border-zinc-200 px-2 py-1 text-xs text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
+            >
+              <ImagePlus className="size-3.5" aria-hidden />
+              {uploading ? "Yükleniyor…" : "Görsel ekle"}
+            </button>
+            <input
+              ref={inputRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp,image/gif"
+              multiple
+              hidden
+              onChange={(e) => {
+                onAdd(Array.from(e.target.files ?? []));
+                e.target.value = "";
+              }}
+            />
+          </>
+        )}
       </div>
       {images.length > 0 ? (
         <ul className="mt-2 grid grid-cols-3 gap-2">
@@ -2132,15 +2147,17 @@ function CardImagesField({
                   Kapak
                 </span>
               ) : null}
-              <button
-                type="button"
-                title="Görseli kaldır"
-                aria-label="Görseli kaldır"
-                onClick={() => onRemove(url)}
-                className="absolute right-1 top-1 rounded bg-black/60 p-0.5 text-white opacity-0 transition hover:bg-rose-600 focus-visible:opacity-100 group-hover:opacity-100"
-              >
-                <Trash2 className="size-3" aria-hidden />
-              </button>
+              {readOnly ? null : (
+                <button
+                  type="button"
+                  title="Görseli kaldır"
+                  aria-label="Görseli kaldır"
+                  onClick={() => onRemove(url)}
+                  className="absolute right-1 top-1 rounded bg-black/60 p-0.5 text-white opacity-0 transition hover:bg-rose-600 focus-visible:opacity-100 group-hover:opacity-100"
+                >
+                  <Trash2 className="size-3" aria-hidden />
+                </button>
+              )}
             </li>
           ))}
         </ul>

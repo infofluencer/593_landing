@@ -208,7 +208,8 @@ model TenantBudget {
   @@index([tenantId])
 }
 
-/// API'den gelen kampanyaya özel günlük / aylık plan.
+/// API'den gelen kampanyaya (Meta'da reklam setine) özel günlük / aylık plan.
+/// Meta satırlarında campaignId reklam seti kimliğidir; eski planlarda kampanya kimliği kalabilir.
 model CampaignBudget {
   id            String   @id @default(cuid())
   tenantId      String
@@ -228,7 +229,7 @@ model CampaignBudget {
   @@index([tenantId, month])
 }
 
-/// Kampanya görünen adı — API isminden bağımsız, tüm aylarda geçerli.
+/// Kampanya (Meta'da reklam seti) görünen adı — API isminden bağımsız, tüm aylarda geçerli.
 model CampaignAlias {
   id         String   @id @default(cuid())
   tenantId   String
@@ -307,6 +308,8 @@ model User {
   /// Profil fotoğrafı (/uploads/avatars/{id}.webp?v=…).
   avatarUrl     String?
   role          Role
+  /// Rol ve ekipten bağımsız: portalda yalnızca takvimi ve durum panosunu salt okunur görür (scripts/set-view-only.ts).
+  viewOnly      Boolean  @default(false)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 

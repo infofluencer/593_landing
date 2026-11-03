@@ -22,6 +22,24 @@ export async function requireStaffApi() {
   return { session, error: null };
 }
 
+/** İçerik takvimini okuma: staff veya görüntüleyici hesap. */
+export async function requirePortalViewApi() {
+  const session = await auth();
+  if (!session?.user) {
+    return {
+      session: null,
+      error: NextResponse.json({ error: "Unauthorized" }, { status: 401 }),
+    };
+  }
+  if (!isStaffRole(session.user.role) && !session.user.viewOnly) {
+    return {
+      session: null,
+      error: NextResponse.json({ error: "Forbidden" }, { status: 403 }),
+    };
+  }
+  return { session, error: null };
+}
+
 /** Staff + belirli yetki (bkz. permissions.ts). */
 export async function requirePermissionApi(permission: Permission) {
   const result = await requireStaffApi();

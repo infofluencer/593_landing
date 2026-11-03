@@ -15,6 +15,8 @@ import { isStaffRole } from "@/lib/panel/host";
 import { resolvePanelTenant } from "@/lib/panel/data";
 import { loginHref, sanitizeCallbackPath } from "@/lib/panel/auth-nav";
 
+const VIEW_ONLY_PATHS = ["/takvim", "/board"];
+
 /** Marka host: yalnızca o tenant membership — admin bypass yok. */
 async function canAccessTenantMembership(
   tenantIds: string[],
@@ -48,7 +50,8 @@ export default async function PanelLayout({
 
   // —— Ajans portalı (admin.*) ——
   if (panelMode === "staff") {
-    if (!isStaffRole(session.user.role)) {
+    const viewOnly = session.user.viewOnly;
+    if (!isStaffRole(session.user.role) && !viewOnly) {
       return (
         <AuthSessionProvider>
           <main className="panel-root flex min-h-screen items-center justify-center px-4">
@@ -63,6 +66,16 @@ export default async function PanelLayout({
           </main>
         </AuthSessionProvider>
       );
+    }
+
+    // Görüntüleyici hesap: yalnızca takvim ve durum panosu.
+    if (
+      viewOnly &&
+      !VIEW_ONLY_PATHS.some(
+        (p) => browserPath === p || browserPath.startsWith(`${p}/`),
+      )
+    ) {
+      redirect("/takvim");
     }
 
     const staffOk =
@@ -95,10 +108,14 @@ export default async function PanelLayout({
         <Suspense fallback={null}>
           <PanelShell
             variant="staff"
-            nav={STAFF_NAV_LINKS}
+            nav={
+              viewOnly
+                ? STAFF_NAV_LINKS.filter((l) => VIEW_ONLY_PATHS.includes(l.href))
+                : STAFF_NAV_LINKS
+            }
             wide={browserPath === "/takvim"}
             userEmail={session.user.email ?? ""}
-            userRoleLabel={session.user.role}
+            userRoleLabel={viewOnly ? "görüntüleyici" : session.user.role}
           >
             {children}
           </PanelShell>

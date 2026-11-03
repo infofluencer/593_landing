@@ -233,10 +233,16 @@ type Draft = {
   endsAt: string | null; // ISO
   location: string;
   status: MeetingStatus;
-  agenda: string;
-  notes: string;
   decisions: string;
   attendeeIds: string[];
+};
+
+/** Yeni toplantıda, kayıttan önce eklenen aksiyon maddesi. */
+type PendingItem = {
+  key: number;
+  text: string;
+  assigneeIds: string[];
+  dueAt: string | null; // ISO
 };
 
 function draftFrom(m: SerializedMeeting | null, seed: Partial<Draft>): Draft {
@@ -255,8 +261,6 @@ function draftFrom(m: SerializedMeeting | null, seed: Partial<Draft>): Draft {
       endsAt: seed.endsAt ?? null,
       location: "",
       status: "planned",
-      agenda: "",
-      notes: "",
       decisions: "",
       attendeeIds: seed.attendeeIds ?? [],
     };
@@ -270,8 +274,6 @@ function draftFrom(m: SerializedMeeting | null, seed: Partial<Draft>): Draft {
     endsAt: m.endsAt,
     location: m.location ?? "",
     status: m.status,
-    agenda: m.agenda,
-    notes: m.notes,
     decisions: m.decisions,
     attendeeIds: m.attendees.map((a) => a.userId),
   };
@@ -354,14 +356,7 @@ export default function MeetingsManager({
       if (tenantFilter && m.tenantId !== tenantFilter) return false;
       if (teamFilter && m.teamId !== teamFilter) return false;
       if (q) {
-        const hay = [
-          m.title,
-          m.tenant?.name,
-          m.team?.name,
-          m.agenda,
-          m.notes,
-          m.decisions,
-        ]
+        const hay = [m.title, m.tenant?.name, m.team?.name, m.decisions]
           .filter(Boolean)
           .join(" ")
           .toLowerCase();
@@ -433,7 +428,7 @@ export default function MeetingsManager({
             Toplantılar
           </h2>
           <p className="mt-0.5 text-sm text-zinc-500">
-            Marka, ekip ve ajans geneli toplantı notları, kararlar ve aksiyonlar.
+            Marka, ekip ve ajans geneli toplantı kararları ve aksiyonlar.
           </p>
         </div>
         {canManage ? (
@@ -522,7 +517,7 @@ export default function MeetingsManager({
         <input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Başlık, not, karar ara…"
+          placeholder="Başlık, karar ara…"
           className={`${fieldClass} ml-auto w-full sm:w-64`}
         />
       </div>
@@ -697,6 +692,8 @@ function MeetingDrawer({
   const [localError, setLocalError] = useState<string | null>(null);
   const [newItem, setNewItem] = useState("");
   const [busyItem, setBusyItem] = useState<string | null>(null);
+  const [pendingItems, setPendingItems] = useState<PendingItem[]>([]);
+  const pendingKey = useRef(0);
 
   const readOnly = !canManage;
   const isNew = !meeting;
@@ -760,11 +757,20 @@ function MeetingDrawer({
       endsAt: draft.endsAt,
       location: draft.location || null,
       status: draft.status,
-      agenda: draft.agenda,
-      notes: draft.notes,
       decisions: draft.decisions,
       attendeeIds: draft.attendeeIds,
     };
+  }
+
+  /** Yazılıp "Ekle"ye basılmamış madde de toplantıyla birlikte kaydedilir. */
+  function createItems() {
+    const text = newItem.trim();
+    const items = pendingItems.map(({ text, assigneeIds, dueAt }) => ({
+      text,
+      assigneeIds,
+      dueAt,
+    }));
+    return text ? [...items, { text, assigneeIds: [], dueAt: null }] : items;
   }
 
   async function save() {
@@ -788,7 +794,9 @@ function MeetingDrawer({
         {
           method: isNew ? "POST" : "PATCH",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload()),
+          body: JSON.stringify(
+            isNew ? { ...payload(), actionItems: createItems() } : payload(),
+          ),
         },
       );
       const data = (await res.json().catch(() => ({}))) as {
@@ -850,10 +858,25 @@ function MeetingDrawer({
     onSaved(data.meeting);
   }
 
+  function patchPending(key: number, patch: Partial<PendingItem>) {
+    setPendingItems((prev) =>
+      prev.map((it) => (it.key === key ? { ...it, ...patch } : it)),
+    );
+  }
+
   async function addItem() {
-    if (!meeting) return;
     const text = newItem.trim();
     if (!text) return;
+    if (!meeting) {
+      pendingKey.current += 1;
+      const key = pendingKey.current;
+      setPendingItems((prev) => [
+        ...prev,
+        { key, text, assigneeIds: [], dueAt: null },
+      ]);
+      setNewItem("");
+      return;
+    }
     setBusyItem("new");
     try {
       await itemRequest(
@@ -1158,26 +1181,6 @@ function MeetingDrawer({
           </div>
 
           <label className={labelCls}>
-            Gündem
-            <textarea
-              value={draft.agenda}
-              onChange={(e) => set("agenda", e.target.value)}
-              disabled={readOnly}
-              placeholder={"- Geçen haftanın sonuçları\n- Bütçe revizyonu\n- Yeni kreatifler"}
-              className={`${textareaCls} mt-1`}
-            />
-          </label>
-          <label className={labelCls}>
-            Notlar
-            <textarea
-              value={draft.notes}
-              onChange={(e) => set("notes", e.target.value)}
-              disabled={readOnly}
-              placeholder="Toplantı sırasında / sonrasında alınan notlar"
-              className={`${textareaCls} mt-1 min-h-32`}
-            />
-          </label>
-          <label className={labelCls}>
             Kararlar
             <textarea
               value={draft.decisions}
@@ -1196,122 +1199,163 @@ function MeetingDrawer({
                 Aksiyon maddeleri
                 {meeting
                   ? ` (${meeting.actionItems.filter((a) => a.done).length}/${meeting.actionItems.length})`
-                  : ""}
+                  : pendingItems.length > 0
+                    ? ` (${pendingItems.length})`
+                    : ""}
               </p>
             </div>
 
             {isNew ? (
-              <p className="text-xs text-zinc-500">
-                Aksiyon maddeleri toplantı kaydedildikten sonra eklenir.
-              </p>
-            ) : (
-              <>
-                <ul className="space-y-1.5">
-                  {meeting.actionItems.map((it) => (
-                    <li
-                      key={it.id}
-                      className="flex flex-wrap items-center gap-2 rounded-lg border border-zinc-200 bg-white px-2.5 py-2"
-                    >
-                      <button
-                        type="button"
-                        disabled={readOnly || busyItem === it.id}
-                        onClick={() => patchItem(it, { done: !it.done })}
-                        aria-label={it.done ? "Tamamlanmadı olarak işaretle" : "Tamamlandı"}
-                        className={`flex size-5 shrink-0 items-center justify-center rounded border ${
-                          it.done
-                            ? "border-emerald-600 bg-emerald-600 text-white"
-                            : "border-zinc-300 bg-white text-transparent hover:border-zinc-500"
-                        }`}
-                      >
-                        <Check className="size-3.5" aria-hidden />
-                      </button>
-                      <span
-                        className={`min-w-0 flex-1 text-sm ${
-                          it.done ? "text-zinc-400 line-through" : "text-zinc-900"
-                        }`}
-                      >
-                        {it.text}
-                      </span>
-                      <AssigneePicker
-                        staff={staff}
-                        value={it.assigneeIds}
-                        disabled={readOnly || busyItem === it.id}
-                        onChange={(ids) => patchItem(it, { assigneeIds: ids })}
-                      />
-                      <input
-                        type="date"
-                        value={toLocalDateInput(it.dueAt)}
-                        disabled={readOnly || busyItem === it.id}
-                        onChange={(e) =>
-                          patchItem(it, {
-                            dueAt: e.target.value
-                              ? new Date(`${e.target.value}T18:00:00`).toISOString()
-                              : null,
-                          })
-                        }
-                        className="rounded-md border border-zinc-200 px-2 py-1 text-xs text-zinc-700"
-                        aria-label="Termin"
-                      />
-                      {it.boardCard ? (
-                        <Link
-                          href="/board"
-                          className="inline-flex items-center gap-1 rounded-md bg-zinc-100 px-2 py-1 text-[11px] font-medium text-zinc-700 hover:bg-zinc-200"
-                          title={it.boardCard.title}
-                        >
-                          Pano · {it.boardCard.columnName}
-                          <ArrowUpRight className="size-3" aria-hidden />
-                        </Link>
-                      ) : !readOnly ? (
-                        <button
-                          type="button"
-                          disabled={busyItem === it.id}
-                          onClick={() => patchItem(it, { convertToCard: true })}
-                          className="rounded-md border border-zinc-200 px-2 py-1 text-[11px] font-medium text-zinc-700 hover:border-[#141111]"
-                        >
-                          Göreve çevir
-                        </button>
-                      ) : null}
-                      {!readOnly ? (
-                        <button
-                          type="button"
-                          disabled={busyItem === it.id}
-                          onClick={() => deleteItem(it)}
-                          className="rounded-md p-1 text-zinc-400 hover:bg-rose-50 hover:text-rose-600"
-                          aria-label="Maddeyi sil"
-                        >
-                          <Trash2 className="size-3.5" aria-hidden />
-                        </button>
-                      ) : null}
-                    </li>
-                  ))}
-                </ul>
-                {!readOnly ? (
-                  <form
-                    onSubmit={(e) => {
-                      e.preventDefault();
-                      void addItem();
-                    }}
-                    className="flex gap-2"
+              <ul className="space-y-1.5">
+                {pendingItems.map((it) => (
+                  <li
+                    key={it.key}
+                    className="flex flex-wrap items-center gap-2 rounded-lg border border-zinc-200 bg-white px-2.5 py-2"
                   >
+                    <span className="min-w-0 flex-1 text-sm text-zinc-900">
+                      {it.text}
+                    </span>
+                    <AssigneePicker
+                      staff={staff}
+                      value={it.assigneeIds}
+                      onChange={(ids) =>
+                        patchPending(it.key, { assigneeIds: ids })
+                      }
+                    />
                     <input
-                      value={newItem}
-                      onChange={(e) => setNewItem(e.target.value)}
-                      placeholder="Yeni aksiyon maddesi…"
-                      className={inputCls}
-                      disabled={busyItem === "new"}
+                      type="date"
+                      value={toLocalDateInput(it.dueAt)}
+                      onChange={(e) =>
+                        patchPending(it.key, {
+                          dueAt: e.target.value
+                            ? new Date(`${e.target.value}T18:00:00`).toISOString()
+                            : null,
+                        })
+                      }
+                      className="rounded-md border border-zinc-200 px-2 py-1 text-xs text-zinc-700"
+                      aria-label="Termin"
                     />
                     <button
-                      type="submit"
-                      disabled={!newItem.trim() || busyItem === "new"}
-                      className={btnSecondary}
+                      type="button"
+                      onClick={() =>
+                        setPendingItems((prev) =>
+                          prev.filter((p) => p.key !== it.key),
+                        )
+                      }
+                      className="rounded-md p-1 text-zinc-400 hover:bg-rose-50 hover:text-rose-600"
+                      aria-label="Maddeyi sil"
                     >
-                      <Plus className="size-4" aria-hidden />
-                      Ekle
+                      <Trash2 className="size-3.5" aria-hidden />
                     </button>
-                  </form>
-                ) : null}
-              </>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <ul className="space-y-1.5">
+                {meeting.actionItems.map((it) => (
+                  <li
+                    key={it.id}
+                    className="flex flex-wrap items-center gap-2 rounded-lg border border-zinc-200 bg-white px-2.5 py-2"
+                  >
+                    <button
+                      type="button"
+                      disabled={readOnly || busyItem === it.id}
+                      onClick={() => patchItem(it, { done: !it.done })}
+                      aria-label={it.done ? "Tamamlanmadı olarak işaretle" : "Tamamlandı"}
+                      className={`flex size-5 shrink-0 items-center justify-center rounded border ${
+                        it.done
+                          ? "border-emerald-600 bg-emerald-600 text-white"
+                          : "border-zinc-300 bg-white text-transparent hover:border-zinc-500"
+                      }`}
+                    >
+                      <Check className="size-3.5" aria-hidden />
+                    </button>
+                    <span
+                      className={`min-w-0 flex-1 text-sm ${
+                        it.done ? "text-zinc-400 line-through" : "text-zinc-900"
+                      }`}
+                    >
+                      {it.text}
+                    </span>
+                    <AssigneePicker
+                      staff={staff}
+                      value={it.assigneeIds}
+                      disabled={readOnly || busyItem === it.id}
+                      onChange={(ids) => patchItem(it, { assigneeIds: ids })}
+                    />
+                    <input
+                      type="date"
+                      value={toLocalDateInput(it.dueAt)}
+                      disabled={readOnly || busyItem === it.id}
+                      onChange={(e) =>
+                        patchItem(it, {
+                          dueAt: e.target.value
+                            ? new Date(`${e.target.value}T18:00:00`).toISOString()
+                            : null,
+                        })
+                      }
+                      className="rounded-md border border-zinc-200 px-2 py-1 text-xs text-zinc-700"
+                      aria-label="Termin"
+                    />
+                    {it.boardCard ? (
+                      <Link
+                        href="/board"
+                        className="inline-flex items-center gap-1 rounded-md bg-zinc-100 px-2 py-1 text-[11px] font-medium text-zinc-700 hover:bg-zinc-200"
+                        title={it.boardCard.title}
+                      >
+                        Pano · {it.boardCard.columnName}
+                        <ArrowUpRight className="size-3" aria-hidden />
+                      </Link>
+                    ) : !readOnly ? (
+                      <button
+                        type="button"
+                        disabled={busyItem === it.id}
+                        onClick={() => patchItem(it, { convertToCard: true })}
+                        className="rounded-md border border-zinc-200 px-2 py-1 text-[11px] font-medium text-zinc-700 hover:border-[#141111]"
+                      >
+                        Göreve çevir
+                      </button>
+                    ) : null}
+                    {!readOnly ? (
+                      <button
+                        type="button"
+                        disabled={busyItem === it.id}
+                        onClick={() => deleteItem(it)}
+                        className="rounded-md p-1 text-zinc-400 hover:bg-rose-50 hover:text-rose-600"
+                        aria-label="Maddeyi sil"
+                      >
+                        <Trash2 className="size-3.5" aria-hidden />
+                      </button>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
             )}
+            {!readOnly ? (
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  void addItem();
+                }}
+                className="flex gap-2"
+              >
+                <input
+                  value={newItem}
+                  onChange={(e) => setNewItem(e.target.value)}
+                  placeholder="Yeni aksiyon maddesi…"
+                  className={inputCls}
+                  disabled={busyItem === "new"}
+                />
+                <button
+                  type="submit"
+                  disabled={!newItem.trim() || busyItem === "new"}
+                  className={btnSecondary}
+                >
+                  <Plus className="size-4" aria-hidden />
+                  Ekle
+                </button>
+              </form>
+            ) : null}
           </div>
         </div>
 

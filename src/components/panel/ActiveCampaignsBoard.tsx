@@ -1,10 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { Suspense, useMemo, useState } from "react";
 import { ExternalLink, Megaphone, Search, Wallet } from "lucide-react";
 import { chipClass, fieldClass } from "@/components/panel/ds/buttons";
 import { PlatformBadge } from "@/components/panel/ds/platform-icons";
+import PeriodFilterBar from "@/components/panel/PeriodFilterBar";
 import { brandInitials, resolveBrandCover } from "@/lib/panel/brand-logos";
 import type {
   ActiveCampaign,
@@ -13,9 +14,10 @@ import type {
   ActiveCampaignsSnapshot,
 } from "@/lib/panel/active-campaigns";
 import { formatConv, formatNumber, formatTry } from "@/lib/panel/format";
+import { SYNC_AD_LEVEL_DAYS } from "@/lib/panel/period";
 
 type ProviderFilter = "" | ActiveCampaignProvider;
-type SortKey = "spend7d" | "spendYesterday" | "name";
+type SortKey = "spend" | "name";
 
 const OBJECTIVE_LABEL: Record<string, string> = {
   OUTCOME_SALES: "Satış",
@@ -52,18 +54,26 @@ function normalize(s: string): string {
 function matchesQuery(c: ActiveCampaign, brand: ActiveCampaignBrand, q: string): boolean {
   if (!q) return true;
   const hay = normalize(
-    [brand.name, c.name, c.sourceName, c.objective, c.audience, c.location].join(" "),
+    [brand.name, c.name, c.sourceName, c.parentCampaignName, c.objective, c.audience, c.location].join(" "),
   );
   return q.split(/\s+/).every((w) => hay.includes(w));
 }
 
 /** Durum rozeti — Meta için reklam durumu kesin, diğerleri harcamaya göre. */
 function StatusPill({ c, today, yesterday }: { c: ActiveCampaign; today: string; yesterday: string }) {
-  if (c.live === true && c.spend7d <= 0) {
+  if (c.live === false) {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-zinc-100 px-2 py-0.5 text-[11px] font-semibold text-zinc-600 ring-1 ring-zinc-200">
+        <span className="size-1.5 rounded-full bg-zinc-400" />
+        Durduruldu
+      </span>
+    );
+  }
+  if (c.live === true && c.spend <= 0) {
     return (
       <span className="inline-flex items-center gap-1 rounded-full bg-sky-50 px-2 py-0.5 text-[11px] font-semibold text-sky-700 ring-1 ring-sky-200">
         <span className="size-1.5 rounded-full bg-sky-500" />
-        Yeni · harcama yok
+        Yayında · harcama yok
       </span>
     );
   }
@@ -79,7 +89,7 @@ function StatusPill({ c, today, yesterday }: { c: ActiveCampaign; today: string;
   return (
     <span
       className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700 ring-1 ring-amber-200"
-      title="Son 7 günde harcama var ama son iki gündür veri yok"
+      title="Son iki gündür harcama verisi yok"
     >
       <span className="size-1.5 rounded-full bg-amber-500" />
       Yavaşladı
@@ -138,15 +148,21 @@ function MonthCell({ spent, budget, currency }: { spent: number; budget: number 
 }
 
 /**
- * Aktif kampanyalar ekranı — markaya göre gruplu; marka / platform / arama
- * filtreleri ve harcamaya göre sıralama istemci tarafında.
+ * Kampanyalar ekranı — markaya göre gruplu; dönem URL'den sunucuda, marka /
+ * platform / arama filtreleri ve sıralama istemci tarafında.
  */
-export default function ActiveCampaignsBoard({ snapshot }: { snapshot: ActiveCampaignsSnapshot }) {
-  const { brands, totals, today, yesterday } = snapshot;
+export default function ActiveCampaignsBoard({
+  snapshot,
+  rangeLabel,
+}: {
+  snapshot: ActiveCampaignsSnapshot;
+  rangeLabel: string;
+}) {
+  const { brands, totals, today, yesterday, adsetHistoryLimited } = snapshot;
   const [query, setQuery] = useState("");
   const [brandId, setBrandId] = useState("");
   const [provider, setProvider] = useState<ProviderFilter>("");
-  const [sort, setSort] = useState<SortKey>("spend7d");
+  const [sort, setSort] = useState<SortKey>("spend");
 
   const visible = useMemo(() => {
     const q = normalize(query.trim());
@@ -164,8 +180,7 @@ export default function ActiveCampaignsBoard({ snapshot }: { snapshot: ActiveCam
       out.push({
         ...b,
         campaigns,
-        spend7d: campaigns.reduce((s, c) => s + c.spend7d, 0),
-        spendYesterday: campaigns.reduce((s, c) => s + c.spendYesterday, 0),
+        spend: campaigns.reduce((s, c) => s + c.spend, 0),
         spendMonth: campaigns.reduce((s, c) => s + c.spendMonth, 0),
       });
     }
@@ -180,10 +195,10 @@ export default function ActiveCampaignsBoard({ snapshot }: { snapshot: ActiveCam
     <div className="space-y-5">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h2 className="text-lg font-semibold tracking-tight">Aktif kampanyalar</h2>
+          <h2 className="text-lg font-semibold tracking-tight">Kampanyalar</h2>
           <p className="mt-1 text-sm text-zinc-500">
-            Tüm markaların şu an yayındaki Meta ve Google Ads kampanyaları · son 7 günde
-            harcaması olan veya Meta&apos;da yayında görünenler
+            Tüm markaların Meta reklam setleri ve Google Ads kampanyaları · seçili dönemde harcaması
+            olanlar ve şu an Meta&apos;da yayında görünenler
           </p>
         </div>
         <p className="text-xs text-zinc-500">
@@ -192,15 +207,26 @@ export default function ActiveCampaignsBoard({ snapshot }: { snapshot: ActiveCam
         </p>
       </div>
 
+      <Suspense fallback={null}>
+        <PeriodFilterBar label={rangeLabel} />
+      </Suspense>
+
+      {adsetHistoryLimited ? (
+        <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+          Meta reklam seti verisi son {SYNC_AD_LEVEL_DAYS} gün için çekilir; bu dönemin daha eski günlerinde
+          Meta rakamları eksik olabilir.
+        </p>
+      ) : null}
+
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Stat
-          label="Aktif kampanya"
+          label="Reklam seti / kampanya"
           value={formatNumber(totals.campaigns)}
-          hint={`${totals.meta} Meta · ${totals.google} Google`}
+          hint={`${totals.meta} Meta reklam seti · ${totals.google} Google`}
         />
-        <Stat label="Kampanyası olan marka" value={formatNumber(totals.brands)} />
-        <Stat label="Dün harcama" value={formatTry(totals.spendYesterday)} hint="tüm aktif kampanyalar" />
-        <Stat label="Son 7 gün harcama" value={formatTry(totals.spend7d)} hint={`bu ay ${formatTry(totals.spendMonth)}`} />
+        <Stat label="Marka" value={formatNumber(totals.brands)} />
+        <Stat label="Dönem harcaması" value={formatTry(totals.spend)} hint={`bu ay ${formatTry(totals.spendMonth)}`} />
+        <Stat label="Dönem dönüşümü" value={formatConv(totals.conversions)} />
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
@@ -209,7 +235,7 @@ export default function ActiveCampaignsBoard({ snapshot }: { snapshot: ActiveCam
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Kampanya, marka, hedef kitle ara"
+            placeholder="Reklam seti, kampanya, marka ara"
             className={`${fieldClass} w-64 pl-9`}
           />
         </label>
@@ -238,8 +264,7 @@ export default function ActiveCampaignsBoard({ snapshot }: { snapshot: ActiveCam
           onChange={(e) => setSort(e.target.value as SortKey)}
           aria-label="Sıralama"
         >
-          <option value="spend7d">Son 7 gün harcamaya göre</option>
-          <option value="spendYesterday">Dünkü harcamaya göre</option>
+          <option value="spend">Harcamaya göre</option>
           <option value="name">Ada göre</option>
         </select>
       </div>
@@ -250,18 +275,18 @@ export default function ActiveCampaignsBoard({ snapshot }: { snapshot: ActiveCam
             <Megaphone className="size-5" aria-hidden />
           </span>
           <p className="text-sm font-semibold text-zinc-900">
-            {filtered ? "Filtreye uyan kampanya yok" : "Şu an aktif kampanya görünmüyor"}
+            {filtered ? "Filtreye uyan kayıt yok" : "Bu dönemde kayıt görünmüyor"}
           </p>
           <p className="mt-1 max-w-sm text-sm text-zinc-500">
             {filtered
               ? "Arama ya da filtreleri temizleyip tekrar deneyin."
-              : "Son 7 günde harcaması olan kampanya bulunamadı. Veri çekimi henüz çalışmamış olabilir."}
+              : "Seçili dönemde harcaması olan reklam seti veya kampanya bulunamadı. Veri çekimi henüz çalışmamış olabilir."}
           </p>
         </div>
       ) : (
         <div className="space-y-4">
           <p className="text-xs text-zinc-500">
-            {shownCount} kampanya · {visible.length} marka
+            {shownCount} reklam seti / kampanya · {visible.length} marka
           </p>
           {visible.map((b) => (
             <section key={b.id} className="overflow-hidden rounded-2xl border border-zinc-200 bg-white">
@@ -275,8 +300,7 @@ export default function ActiveCampaignsBoard({ snapshot }: { snapshot: ActiveCam
                     {b.name}
                   </Link>
                   <p className="text-xs text-zinc-500">
-                    {b.campaigns.length} aktif kampanya · dün {formatTry(b.spendYesterday, b.currency)} · son 7 gün{" "}
-                    {formatTry(b.spend7d, b.currency)}
+                    {b.campaigns.length} reklam seti / kampanya · dönem harcaması {formatTry(b.spend, b.currency)}
                   </p>
                 </div>
                 <div className="ml-auto flex items-center gap-3">
@@ -303,13 +327,12 @@ export default function ActiveCampaignsBoard({ snapshot }: { snapshot: ActiveCam
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="text-left text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
-                      <th className="px-4 py-2 font-semibold">Kampanya</th>
+                      <th className="px-4 py-2 font-semibold">Kampanya / reklam seti</th>
                       <th className="px-3 py-2 font-semibold">Durum</th>
-                      <th className="px-3 py-2 text-right font-semibold">Dün</th>
-                      <th className="px-3 py-2 text-right font-semibold">Son 7 gün</th>
+                      <th className="px-3 py-2 text-right font-semibold">Harcama</th>
                       <th className="px-3 py-2 font-semibold">Bu ay</th>
-                      <th className="px-3 py-2 text-right font-semibold">Dönüşüm (7g)</th>
-                      <th className="px-3 py-2 text-right font-semibold">Tıklama (7g)</th>
+                      <th className="px-3 py-2 text-right font-semibold">Dönüşüm</th>
+                      <th className="px-3 py-2 text-right font-semibold">Tıklama</th>
                       <th className="px-4 py-2 text-right font-semibold">Son veri</th>
                     </tr>
                   </thead>
@@ -326,6 +349,7 @@ export default function ActiveCampaignsBoard({ snapshot }: { snapshot: ActiveCam
                               <p className="truncate text-[11px] text-zinc-500">
                                 {[
                                   c.name !== c.sourceName ? c.sourceName : null,
+                                  c.parentCampaignName,
                                   objectiveLabel(c.objective),
                                   c.audience,
                                   c.location,
@@ -339,11 +363,8 @@ export default function ActiveCampaignsBoard({ snapshot }: { snapshot: ActiveCam
                         <td className="px-3 py-2.5">
                           <StatusPill c={c} today={today} yesterday={yesterday} />
                         </td>
-                        <td className="px-3 py-2.5 text-right tabular-nums">
-                          {c.spendYesterday > 0 ? formatTry(c.spendYesterday, b.currency) : <span className="text-zinc-400">—</span>}
-                        </td>
                         <td className="px-3 py-2.5 text-right font-semibold tabular-nums">
-                          {formatTry(c.spend7d, b.currency)}
+                          {formatTry(c.spend, b.currency)}
                         </td>
                         <td className="px-3 py-2.5">
                           <MonthCell spent={c.spendMonth} budget={c.monthlyBudget} currency={b.currency} />
@@ -355,13 +376,13 @@ export default function ActiveCampaignsBoard({ snapshot }: { snapshot: ActiveCam
                           ) : null}
                         </td>
                         <td className="px-3 py-2.5 text-right tabular-nums">
-                          {c.conversions7d > 0 ? formatConv(c.conversions7d) : <span className="text-zinc-400">—</span>}
-                          {c.convValue7d > 0 ? (
-                            <span className="block text-[10px] text-zinc-500">{formatTry(c.convValue7d, b.currency)}</span>
+                          {c.conversions > 0 ? formatConv(c.conversions) : <span className="text-zinc-400">—</span>}
+                          {c.convValue > 0 ? (
+                            <span className="block text-[10px] text-zinc-500">{formatTry(c.convValue, b.currency)}</span>
                           ) : null}
                         </td>
                         <td className="px-3 py-2.5 text-right tabular-nums">
-                          {c.clicks7d > 0 ? formatNumber(c.clicks7d) : <span className="text-zinc-400">—</span>}
+                          {c.clicks > 0 ? formatNumber(c.clicks) : <span className="text-zinc-400">—</span>}
                         </td>
                         <td className="px-4 py-2.5 text-right text-xs text-zinc-600">
                           {fmtDay(c.lastDate, today, yesterday)}

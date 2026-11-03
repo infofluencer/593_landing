@@ -9,8 +9,8 @@ import {
   serializePost,
 } from "@/lib/panel/content-posts";
 import {
+  requirePortalViewApi,
   requirePermissionApi,
-  requireStaffApi,
   resolveStaffUserId,
 } from "@/lib/panel/staff-auth";
 
@@ -29,7 +29,7 @@ function cleanUrls(v: unknown): string[] {
 
 /** GET — ?from=ISO&to=ISO&tenantId= */
 export async function GET(request: Request) {
-  const { session, error } = await requireStaffApi();
+  const { session, error } = await requirePortalViewApi();
   if (error || !session) return error;
   const url = new URL(request.url);
   const from = parseDate(url.searchParams.get("from"));

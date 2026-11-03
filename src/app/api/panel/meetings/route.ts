@@ -73,9 +73,14 @@ type CreateBody = {
   notes?: string;
   decisions?: string;
   attendeeIds?: string[];
+  actionItems?: Array<{
+    text?: string;
+    assigneeIds?: string[];
+    dueAt?: string | null;
+  }>;
 };
 
-/** POST — yeni toplantı. */
+/** POST — yeni toplantı (isteğe bağlı aksiyon maddeleriyle). */
 export async function POST(request: Request) {
   const { session, error } = await requirePermissionApi("meetings.manage");
   if (error || !session) return error;
@@ -139,6 +144,32 @@ export async function POST(request: Request) {
     );
   }
 
+  const rawItems = Array.isArray(body.actionItems) ? body.actionItems : [];
+  const actionItems = [];
+  for (const [position, item] of rawItems.entries()) {
+    const text = typeof item?.text === "string" ? item.text.trim() : "";
+    if (!text) {
+      return NextResponse.json({ error: "Madde metni gerekli" }, { status: 400 });
+    }
+    const assigneeIds = cleanIdList(item.assigneeIds);
+    if (!(await allStaffIds(assigneeIds))) {
+      return NextResponse.json({ error: "Atanan kişi staff olmalı" }, { status: 400 });
+    }
+    const dueAt = parseDateInput(item.dueAt);
+    if (dueAt === "invalid") {
+      return NextResponse.json({ error: "Geçersiz tarih" }, { status: 400 });
+    }
+    actionItems.push({
+      text,
+      dueAt,
+      position,
+      assignees:
+        assigneeIds.length > 0
+          ? { create: assigneeIds.map((userId) => ({ userId })) }
+          : undefined,
+    });
+  }
+
   const status = isMeetingStatus(body.status) ? body.status : "planned";
   const actorId = await resolveStaffUserId(session);
 
@@ -159,6 +190,7 @@ export async function POST(request: Request) {
         attendeeIds.length > 0
           ? { create: attendeeIds.map((userId) => ({ userId })) }
           : undefined,
+      actionItems: actionItems.length > 0 ? { create: actionItems } : undefined,
     },
     include: meetingInclude,
   });
@@ -169,7 +201,14 @@ export async function POST(request: Request) {
     entityId: meeting.id,
     tenantId,
     summary: `Toplantı oluşturuldu: ${title}`,
-    after: { title, tenantId, teamId, startsAt, attendeeIds },
+    after: {
+      title,
+      tenantId,
+      teamId,
+      startsAt,
+      attendeeIds,
+      actionItems: actionItems.map((item) => item.text),
+    },
   });
 
   return NextResponse.json(

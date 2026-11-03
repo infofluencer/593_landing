@@ -181,6 +181,8 @@ export async function runAgencySync(opts?: {
   providers?: SyncProvider[];
   mode?: SyncMode;
   logoOnly?: boolean;
+  /** BM provision'ı (yeni marka açma) atla — tetikleyenin brands.create yetkisi yoksa. */
+  skipProvision?: boolean;
 }): Promise<SyncSummary> {
   const providers = new Set<SyncProvider>(
     opts?.providers?.length ? opts.providers : ["meta", "google"],
@@ -201,7 +203,7 @@ export async function runAgencySync(opts?: {
   // Tek marka / günlük sync’te tüm BM’yi yeniden taramaya gerek yok.
   // Ajans geneli tam Meta sync’te tenant listesini taze tutmak için provision çalışır.
   const provision: ProvisionResult =
-    doMeta && !opts?.tenantSlug && !lean
+    doMeta && !opts?.tenantSlug && !lean && !opts?.skipProvision
       ? await provisionTenantsFromMeta()
       : doMeta
         ? {
@@ -210,7 +212,9 @@ export async function runAgencySync(opts?: {
             skipped: true,
             reason: lean
               ? "Günlük / backfill sync — BM provision atlandı"
-              : "Tek marka sync — BM provision atlandı",
+              : opts?.skipProvision
+                ? "Marka ekleme yetkisi yok — BM provision atlandı"
+                : "Tek marka sync — BM provision atlandı",
           }
         : {
             upserted: 0,

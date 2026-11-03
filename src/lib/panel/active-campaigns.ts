@@ -7,20 +7,25 @@ import {
 } from "@/lib/date/tr";
 import { displayCampaignName } from "@/lib/panel/brand-budget";
 import { isIntegrationDisabled } from "@/lib/panel/integrations";
+import { SYNC_AD_LEVEL_DAYS } from "@/lib/panel/period";
 
 /**
- * Aktif kampanyalar — tüm markaların şu an yayında olan kampanyaları tek
- * ekranda. "Aktif" tanımı bütçe planlayıcıyla aynı:
- *  - Meta: reklam durumu biliniyorsa en az bir reklam ACTIVE; bilinmiyorsa
- *    son 7 günde harcama var.
- *  - Google: son 7 günde harcama var (GAQL yalnızca ENABLED kampanya çeker).
+ * Kampanyalar ekranı — tüm markaların Meta reklam setleri ve Google kampanyaları.
+ * Metrikler seçili döneme göre hesaplanır; listede dönemde harcaması olanlar ve
+ * dönem bugünü kapsıyorsa şu an yayında olan Meta reklam setleri yer alır.
+ *  - Meta durumu reklam seti bazında: en az bir reklam ACTIVE ise yayında.
+ *  - Google: durum bilgisi yok, son harcama gününe bakılır (GAQL yalnızca
+ *    ENABLED kampanya çeker).
  */
 
 export type ActiveCampaignProvider = "meta" | "google";
 
 export type ActiveCampaign = {
   provider: ActiveCampaignProvider;
+  /** Google: kampanya kimliği; Meta: reklam seti kimliği. */
   campaignId: string;
+  /** Meta: reklam setinin bağlı olduğu kampanya; Google'da null. */
+  parentCampaignName: string | null;
   /** Görünen ad (kullanıcı etiketi varsa o). */
   name: string;
   /** API'den gelen orijinal ad — etiket varsa küçük yazılır. */
@@ -30,14 +35,14 @@ export type ActiveCampaign = {
   location: string;
   /** Meta: reklam durumundan kesin bilgi; Google / bilinmiyorsa null. */
   live: boolean | null;
-  spendToday: number;
-  spendYesterday: number;
-  spend7d: number;
+  /** Seçili dönem metrikleri. */
+  spend: number;
+  impressions: number;
+  clicks: number;
+  conversions: number;
+  convValue: number;
+  /** Bu ay harcaması — aylık planla karşılaştırma için, dönemden bağımsız. */
   spendMonth: number;
-  impressions7d: number;
-  clicks7d: number;
-  conversions7d: number;
-  convValue7d: number;
   monthlyBudget: number | null;
   dailyBudget: number | null;
   /** Son veri günü (YYYY-MM-DD) — null: henüz harcama yok. */
@@ -51,8 +56,7 @@ export type ActiveCampaignBrand = {
   coverUrl: string | null;
   currency: string;
   campaigns: ActiveCampaign[];
-  spendYesterday: number;
-  spend7d: number;
+  spend: number;
   spendMonth: number;
   /** Markanın bu ayki toplam plan bütçesi (varsa). */
   monthlyBudget: number | null;
@@ -61,16 +65,16 @@ export type ActiveCampaignBrand = {
 export type ActiveCampaignsSnapshot = {
   today: string;
   yesterday: string;
-  from7: string;
-  monthStart: string;
+  /** Dönem, Meta reklam seti verisinin çekildiği aralıktan daha eskiye gidiyor. */
+  adsetHistoryLimited: boolean;
   brands: ActiveCampaignBrand[];
   totals: {
     campaigns: number;
     brands: number;
     meta: number;
     google: number;
-    spendYesterday: number;
-    spend7d: number;
+    spend: number;
+    conversions: number;
     spendMonth: number;
   };
 };
@@ -79,15 +83,14 @@ type MetricRow = {
   tenantId: string;
   campaignId: string;
   campaignName: string;
+  parentCampaignName: string | null;
   objective: string | null;
-  spendToday: number;
-  spendYesterday: number;
-  spend7d: number;
+  spend: number;
   spendMonth: number;
-  impressions7d: number;
-  clicks7d: number;
-  conversions7d: number;
-  convValue7d: number;
+  impressions: number;
+  clicks: number;
+  conversions: number;
+  convValue: number;
   lastDate: string | null;
 };
 
@@ -104,19 +107,24 @@ function key(tenantId: string, provider: ActiveCampaignProvider, campaignId: str
   return `${tenantId}|${provider}|${campaignId}`;
 }
 
-export async function loadActiveCampaigns(opts?: {
+export async function loadActiveCampaigns(opts: {
+  startDate: string;
+  endDate: string;
   today?: string;
 }): Promise<ActiveCampaignsSnapshot> {
-  const today = opts?.today ?? istanbulYmd(new Date());
+  const { startDate, endDate } = opts;
+  const today = opts.today ?? istanbulYmd(new Date());
   const yesterday = addDaysYmd(today, -1);
   const from7 = addDaysYmd(today, -6);
   const monthStart = startOfIstanbulMonthYmd(today);
-  const windowStart = from7 < monthStart ? from7 : monthStart;
+  // Durum rozeti ve aylık plan için pencere dönemden bağımsız en az son 7 gün + bu ay.
+  const windowStart = [startDate, from7, monthStart].sort()[0]!;
+  const includesToday = endDate >= today;
   const month = today.slice(0, 7);
 
   const dToday = ymdToUtcDate(today);
-  const dYesterday = ymdToUtcDate(yesterday);
-  const dFrom7 = ymdToUtcDate(from7);
+  const dStart = ymdToUtcDate(startDate);
+  const dEnd = ymdToUtcDate(endDate);
   const dMonth = ymdToUtcDate(monthStart);
   const dWindow = ymdToUtcDate(windowStart);
 
@@ -137,37 +145,41 @@ export async function loadActiveCampaigns(opts?: {
       }),
       prisma.$queryRaw<MetricRow[]>`
         SELECT
-          "tenantId",
-          "campaignId",
-          MAX("campaignName") AS "campaignName",
-          MAX(objective) AS objective,
-          SUM(CASE WHEN date = ${dToday} THEN spend ELSE 0 END)::float8 AS "spendToday",
-          SUM(CASE WHEN date = ${dYesterday} THEN spend ELSE 0 END)::float8 AS "spendYesterday",
-          SUM(CASE WHEN date >= ${dFrom7} THEN spend ELSE 0 END)::float8 AS "spend7d",
-          SUM(CASE WHEN date >= ${dMonth} THEN spend ELSE 0 END)::float8 AS "spendMonth",
-          SUM(CASE WHEN date >= ${dFrom7} THEN impressions ELSE 0 END)::float8 AS "impressions7d",
-          SUM(CASE WHEN date >= ${dFrom7} THEN clicks ELSE 0 END)::float8 AS "clicks7d",
-          SUM(CASE WHEN date >= ${dFrom7} THEN COALESCE(conversions, 0) ELSE 0 END)::float8 AS "conversions7d",
-          SUM(CASE WHEN date >= ${dFrom7} THEN COALESCE("convValue", 0) ELSE 0 END)::float8 AS "convValue7d",
-          MAX(CASE WHEN spend > 0 THEN to_char(date, 'YYYY-MM-DD') END) AS "lastDate"
-        FROM "MetaInsight"
-        WHERE date >= ${dWindow} AND date <= ${dToday} AND "campaignId" <> ''
-        GROUP BY "tenantId", "campaignId"
+          a."tenantId",
+          a."adsetId" AS "campaignId",
+          MAX(a."adsetName") AS "campaignName",
+          MAX(a."campaignName") AS "parentCampaignName",
+          MAX(o.objective) AS objective,
+          SUM(CASE WHEN a.date BETWEEN ${dStart} AND ${dEnd} THEN a.spend ELSE 0 END)::float8 AS spend,
+          SUM(CASE WHEN a.date >= ${dMonth} THEN a.spend ELSE 0 END)::float8 AS "spendMonth",
+          SUM(CASE WHEN a.date BETWEEN ${dStart} AND ${dEnd} THEN a.impressions ELSE 0 END)::float8 AS impressions,
+          SUM(CASE WHEN a.date BETWEEN ${dStart} AND ${dEnd} THEN a.clicks ELSE 0 END)::float8 AS clicks,
+          SUM(CASE WHEN a.date BETWEEN ${dStart} AND ${dEnd} THEN COALESCE(a.conversions, 0) ELSE 0 END)::float8 AS conversions,
+          SUM(CASE WHEN a.date BETWEEN ${dStart} AND ${dEnd} THEN COALESCE(a."convValue", 0) ELSE 0 END)::float8 AS "convValue",
+          MAX(CASE WHEN a.spend > 0 THEN to_char(a.date, 'YYYY-MM-DD') END) AS "lastDate"
+        FROM "MetaAdsetInsight" a
+        LEFT JOIN (
+          SELECT "tenantId", "campaignId", MAX(objective) AS objective
+          FROM "MetaInsight"
+          WHERE date >= ${dWindow} AND date <= ${dToday}
+          GROUP BY "tenantId", "campaignId"
+        ) o ON o."tenantId" = a."tenantId" AND o."campaignId" = a."campaignId"
+        WHERE a.date >= ${dWindow} AND a.date <= ${dToday} AND a."adsetId" <> ''
+        GROUP BY a."tenantId", a."adsetId"
       `,
       prisma.$queryRaw<MetricRow[]>`
         SELECT
           "tenantId",
           "campaignId",
           MAX("campaignName") AS "campaignName",
+          NULL::text AS "parentCampaignName",
           NULL::text AS objective,
-          SUM(CASE WHEN date = ${dToday} THEN cost ELSE 0 END)::float8 AS "spendToday",
-          SUM(CASE WHEN date = ${dYesterday} THEN cost ELSE 0 END)::float8 AS "spendYesterday",
-          SUM(CASE WHEN date >= ${dFrom7} THEN cost ELSE 0 END)::float8 AS "spend7d",
+          SUM(CASE WHEN date BETWEEN ${dStart} AND ${dEnd} THEN cost ELSE 0 END)::float8 AS spend,
           SUM(CASE WHEN date >= ${dMonth} THEN cost ELSE 0 END)::float8 AS "spendMonth",
-          SUM(CASE WHEN date >= ${dFrom7} THEN impressions ELSE 0 END)::float8 AS "impressions7d",
-          SUM(CASE WHEN date >= ${dFrom7} THEN clicks ELSE 0 END)::float8 AS "clicks7d",
-          SUM(CASE WHEN date >= ${dFrom7} THEN conversions ELSE 0 END)::float8 AS "conversions7d",
-          SUM(CASE WHEN date >= ${dFrom7} THEN "convValue" ELSE 0 END)::float8 AS "convValue7d",
+          SUM(CASE WHEN date BETWEEN ${dStart} AND ${dEnd} THEN impressions ELSE 0 END)::float8 AS impressions,
+          SUM(CASE WHEN date BETWEEN ${dStart} AND ${dEnd} THEN clicks ELSE 0 END)::float8 AS clicks,
+          SUM(CASE WHEN date BETWEEN ${dStart} AND ${dEnd} THEN conversions ELSE 0 END)::float8 AS conversions,
+          SUM(CASE WHEN date BETWEEN ${dStart} AND ${dEnd} THEN "convValue" ELSE 0 END)::float8 AS "convValue",
           MAX(CASE WHEN cost > 0 THEN to_char(date, 'YYYY-MM-DD') END) AS "lastDate"
         FROM "GoogleAdsMetric"
         WHERE date >= ${dWindow} AND date <= ${dToday} AND "campaignId" <> ''
@@ -176,7 +188,8 @@ export async function loadActiveCampaigns(opts?: {
       prisma.metaAd.findMany({
         select: {
           tenantId: true,
-          campaignId: true,
+          adsetId: true,
+          adsetName: true,
           campaignName: true,
           effectiveStatus: true,
         },
@@ -207,17 +220,19 @@ export async function loadActiveCampaigns(opts?: {
       }),
     ]);
 
-  // Meta reklam durumu: kampanya → (reklam var mı, yayında reklam var mı, ad)
+  // Meta reklam durumu: reklam seti → (reklam var mı, yayında reklam var mı, ad)
   const metaHasAd = new Set<string>();
   const metaLive = new Set<string>();
-  const metaAdName = new Map<string, string>();
+  const metaAdsetInfo = new Map<string, { name: string; parentName: string }>();
   for (const ad of metaAds) {
-    const id = ad.campaignId.trim();
+    const id = ad.adsetId.trim();
     if (!id) continue;
     const k = key(ad.tenantId, "meta", id);
     metaHasAd.add(k);
     if (ad.effectiveStatus === "ACTIVE") metaLive.add(k);
-    if (ad.campaignName && !metaAdName.has(k)) metaAdName.set(k, ad.campaignName);
+    if (ad.adsetName && !metaAdsetInfo.has(k)) {
+      metaAdsetInfo.set(k, { name: ad.adsetName, parentName: ad.campaignName });
+    }
   }
 
   const aliasMap = new Map(
@@ -245,6 +260,7 @@ export async function loadActiveCampaigns(opts?: {
     provider: ActiveCampaignProvider,
     campaignId: string,
     sourceName: string,
+    parentCampaignName: string | null,
     row: MetricRow | null,
     live: boolean | null,
   ): ActiveCampaign {
@@ -254,20 +270,19 @@ export async function loadActiveCampaigns(opts?: {
     return {
       provider,
       campaignId,
+      parentCampaignName,
       name: displayCampaignName({ campaignName: sourceName, label: alias?.label }),
       sourceName,
       objective: row?.objective ?? "",
       audience: alias?.audience ?? "",
       location: alias?.location ?? "",
       live,
-      spendToday: num(row?.spendToday),
-      spendYesterday: num(row?.spendYesterday),
-      spend7d: num(row?.spend7d),
+      spend: num(row?.spend),
+      impressions: num(row?.impressions),
+      clicks: num(row?.clicks),
+      conversions: num(row?.conversions),
+      convValue: num(row?.convValue),
       spendMonth: num(row?.spendMonth),
-      impressions7d: num(row?.impressions7d),
-      clicks7d: num(row?.clicks7d),
-      conversions7d: num(row?.conversions7d),
-      convValue7d: num(row?.convValue7d),
       monthlyBudget: money(budget?.monthlyBudget),
       dailyBudget: money(budget?.dailyBudget),
       lastDate: row?.lastDate ?? null,
@@ -282,25 +297,25 @@ export async function loadActiveCampaigns(opts?: {
     const id = row.campaignId.trim();
     const k = key(t.id, "meta", id);
     const live = metaHasAd.has(k) ? metaLive.has(k) : null;
-    const active = live ?? num(row.spend7d) > 0;
-    if (!active) continue;
-    bucket(t.id).set(k, build(t.id, "meta", id, row.campaignName, row, live));
+    if (num(row.spend) <= 0 && !(live && includesToday)) continue;
+    bucket(t.id).set(k, build(t.id, "meta", id, row.campaignName, row.parentCampaignName, row, live));
   }
-  // Yayında görünen ama henüz harcaması olmayan Meta kampanyaları (yeni çıkanlar).
-  for (const k of metaLive) {
+  // Yayında görünen ama henüz harcaması olmayan Meta reklam setleri (yeni çıkanlar).
+  for (const k of includesToday ? metaLive : []) {
     const [tenantId, , campaignId] = k.split("|") as [string, string, string];
     const t = tenantById.get(tenantId);
     if (!t || isIntegrationDisabled(t, "meta")) continue;
     const b = bucket(tenantId);
     if (b.has(k)) continue;
-    b.set(k, build(tenantId, "meta", campaignId, metaAdName.get(k) ?? campaignId, null, true));
+    const info = metaAdsetInfo.get(k);
+    b.set(k, build(tenantId, "meta", campaignId, info?.name ?? campaignId, info?.parentName ?? null, null, true));
   }
   for (const row of googleRows) {
     const t = tenantById.get(row.tenantId);
     if (!t || isIntegrationDisabled(t, "google_ads")) continue;
-    if (num(row.spend7d) <= 0) continue;
+    if (num(row.spend) <= 0) continue;
     const id = row.campaignId.trim();
-    bucket(t.id).set(key(t.id, "google", id), build(t.id, "google", id, row.campaignName, row, null));
+    bucket(t.id).set(key(t.id, "google", id), build(t.id, "google", id, row.campaignName, null, row, null));
   }
 
   const brands: ActiveCampaignBrand[] = [];
@@ -308,7 +323,7 @@ export async function loadActiveCampaigns(opts?: {
     const m = byTenant.get(t.id);
     if (!m || m.size === 0) continue;
     const campaigns = [...m.values()].sort(
-      (a, b) => b.spend7d - a.spend7d || a.name.localeCompare(b.name, "tr"),
+      (a, b) => b.spend - a.spend || a.name.localeCompare(b.name, "tr"),
     );
     brands.push({
       id: t.id,
@@ -317,8 +332,7 @@ export async function loadActiveCampaigns(opts?: {
       coverUrl: t.coverUrl,
       currency: t.currency,
       campaigns,
-      spendYesterday: campaigns.reduce((s, c) => s + c.spendYesterday, 0),
-      spend7d: campaigns.reduce((s, c) => s + c.spend7d, 0),
+      spend: campaigns.reduce((s, c) => s + c.spend, 0),
       spendMonth: campaigns.reduce((s, c) => s + c.spendMonth, 0),
       monthlyBudget: tenantBudgetMap.get(t.id) ?? null,
     });
@@ -328,16 +342,15 @@ export async function loadActiveCampaigns(opts?: {
   return {
     today,
     yesterday,
-    from7,
-    monthStart,
+    adsetHistoryLimited: startDate < addDaysYmd(today, -SYNC_AD_LEVEL_DAYS),
     brands,
     totals: {
       campaigns: all.length,
       brands: brands.length,
       meta: all.filter((c) => c.provider === "meta").length,
       google: all.filter((c) => c.provider === "google").length,
-      spendYesterday: all.reduce((s, c) => s + c.spendYesterday, 0),
-      spend7d: all.reduce((s, c) => s + c.spend7d, 0),
+      spend: all.reduce((s, c) => s + c.spend, 0),
+      conversions: all.reduce((s, c) => s + c.conversions, 0),
       spendMonth: all.reduce((s, c) => s + c.spendMonth, 0),
     },
   };

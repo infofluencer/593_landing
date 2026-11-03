@@ -780,7 +780,7 @@ export default function AddBrandWizard({
                       href={`/brands/${encodeURIComponent(createdSlug)}#butce`}
                       className="inline-block text-xs font-medium text-[#e91825] hover:underline"
                     >
-                      Kampanya bütçeleri için marka detayı →
+                      Bütçe planı için marka detayı →
                     </a>
                   ) : null}
                 </>
