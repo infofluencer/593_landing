@@ -28,11 +28,15 @@ export default async function ContentCalendarPage({
   if (h.get("x-panel-mode") !== "staff") redirect("/login?error=AccessDenied");
 
   const sp = await searchParams;
-  const now = new Date();
+  // Sunucu UTC çalışabilir; ay başında gece yanlış ay açılmasın diye İstanbul saatine göre.
   const month =
     sp.month && /^\d{4}-\d{2}$/.test(sp.month)
       ? sp.month
-      : `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+      : new Intl.DateTimeFormat("en-CA", {
+          timeZone: "Europe/Istanbul",
+          year: "numeric",
+          month: "2-digit",
+        }).format(new Date());
   const { from, to } = monthBounds(month);
 
   const [tenants, staff] = await Promise.all([

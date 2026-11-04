@@ -195,6 +195,27 @@ function draftFromPost(p: SerializedPost): Draft {
   };
 }
 
+/** Formdan API gövdesi üretir; tarih geçersizse null. */
+function draftPayload(d: Draft) {
+  const at = new Date(d.scheduledAt);
+  if (Number.isNaN(at.getTime())) return null;
+  return {
+    tenantId: d.tenantId,
+    title: d.title,
+    platform: d.platform,
+    scheduledAt: at.toISOString(),
+    status: d.status,
+    brief: d.brief,
+    caption: d.caption,
+    mediaUrls: d.mediaUrls.split(/\n+/).map((s) => s.trim()).filter(Boolean),
+    assigneeId: d.assigneeId || null,
+    designerId: d.designerId || null,
+  };
+}
+
+const INVALID_DATE_ERROR = "Geçerli bir paylaşım tarihi girin";
+const NETWORK_ERROR = "Sunucuya ulaşılamadı. Bağlantınızı kontrol edip tekrar deneyin.";
+
 /** Marka seçenek etiketi — pasif markalar işaretli ama seçilebilir. */
 function tenantLabel(t: TenantOpt): string {
   return t.visible === false ? `${t.name} · pasif` : t.name;
@@ -326,6 +347,23 @@ export default function ContentCalendar({
       s === "auto" ? (window.innerWidth >= 1024 ? "closed" : "open") : s === "open" ? "closed" : "open",
     );
   const [draft, setDraft] = useState<Draft | null>(null);
+  // Formun açılıştaki hali: kapatırken kaydedilmemiş değişikliği anlamak için.
+  const draftBase = useRef("");
+  // Metin seçerken fare pencere dışında bırakılırsa form kapanmasın.
+  const backdropPressed = useRef(false);
+  const openDraft = useCallback((d: Draft) => {
+    draftBase.current = JSON.stringify(d);
+    setDraft(d);
+  }, []);
+  const closeDraft = useCallback(() => {
+    if (
+      draft &&
+      JSON.stringify(draft) !== draftBase.current &&
+      !confirm("Kaydedilmemiş değişiklikler silinsin mi?")
+    )
+      return;
+    setDraft(null);
+  }, [draft]);
   const [dayOpen, setDayOpen] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -371,15 +409,23 @@ export default function ContentCalendar({
   }, [view, anchor]);
 
   /* ── veri yükleme (olay kaynaklı) ── */
+  // Hızlı gezinmede geç gelen eski yanıt, yeni dönemin verisini ezmesin.
+  const loadSeq = useRef(0);
   const load = useCallback(async (from: Date, to: Date) => {
+    const seq = ++loadSeq.current;
     setLoading(true);
+    setError(null);
     try {
       const q = new URLSearchParams({ from: from.toISOString(), to: to.toISOString() });
       const res = await fetch(`/api/panel/content-posts?${q}`);
       const j = (await res.json().catch(() => null)) as { posts?: SerializedPost[] } | null;
+      if (seq !== loadSeq.current) return;
       if (res.ok && j?.posts) setPosts(j.posts);
+      else setError("İçerikler yüklenemedi");
+    } catch {
+      if (seq === loadSeq.current) setError(NETWORK_ERROR);
     } finally {
-      setLoading(false);
+      if (seq === loadSeq.current) setLoading(false);
     }
   }, []);
 
@@ -422,7 +468,8 @@ export default function ContentCalendar({
       if (draft || dayOpen) return;
       const el = document.activeElement;
       if (
-        el instanceof HTMLInputElement ||
+        // Marka/platform kutusuna tıklayınca odak orada kalır; kısayollar çalışmaya devam etsin.
+        (el instanceof HTMLInputElement && el.type !== "checkbox") ||
         el instanceof HTMLTextAreaElement ||
         el instanceof HTMLSelectElement ||
         (el instanceof HTMLElement && el.isContentEditable)
@@ -460,6 +507,18 @@ export default function ContentCalendar({
     return () => window.removeEventListener("keydown", onKey);
   }, [draft, dayOpen, goToday, step, navigate, anchor]);
 
+  /* ── Esc: açık pencereyi kapatır (odak nerede olursa olsun) ── */
+  useEffect(() => {
+    if (!draft && !dayOpen) return;
+    function onEscape(e: KeyboardEvent) {
+      if (e.key !== "Escape") return;
+      if (draft) closeDraft();
+      else setDayOpen(null);
+    }
+    window.addEventListener("keydown", onEscape);
+    return () => window.removeEventListener("keydown", onEscape);
+  }, [draft, dayOpen, closeDraft]);
+
   /* ── filtre ── */
   const filtered = useMemo(() => {
     const q = query.trim().toLocaleLowerCase("tr");
@@ -493,7 +552,7 @@ export default function ContentCalendar({
   function openNew(date: Date) {
     if (!canEdit) return;
     setError(null);
-    setDraft(emptyDraft(defaultTenantId, date));
+    openDraft(emptyDraft(defaultTenantId, date));
   }
 
   async function save() {
@@ -502,21 +561,14 @@ export default function ContentCalendar({
       setError("Marka seçin");
       return;
     }
+    const payload = draftPayload(draft);
+    if (!payload) {
+      setError(INVALID_DATE_ERROR);
+      return;
+    }
     setPending(true);
     setError(null);
     try {
-      const payload = {
-        tenantId: draft.tenantId,
-        title: draft.title,
-        platform: draft.platform,
-        scheduledAt: new Date(draft.scheduledAt).toISOString(),
-        status: draft.status,
-        brief: draft.brief,
-        caption: draft.caption,
-        mediaUrls: draft.mediaUrls.split(/\n+/).map((s) => s.trim()).filter(Boolean),
-        assigneeId: draft.assigneeId || null,
-        designerId: draft.designerId || null,
-      };
       const res = await fetch(
         draft.id ? `/api/panel/content-posts/${draft.id}` : "/api/panel/content-posts",
         {
@@ -540,6 +592,8 @@ export default function ContentCalendar({
       );
       setDraft(null);
       router.refresh();
+    } catch {
+      setError(NETWORK_ERROR);
     } finally {
       setPending(false);
     }
@@ -547,13 +601,19 @@ export default function ContentCalendar({
 
   async function convert() {
     if (!draft?.id) return;
+    const payload = draftPayload(draft);
+    if (!payload) {
+      setError(INVALID_DATE_ERROR);
+      return;
+    }
     setPending(true);
     setError(null);
     try {
+      // Formdaki değişiklikler de gider: kart, ekranda görünen brief ve tarihle açılır.
       const res = await fetch(`/api/panel/content-posts/${draft.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ convertToCard: true }),
+        body: JSON.stringify({ ...payload, convertToCard: true }),
       });
       const j = (await res.json().catch(() => null)) as
         | { post?: SerializedPost | null; error?: string }
@@ -564,7 +624,9 @@ export default function ContentCalendar({
       }
       const saved = j.post;
       setPosts((prev) => prev.map((p) => (p.id === saved.id ? saved : p)));
-      setDraft(draftFromPost(saved));
+      openDraft(draftFromPost(saved));
+    } catch {
+      setError(NETWORK_ERROR);
     } finally {
       setPending(false);
     }
@@ -572,9 +634,14 @@ export default function ContentCalendar({
 
   async function remove() {
     if (!draft?.id || !confirm("İçerik silinsin mi?")) return;
-    const res = await fetch(`/api/panel/content-posts/${draft.id}`, { method: "DELETE" });
-    if (!res.ok) {
-      setError("Silinemedi");
+    try {
+      const res = await fetch(`/api/panel/content-posts/${draft.id}`, { method: "DELETE" });
+      if (!res.ok) {
+        setError("Silinemedi");
+        return;
+      }
+    } catch {
+      setError(NETWORK_ERROR);
       return;
     }
     setPosts((prev) => prev.filter((p) => p.id !== draft.id));
@@ -590,21 +657,28 @@ export default function ContentCalendar({
     const nextIso = next.toISOString();
     if (prevIso === nextIso) return;
     setPosts((prev) => prev.map((p) => (p.id === postId ? { ...p, scheduledAt: nextIso } : p)));
-    const res = await fetch(`/api/panel/content-posts/${postId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ scheduledAt: nextIso }),
-    });
-    const j = (await res.json().catch(() => null)) as
-      | { post?: SerializedPost | null; error?: string }
-      | null;
-    if (!res.ok || !j?.post) {
+    const rollback = (message: string) => {
       setPosts((prev) => prev.map((p) => (p.id === postId ? { ...p, scheduledAt: prevIso } : p)));
-      setError(j?.error || "Taşınamadı");
-      return;
+      setError(message);
+    };
+    try {
+      const res = await fetch(`/api/panel/content-posts/${postId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ scheduledAt: nextIso }),
+      });
+      const j = (await res.json().catch(() => null)) as
+        | { post?: SerializedPost | null; error?: string }
+        | null;
+      if (!res.ok || !j?.post) {
+        rollback(j?.error || "Taşınamadı");
+        return;
+      }
+      const saved = j.post;
+      setPosts((prev) => prev.map((p) => (p.id === saved.id ? saved : p)));
+    } catch {
+      rollback(NETWORK_ERROR);
     }
-    const saved = j.post;
-    setPosts((prev) => prev.map((p) => (p.id === saved.id ? saved : p)));
   }
 
   function onDragStartPost(e: DragEvent, post: SerializedPost) {
@@ -638,7 +712,7 @@ export default function ContentCalendar({
     "inline-flex size-9 items-center justify-center rounded-full text-zinc-600 transition hover:bg-zinc-100 hover:text-zinc-900";
 
   return (
-    <div className="flex h-[calc(100dvh-var(--panel-header-h)-1.5rem)] min-h-[560px] flex-col overflow-hidden rounded-2xl border border-zinc-200 bg-white sm:h-[calc(100dvh-var(--panel-header-h)-2rem)]">
+    <div className="flex h-[calc(100dvh-var(--panel-header-h)-1.5rem)] min-h-[560px] flex-col overflow-clip rounded-2xl border border-zinc-200 bg-white sm:h-[calc(100dvh-var(--panel-header-h)-2rem)]">
       {/* ── araç çubuğu ── */}
       <div className="flex flex-wrap items-center gap-2 border-b border-zinc-200 px-3 py-2 sm:px-4">
         <button
@@ -764,12 +838,22 @@ export default function ContentCalendar({
                     const all = selectedTenants.size === 0;
                     const on = all || selectedTenants.has(t.id);
                     const color = colorOf(t.id);
+                    const picked = !all && on;
                     return (
                       <li key={t.id}>
                         <label
-                          className={`group/row flex cursor-pointer items-center gap-2.5 rounded-md px-2 py-1.5 text-sm hover:bg-zinc-100 ${
-                            t.visible === false ? "text-zinc-400" : "text-zinc-800"
-                          } ${!all && on ? "bg-zinc-100 font-medium" : ""}`}
+                          className={`group/row relative flex cursor-pointer items-center gap-2.5 rounded-md px-2 py-1.5 text-sm ${
+                            picked
+                              ? "font-semibold text-zinc-950"
+                              : `hover:bg-zinc-100 ${
+                                  t.visible === false ? "text-zinc-400" : all ? "text-zinc-800" : "text-zinc-500"
+                                }`
+                          }`}
+                          style={
+                            picked
+                              ? { background: hexAlpha(color, "26"), boxShadow: `inset 3px 0 0 ${color}` }
+                              : undefined
+                          }
                         >
                           <input
                             type="checkbox"
@@ -782,7 +866,6 @@ export default function ContentCalendar({
                             style={{
                               background: on ? color : "transparent",
                               borderColor: color,
-                              opacity: all ? 0.55 : 1,
                             }}
                             aria-hidden
                           >
@@ -816,7 +899,7 @@ export default function ContentCalendar({
                     return (
                       <li key={p}>
                         <label
-                          className={`flex cursor-pointer items-center gap-2.5 rounded-md px-2 py-1.5 text-sm text-zinc-800 hover:bg-zinc-100 ${
+                          className={`relative flex cursor-pointer items-center gap-2.5 rounded-md px-2 py-1.5 text-sm text-zinc-800 hover:bg-zinc-100 ${
                             !all && on ? "bg-zinc-100 font-medium" : ""
                           }`}
                         >
@@ -831,7 +914,6 @@ export default function ContentCalendar({
                             style={{
                               background: on ? PLATFORM_DOT[p] : "transparent",
                               borderColor: PLATFORM_DOT[p],
-                              opacity: all ? 0.55 : 1,
                             }}
                             aria-hidden
                           >
@@ -873,7 +955,7 @@ export default function ContentCalendar({
         ) : null}
 
         {/* ── ana görünüm ── */}
-        <div className="flex min-w-0 flex-1 flex-col">
+        <div className="relative flex min-w-0 flex-1 flex-col">
           {view === "month" ? (
             <MonthView
               days={range.days}
@@ -886,7 +968,7 @@ export default function ContentCalendar({
               dragId={dragId}
               dropKey={dropKey}
               setDropKey={setDropKey}
-              onOpenPost={(p) => setDraft(draftFromPost(p))}
+              onOpenPost={(p) => openDraft(draftFromPost(p))}
               onCreate={(d) => openNew(withHour(d, 12))}
               onOpenDay={(d) => navigate("day", d)}
               onMore={(k) => setDayOpen(k)}
@@ -911,7 +993,7 @@ export default function ContentCalendar({
               colorOf={colorOf}
               mediaOf={mediaOf}
               dragId={dragId}
-              onOpenPost={(p) => setDraft(draftFromPost(p))}
+              onOpenPost={(p) => openDraft(draftFromPost(p))}
               onCreate={(d) => openNew(d)}
               onOpenDay={(d) => navigate("day", d)}
               onDragStart={onDragStartPost}
@@ -919,26 +1001,27 @@ export default function ContentCalendar({
               onDrop={(postId, at) => void reschedule(postId, at)}
             />
           )}
+
+          {/* Izgaranın üzerinde durur; akışta olsaydı filtre değişince ızgara ve kenar çubuğu zıplardı. */}
+          {filtered.length === 0 && posts.length > 0 ? (
+            <div className="absolute inset-x-0 bottom-0 z-40 flex items-center gap-3 border-t border-amber-100 bg-amber-50 px-4 py-2 text-xs text-amber-800">
+              Bu dönemde seçili marka / platform / durum filtrelerine uyan içerik yok.
+              <button
+                type="button"
+                className="ml-auto font-semibold underline"
+                onClick={() => {
+                  setSelectedTenants(new Set());
+                  setSelectedPlatforms(new Set());
+                  setStatus("");
+                  setQuery("");
+                }}
+              >
+                Filtreleri temizle
+              </button>
+            </div>
+          ) : null}
         </div>
       </div>
-
-      {filtered.length === 0 && posts.length > 0 ? (
-        <div className="flex items-center gap-3 border-t border-amber-100 bg-amber-50 px-4 py-2 text-xs text-amber-800">
-          Bu dönemde seçili marka / platform / durum filtrelerine uyan içerik yok.
-          <button
-            type="button"
-            className="ml-auto font-semibold underline"
-            onClick={() => {
-              setSelectedTenants(new Set());
-              setSelectedPlatforms(new Set());
-              setStatus("");
-              setQuery("");
-            }}
-          >
-            Filtreleri temizle
-          </button>
-        </div>
-      ) : null}
 
       {error && !draft ? (
         <div className="flex items-center gap-3 border-t border-rose-100 bg-rose-50 px-4 py-2 text-xs text-rose-700">
@@ -1010,7 +1093,7 @@ export default function ContentCalendar({
                           size="lg"
                           onClick={() => {
                             setDayOpen(null);
-                            setDraft(draftFromPost(p));
+                            openDraft(draftFromPost(p));
                           }}
                         />
                       </li>
@@ -1028,16 +1111,17 @@ export default function ContentCalendar({
         <div
           className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-0 sm:items-center sm:p-4"
           role="presentation"
-          onClick={() => setDraft(null)}
+          onMouseDown={(e) => {
+            backdropPressed.current = e.target === e.currentTarget;
+          }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget && backdropPressed.current) closeDraft();
+          }}
         >
           <div
             role="dialog"
             aria-modal="true"
             className="flex max-h-[92vh] w-full max-w-3xl flex-col overflow-hidden rounded-t-2xl bg-white shadow-xl sm:rounded-2xl"
-            onClick={(e) => e.stopPropagation()}
-            onKeyDown={(e) => {
-              if (e.key === "Escape") setDraft(null);
-            }}
           >
             <div className="flex items-start justify-between gap-3 border-b border-zinc-100 px-5 py-3">
               <div className="flex items-center gap-3">
@@ -1063,7 +1147,7 @@ export default function ContentCalendar({
                   ) : null}
                 </div>
               </div>
-              <button type="button" className="rounded-full p-1.5 text-zinc-500 hover:bg-zinc-100" onClick={() => setDraft(null)} aria-label="Kapat">
+              <button type="button" className="rounded-full p-1.5 text-zinc-500 hover:bg-zinc-100" onClick={closeDraft} aria-label="Kapat">
                 <X className="size-5" />
               </button>
             </div>
@@ -1622,9 +1706,10 @@ function MonthView({
     ro.observe(el);
     return () => ro.disconnect();
   }, [rows]);
-  const ROW_PX = 22; // çip (20px) + boşluk
+  const ROW_PX = 24; // çip (22px, kenarlık dahil) + 2px boşluk
   const HEAD_PX = 30;
-  const maxPerCell = cellH ? Math.max(1, Math.floor((cellH - HEAD_PX - 6) / ROW_PX)) : 3;
+  // Hücre: başlık + alt dolgu (4px) + alt kenarlık (1px); son satırda boşluk yok (+2px).
+  const maxPerCell = cellH ? Math.max(1, Math.floor((cellH - HEAD_PX - 3) / ROW_PX)) : 3;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -1722,7 +1807,7 @@ function MonthView({
                         e.stopPropagation();
                         onMore(k);
                       }}
-                      className="w-full rounded-md px-1.5 py-[2px] text-left text-[11px] font-semibold leading-4 text-zinc-600 hover:bg-zinc-200/70 hover:text-zinc-900"
+                      className="block w-full rounded-md px-1.5 py-[2px] text-left text-[11px] font-semibold leading-4 text-zinc-600 hover:bg-zinc-200/70 hover:text-zinc-900"
                     >
                       +{hidden} daha
                     </button>

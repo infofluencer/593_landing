@@ -33,6 +33,32 @@ function cleanUrls(v: unknown): string[] {
   return [...new Set(v.map((x) => String(x).trim()).filter((x) => /^https?:\/\//i.test(x)))].slice(0, 20);
 }
 
+/**
+ * Paylaşım tarihi değişince bağlı tasarım kartının son tarihi de taşınır.
+ * Kartta tarih elle değiştirildiyse (paylaşım tarihinden farklıysa) dokunulmaz.
+ */
+async function syncCardDueDate(opts: {
+  cardId: string;
+  previous: Date;
+  next: Date;
+  actorId: string | null;
+}) {
+  const { count } = await prisma.boardCard.updateMany({
+    where: { id: opts.cardId, dueAt: opts.previous },
+    data: { dueAt: opts.next },
+  });
+  if (count === 0) return;
+  await prisma.boardCardActivity.create({
+    data: {
+      cardId: opts.cardId,
+      actorId: opts.actorId,
+      type: "due",
+      message: "Son tarih içerik takviminden güncellendi",
+      meta: { dueAt: opts.next },
+    },
+  });
+}
+
 export async function PATCH(request: Request, ctx: Ctx) {
   const { session, error } = await requirePermissionApi("brands.edit");
   if (error || !session) return error;
@@ -71,6 +97,17 @@ export async function PATCH(request: Request, ctx: Ctx) {
 
   if (Object.keys(data).length > 0) {
     const updated = await prisma.contentPost.update({ where: { id }, data });
+    if (
+      existing.boardCardId &&
+      updated.scheduledAt.getTime() !== existing.scheduledAt.getTime()
+    ) {
+      await syncCardDueDate({
+        cardId: existing.boardCardId,
+        previous: existing.scheduledAt,
+        next: updated.scheduledAt,
+        actorId: await resolveStaffUserId(session),
+      });
+    }
     const diff = diffFields(
       { title: existing.title, platform: existing.platform, scheduledAt: existing.scheduledAt, status: existing.status, assigneeId: existing.assigneeId, designerId: existing.designerId },
       { title: updated.title, platform: updated.platform, scheduledAt: updated.scheduledAt, status: updated.status, assigneeId: updated.assigneeId, designerId: updated.designerId },
