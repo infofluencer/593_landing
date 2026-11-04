@@ -46,6 +46,7 @@ import {
   useTransition,
   type CSSProperties,
 } from "react";
+import { createPortal } from "react-dom";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { isCardOverdue, overdueDays } from "@/lib/panel/board";
 import {
@@ -53,7 +54,7 @@ import {
   avatarTone,
   getColumnStatusMeta,
 } from "@/components/panel/TeamPlatformIcon";
-import { RichText, URL_RE } from "@/components/panel/RichText";
+import { RichText, URL_RE, shortUrl } from "@/components/panel/RichText";
 
 type StaffUser = {
   id: string;
@@ -294,6 +295,10 @@ export default function StatusBoard({
   const [editing, setEditing] = useState<Card | null>(null);
   const [uploadingImages, setUploadingImages] = useState(0);
   const dialogRef = useRef<HTMLDivElement>(null);
+  // Pencerenin açılıştaki hali; kaydedilmemiş değişikliği anlamak için.
+  const editorBase = useRef("");
+  // Metin seçerken fare dışarıda bırakılırsa pencere kapanmasın.
+  const backdropPressed = useRef(false);
   const reducedMotion = usePrefersReducedMotion();
 
   const [draftTitle, setDraftTitle] = useState("");
@@ -328,8 +333,55 @@ export default function StatusBoard({
     setDraftPriority(card.priority);
     setDraftDue(card.dueAt ? card.dueAt.slice(0, 10) : "");
     setDraftLabels((card.labels ?? []).join(", "));
+    editorBase.current = editorSnapshot({
+      title: card.title,
+      description: card.description ?? "",
+      assigneeIds: card.assignees.map((a) => a.id),
+      teamId: card.teamId ?? "",
+      tenantId: card.tenantId ?? "",
+      priority: card.priority,
+      due: card.dueAt ? card.dueAt.slice(0, 10) : "",
+      labels: (card.labels ?? []).join(", "),
+    });
     setEditing(card);
   }, []);
+
+  // Kaydedilmemiş değişiklik varsa kapatmadan önce sorar.
+  const closeEditor = useCallback(() => {
+    const current = editorSnapshot({
+      title: draftTitle,
+      description: draftDesc,
+      assigneeIds: draftAssigneeIds,
+      teamId: draftTeamId,
+      tenantId: draftTenantId,
+      priority: draftPriority,
+      due: draftDue,
+      labels: draftLabels,
+    });
+    if (current !== editorBase.current && !confirm("Kaydedilmemiş değişiklikler silinsin mi?")) {
+      return;
+    }
+    setEditing(null);
+  }, [
+    draftTitle,
+    draftDesc,
+    draftAssigneeIds,
+    draftTeamId,
+    draftTenantId,
+    draftPriority,
+    draftDue,
+    draftLabels,
+  ]);
+
+  // Esc: odak pencere dışına düşse de (ör. arka plana tıklayınca) çalışsın.
+  useEffect(() => {
+    if (!editing) return;
+    function onEscape(e: KeyboardEvent) {
+      if (e.key === "Escape") closeEditor();
+    }
+    window.addEventListener("keydown", onEscape);
+    return () => window.removeEventListener("keydown", onEscape);
+  }, [editing, closeEditor]);
 
   // Pencere açılınca odak panodaki karttan pencereye geçer (kart vurgulu
   // kalmasın), arka plan kaydırılamaz; kapanınca eski hâline döner.
@@ -1109,209 +1161,227 @@ export default function StatusBoard({
       </DndContext>
       )}
 
-      {editing ? (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-          role="presentation"
-          onClick={() => setEditing(null)}
-        >
-          <div
-            ref={dialogRef}
-            tabIndex={-1}
-            role="dialog"
-            aria-modal
-            aria-labelledby="card-edit-title"
-            className="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-xl outline-none"
-            onClick={(e) => e.stopPropagation()}
-            onKeyDown={(e) => {
-              if (e.key === "Escape") setEditing(null);
-            }}
-          >
-            <div className="flex items-center justify-between gap-3 border-b border-zinc-100 px-5 py-3">
-              <h3 id="card-edit-title" className="text-base font-semibold">
-                {canEdit ? "Görevi düzenle" : "Görev"}
-              </h3>
-              <button
-                type="button"
-                onClick={() => setEditing(null)}
-                aria-label="Kapat"
-                className="rounded-full p-1.5 text-zinc-500 hover:bg-zinc-100"
+      {/* .panel-root'a taşınır: tahta z-10 katmanında; içeride kalsa üst panelin (z-30) altında kalırdı. */}
+      {editing
+        ? createPortal(
+            <div
+              className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+              role="presentation"
+              onMouseDown={(e) => {
+                backdropPressed.current = e.target === e.currentTarget;
+              }}
+              onClick={(e) => {
+                if (e.target === e.currentTarget && backdropPressed.current) closeEditor();
+              }}
+            >
+              <div
+                ref={dialogRef}
+                tabIndex={-1}
+                role="dialog"
+                aria-modal
+                aria-labelledby="card-edit-title"
+                className="flex max-h-[90dvh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl bg-white text-zinc-900 shadow-2xl outline-none lg:max-w-5xl"
               >
-                <X className="size-4" aria-hidden />
-              </button>
-            </div>
-            <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-5 py-4">
-            <fieldset disabled={!canEdit} className="min-w-0 space-y-3">
-            <input
-              value={draftTitle}
-              onChange={(e) => setDraftTitle(e.target.value)}
-              placeholder="Görev başlığı"
-              className="w-full rounded-md border border-zinc-200 px-3 py-2 text-base font-semibold outline-none focus:border-[#e91825]"
-            />
-            <DescriptionField
-              key={editing.id}
-              value={draftDesc}
-              readOnly={!canEdit}
-              onChange={setDraftDesc}
-              onPasteImages={(files) => void uploadCardImages(editing.id, files)}
-            />
-            <CardImagesField
-              images={editingImages}
-              uploading={uploadingImages > 0}
-              readOnly={!canEdit}
-              onAdd={(files) => void uploadCardImages(editing.id, files)}
-              onRemove={(url) => void removeCardImage(editing.id, url)}
-            />
-            <div className="grid grid-cols-2 gap-2">
-              <label className="col-span-2 text-[11px] font-medium text-zinc-500">
-                Takım
-                <select
-                  value={draftTeamId}
-                  onChange={(e) => setDraftTeamId(e.target.value)}
-                  className="mt-1 w-full rounded-md border border-zinc-200 px-2.5 py-2 text-sm text-zinc-900"
+                <div className="flex shrink-0 items-center justify-between gap-3 border-b border-zinc-100 px-5 py-3">
+                  <h3 id="card-edit-title" className="text-sm font-semibold text-zinc-500">
+                    {canEdit ? "Görevi düzenle" : "Görev"}
+                  </h3>
+                  <button
+                    type="button"
+                    onClick={closeEditor}
+                    aria-label="Kapat"
+                    className="rounded-full p-1.5 text-zinc-500 hover:bg-zinc-100"
+                  >
+                    <X className="size-4" aria-hidden />
+                  </button>
+                </div>
+
+                {/* Kaydırma ayrı kutuda: fieldset kendisi kaydırıcı olursa içerik alt düğmelerin üstüne taşıyor. */}
+                <div className="min-h-0 flex-1 overflow-y-auto lg:flex lg:overflow-hidden">
+                <fieldset
+                  disabled={!canEdit}
+                  className="grid w-full min-w-0 lg:min-h-0 lg:grid-cols-[minmax(0,1fr)_19rem] lg:grid-rows-[minmax(0,1fr)]"
                 >
-                  <option value="">Takım yok</option>
-                  {teams.map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {t.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="col-span-2 text-[11px] font-medium text-zinc-500">
-                Marka
-                <select
-                  value={draftTenantId}
-                  onChange={(e) => setDraftTenantId(e.target.value)}
-                  className="mt-1 w-full rounded-md border border-zinc-200 px-2.5 py-2 text-sm text-zinc-900"
-                >
-                  <option value="">Marka yok</option>
-                  {tenants.map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {t.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <select
-                value={draftPriority}
-                onChange={(e) =>
-                  setDraftPriority(e.target.value as Card["priority"])
-                }
-                className="rounded-md border border-zinc-200 px-2.5 py-2 text-sm"
-              >
-                {(Object.keys(PRIORITY_LABEL) as Card["priority"][]).map(
-                  (p) => (
-                    <option key={p} value={p}>
-                      {PRIORITY_LABEL[p]}
-                    </option>
-                  ),
-                )}
-              </select>
-              <input
-                type="date"
-                value={draftDue}
-                onChange={(e) => setDraftDue(e.target.value)}
-                className="rounded-md border border-zinc-200 px-2.5 py-2 text-sm"
-              />
-            </div>
+                  {/* içerik */}
+                  <div className="min-w-0 space-y-4 px-5 py-4 lg:overflow-y-auto">
+                    <input
+                      value={draftTitle}
+                      onChange={(e) => setDraftTitle(e.target.value)}
+                      placeholder="Görev başlığı"
+                      aria-label="Görev başlığı"
+                      className="-mx-2 w-[calc(100%+1rem)] rounded-lg border border-transparent bg-transparent px-2 py-1 text-xl font-semibold text-zinc-900 outline-none hover:border-zinc-200 focus:border-[#e91825]"
+                    />
+                    <DescriptionField
+                      key={editing.id}
+                      value={draftDesc}
+                      readOnly={!canEdit}
+                      onChange={setDraftDesc}
+                      onPasteImages={(files) => void uploadCardImages(editing.id, files)}
+                    />
+                    <CardImagesField
+                      images={editingImages}
+                      uploading={uploadingImages > 0}
+                      readOnly={!canEdit}
+                      onAdd={(files) => void uploadCardImages(editing.id, files)}
+                      onRemove={(url) => void removeCardImage(editing.id, url)}
+                    />
+                    {(editing.activities?.length ?? 0) > 0 ? (
+                      <div>
+                        <p className={modalLabel}>Aktivite</p>
+                        <ul className="mt-1.5 max-h-36 space-y-1.5 overflow-y-auto rounded-lg border border-zinc-100 bg-zinc-50 p-3 text-xs text-zinc-600">
+                          {editing.activities!.map((a) => (
+                            <li key={a.id} className="leading-snug">
+                              <span className="font-medium text-zinc-800">
+                                {displayName(a.actor) || "Sistem"}
+                              </span>
+                              {" · "}
+                              {a.message || a.type}
+                              <span className="text-zinc-400">
+                                {" "}
+                                ·{" "}
+                                {new Date(a.createdAt).toLocaleString("tr-TR", {
+                                  dateStyle: "short",
+                                  timeStyle: "short",
+                                })}
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    ) : null}
+                  </div>
 
-            <div>
-              <p className="mb-1.5 text-[11px] font-medium text-zinc-500">
-                Atananlar (çoklu)
-              </p>
-              <div className="flex max-h-28 flex-wrap gap-1.5 overflow-y-auto">
-                {staff.map((u) => {
-                  const on = draftAssigneeIds.includes(u.id);
-                  if (!canEdit && !on) return null;
-                  return (
-                    <button
-                      key={u.id}
-                      type="button"
-                      onClick={() => toggleAssignee(u.id)}
-                      className={`inline-flex items-center gap-1.5 rounded-full border py-0.5 pl-0.5 pr-2.5 text-xs ${
-                        on
-                          ? "border-[#e91825]/40 bg-[#e91825]/10 text-[#e91825]"
-                          : "border-zinc-200 text-zinc-600 hover:border-zinc-300"
-                      }`}
-                    >
-                      <StaffAvatar user={u} className="h-6 w-6 text-[9px]" />
-                      {displayName(u)}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
+                  {/* ayrıntılar */}
+                  <div className="grid content-start gap-3 border-t border-zinc-100 bg-zinc-50/70 px-5 py-4 sm:grid-cols-2 lg:grid-cols-1 lg:overflow-y-auto lg:border-l lg:border-t-0">
+                    <label className={modalLabel}>
+                      Takım
+                      <select
+                        value={draftTeamId}
+                        onChange={(e) => setDraftTeamId(e.target.value)}
+                        className={modalField}
+                      >
+                        <option value="">Takım yok</option>
+                        {teams.map((t) => (
+                          <option key={t.id} value={t.id}>
+                            {t.name}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className={modalLabel}>
+                      Marka
+                      <select
+                        value={draftTenantId}
+                        onChange={(e) => setDraftTenantId(e.target.value)}
+                        className={modalField}
+                      >
+                        <option value="">Marka yok</option>
+                        {tenants.map((t) => (
+                          <option key={t.id} value={t.id}>
+                            {t.name}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className={modalLabel}>
+                      Öncelik
+                      <select
+                        value={draftPriority}
+                        onChange={(e) =>
+                          setDraftPriority(e.target.value as Card["priority"])
+                        }
+                        className={modalField}
+                      >
+                        {(Object.keys(PRIORITY_LABEL) as Card["priority"][]).map(
+                          (p) => (
+                            <option key={p} value={p}>
+                              {PRIORITY_LABEL[p]}
+                            </option>
+                          ),
+                        )}
+                      </select>
+                    </label>
+                    <label className={modalLabel}>
+                      Son tarih
+                      <input
+                        type="date"
+                        value={draftDue}
+                        onChange={(e) => setDraftDue(e.target.value)}
+                        className={modalField}
+                      />
+                    </label>
 
-            <label className="block text-[11px] font-medium text-zinc-500">
-              Etiketler (virgülle)
-              <input
-                value={draftLabels}
-                onChange={(e) => setDraftLabels(e.target.value)}
-                placeholder="acil, sync, creative"
-                className="mt-1 w-full rounded-md border border-zinc-200 px-3 py-2 text-sm outline-none focus:border-[#e91825]"
-              />
-            </label>
-            </fieldset>
-
-            {(editing.activities?.length ?? 0) > 0 ? (
-              <div>
-                <p className="mb-1.5 text-[11px] font-medium text-zinc-500">
-                  Aktivite
-                </p>
-                <ul className="max-h-36 space-y-1.5 overflow-y-auto rounded-md border border-zinc-100 bg-zinc-50 p-2 text-xs text-zinc-600">
-                  {editing.activities!.map((a) => (
-                    <li key={a.id} className="leading-snug">
-                      <span className="font-medium text-zinc-800">
-                        {displayName(a.actor) || "Sistem"}
-                      </span>
-                      {" · "}
-                      {a.message || a.type}
-                      <span className="text-zinc-400">
-                        {" "}
-                        ·{" "}
-                        {new Date(a.createdAt).toLocaleString("tr-TR", {
-                          dateStyle: "short",
-                          timeStyle: "short",
+                    <div className="sm:col-span-2 lg:col-span-1">
+                      <p className={modalLabel}>Atananlar</p>
+                      <div className="mt-1.5 flex max-h-40 flex-wrap gap-1.5 overflow-y-auto">
+                        {staff.map((u) => {
+                          const on = draftAssigneeIds.includes(u.id);
+                          if (!canEdit && !on) return null;
+                          return (
+                            <button
+                              key={u.id}
+                              type="button"
+                              onClick={() => toggleAssignee(u.id)}
+                              aria-pressed={on}
+                              className={`inline-flex items-center gap-1.5 rounded-full border py-0.5 pl-0.5 pr-2.5 text-xs ${
+                                on
+                                  ? "border-[#e91825]/40 bg-[#e91825]/10 font-medium text-[#e91825]"
+                                  : "border-zinc-200 bg-white text-zinc-600 hover:border-zinc-300"
+                              }`}
+                            >
+                              <StaffAvatar user={u} className="h-6 w-6 text-[9px]" />
+                              {displayName(u)}
+                            </button>
+                          );
                         })}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ) : null}
+                      </div>
+                    </div>
 
-            </div>
-            <div className="flex flex-wrap gap-2 border-t border-zinc-100 px-5 py-3">
-              {canEdit ? (
-                <button
-                  type="button"
-                  onClick={() => void saveEdit()}
-                  className="rounded-md bg-[#e91825] px-3 py-2 text-sm font-medium text-white hover:bg-[#c91420]"
-                >
-                  Kaydet
-                </button>
-              ) : null}
-              <button
-                type="button"
-                onClick={() => setEditing(null)}
-                className="rounded-md px-3 py-2 text-sm text-zinc-600 hover:bg-zinc-100"
-              >
-                Kapat
-              </button>
-              {canDeleteCards ? (
-                <button
-                  type="button"
-                  onClick={() => void deleteCard(editing.id)}
-                  className="ml-auto rounded-md px-3 py-2 text-sm text-rose-600 hover:bg-rose-50"
-                >
-                  Sil
-                </button>
-              ) : null}
-            </div>
-          </div>
-        </div>
-      ) : null}
+                    <label className={`${modalLabel} sm:col-span-2 lg:col-span-1`}>
+                      Etiketler (virgülle)
+                      <input
+                        value={draftLabels}
+                        onChange={(e) => setDraftLabels(e.target.value)}
+                        placeholder="acil, sync, creative"
+                        className={modalField}
+                      />
+                    </label>
+                  </div>
+                </fieldset>
+                </div>
+
+                <div className="flex shrink-0 flex-wrap gap-2 border-t border-zinc-100 px-5 py-3">
+                  {canEdit ? (
+                    <button
+                      type="button"
+                      onClick={() => void saveEdit()}
+                      className="rounded-lg bg-[#e91825] px-4 py-2 text-sm font-medium text-white hover:bg-[#c91420]"
+                    >
+                      Kaydet
+                    </button>
+                  ) : null}
+                  <button
+                    type="button"
+                    onClick={closeEditor}
+                    className="rounded-lg px-3 py-2 text-sm text-zinc-600 hover:bg-zinc-100"
+                  >
+                    Kapat
+                  </button>
+                  {canDeleteCards ? (
+                    <button
+                      type="button"
+                      onClick={() => void deleteCard(editing.id)}
+                      className="ml-auto rounded-lg px-3 py-2 text-sm text-rose-600 hover:bg-rose-50"
+                    >
+                      Sil
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+            </div>,
+            document.querySelector(".panel-root") ?? document.body,
+          )
+        : null}
     </div>
   );
 }
@@ -1654,7 +1724,31 @@ function extractLinks(text: string | null | undefined): string[] {
   return [...new Set(found)];
 }
 
-/** Düzenleme penceresi — açıklamadaki linkleri tıklanabilir gösterir. */
+/** Pencere alanlarının karşılaştırılabilir özeti; atanan sırası önemsiz. */
+function editorSnapshot(fields: {
+  title: string;
+  description: string;
+  assigneeIds: string[];
+  teamId: string;
+  tenantId: string;
+  priority: string;
+  due: string;
+  labels: string;
+}): string {
+  return JSON.stringify({ ...fields, assigneeIds: [...fields.assigneeIds].sort() });
+}
+
+/** Düzenleme penceresi alanları. */
+const modalLabel = "block text-xs font-medium text-zinc-500";
+const modalField =
+  "mt-1 w-full min-w-0 rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm font-normal text-zinc-900 outline-none focus:border-[#e91825] disabled:bg-zinc-50 disabled:text-zinc-500";
+
+/** Okuma görünümü için: arka arkaya boş satırları teke indirir (kayıtlı metne dokunmaz). */
+function tidyDescription(text: string): string {
+  return text.trim().replace(/\n\s*\n(\s*\n)+/g, "\n\n");
+}
+
+/** Metin düzenlenirken linkleri tıklanabilir gösterir. */
 function DescriptionLinks({ text }: { text: string }) {
   const links = extractLinks(text);
   if (links.length === 0) return null;
@@ -1663,13 +1757,6 @@ function DescriptionLinks({ text }: { text: string }) {
       <p className="text-[11px] font-medium text-zinc-500">Bağlantılar</p>
       <ul className="flex flex-col gap-1">
         {links.map((href) => {
-          let label = href;
-          try {
-            const u = new URL(href);
-            label = `${u.hostname.replace(/^www\./, "")}${u.pathname === "/" ? "" : u.pathname}`;
-          } catch {
-            // Geçersiz URL — ham metni göster.
-          }
           return (
             <li key={href} className="min-w-0">
               <a
@@ -1680,7 +1767,7 @@ function DescriptionLinks({ text }: { text: string }) {
                 className="inline-flex max-w-full items-center gap-1.5 rounded-md border border-zinc-200 px-2 py-1 text-xs text-sky-700 transition hover:border-sky-300 hover:bg-sky-50"
               >
                 <Link2 className="size-3.5 shrink-0" aria-hidden />
-                <span className="truncate">{label}</span>
+                <span className="truncate">{shortUrl(href)}</span>
               </a>
             </li>
           );
@@ -1732,43 +1819,37 @@ function DescriptionField({
   if (readOnly) {
     if (!value.trim()) return null;
     return (
-      <div className="space-y-2">
-        <div className="max-h-[40vh] overflow-y-auto whitespace-pre-wrap break-words rounded-lg border border-zinc-200 bg-zinc-50/70 px-3 py-2 text-[15px] leading-relaxed text-zinc-800">
-          <RichText text={value} />
-        </div>
-        <DescriptionLinks text={value} />
+      <div className="whitespace-pre-wrap break-words rounded-lg border border-zinc-200 bg-zinc-50/70 px-3 py-2.5 text-sm leading-relaxed text-zinc-800">
+        <RichText text={tidyDescription(value)} compactLinks />
       </div>
     );
   }
 
   if (mode === "read") {
     return (
-      <div className="space-y-2">
-        <div className="rounded-lg border border-zinc-200 bg-zinc-50/70">
-          <div className="flex items-center justify-between px-3 pt-2">
-            <span className="text-[11px] font-medium text-zinc-500">Açıklama</span>
-            <button
-              type="button"
-              onClick={startEdit}
-              className="rounded-md px-2 py-0.5 text-[11px] font-medium text-zinc-600 hover:bg-zinc-200/70 hover:text-zinc-900"
-            >
-              Düzenle
-            </button>
-          </div>
-          <div
-            role="button"
-            tabIndex={0}
+      <div className="rounded-lg border border-zinc-200 bg-zinc-50/70">
+        <div className="flex items-center justify-between px-3 pt-2">
+          <span className={modalLabel}>Açıklama</span>
+          <button
+            type="button"
             onClick={startEdit}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") startEdit();
-            }}
-            title="Düzenlemek için tıklayın"
-            className="max-h-[40vh] cursor-text overflow-y-auto whitespace-pre-wrap break-words px-3 pb-3 pt-1 text-[15px] leading-relaxed text-zinc-800 outline-none focus-visible:ring-2 focus-visible:ring-[#e91825]/30"
+            className="rounded-md px-2 py-0.5 text-[11px] font-medium text-zinc-600 hover:bg-zinc-200/70 hover:text-zinc-900"
           >
-            <RichText text={value} />
-          </div>
+            Düzenle
+          </button>
         </div>
-        <DescriptionLinks text={value} />
+        <div
+          role="button"
+          tabIndex={0}
+          onClick={startEdit}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") startEdit();
+          }}
+          title="Düzenlemek için tıklayın"
+          className="cursor-text whitespace-pre-wrap break-words px-3 pb-3 pt-1 text-sm leading-relaxed text-zinc-800 outline-none focus-visible:ring-2 focus-visible:ring-[#e91825]/30"
+        >
+          <RichText text={tidyDescription(value)} compactLinks />
+        </div>
       </div>
     );
   }
@@ -1794,7 +1875,7 @@ function DescriptionField({
         }}
         rows={5}
         placeholder="Açıklama — link ve ekran görüntüsü yapıştırabilirsiniz"
-        className="w-full resize-y rounded-lg border border-zinc-200 px-3 py-2.5 text-[15px] leading-relaxed outline-none focus:border-[#e91825]"
+        className="w-full resize-y rounded-lg border border-zinc-200 px-3 py-2.5 text-sm leading-relaxed outline-none focus:border-[#e91825]"
       />
       <DescriptionLinks text={value} />
     </div>
@@ -2094,24 +2175,24 @@ function CardImagesField({
         onAdd(Array.from(e.dataTransfer.files));
       }}
       className={[
-        "rounded-md border border-dashed p-2",
+        "rounded-lg border border-dashed p-3",
         dragOver ? "border-[#e91825] bg-rose-50/50" : "border-zinc-200",
       ].join(" ")}
     >
       <div className="flex items-center gap-2">
-        <span className="text-[11px] font-medium text-zinc-500">
+        <span className="text-xs font-medium text-zinc-500">
           Referans görselleri
         </span>
         {readOnly ? null : (
           <>
-            <span className="text-[10px] text-zinc-400">
+            <span className="hidden text-[10px] text-zinc-400 sm:inline">
               İlk görsel kart kapağı olur
             </span>
             <button
               type="button"
               onClick={() => inputRef.current?.click()}
               disabled={uploading}
-              className="ml-auto inline-flex items-center gap-1 rounded-md border border-zinc-200 px-2 py-1 text-xs text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
+              className="ml-auto inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-md border border-zinc-200 px-2 py-1 text-xs text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
             >
               <ImagePlus className="size-3.5" aria-hidden />
               {uploading ? "Yükleniyor…" : "Görsel ekle"}
