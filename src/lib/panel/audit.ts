@@ -14,7 +14,8 @@ export type AuditEntity =
   | "content_post"
   | "report"
   | "alert"
-  | "backup";
+  | "backup"
+  | "notification";
 
 type AuditSession = {
   user: { id?: string | null; email?: string | null };

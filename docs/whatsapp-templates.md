@@ -26,9 +26,9 @@ Tipler: `payment_meta`, `payment_google` → Meta / Google ekibi + marka sorumlu
 Platform: {{2}}
 Hesap durumu: {{3}}
 {{4}}
+Kontrol zamanı: {{5}}
 
 Reklamlar durmuş olabilir. Ödeme yöntemini ve hesap durumunu hemen kontrol edin.
-Kontrol zamanı: {{5}}
 ```
 Örnek: `BAHEX İNSTA` · `Meta` · `Ödenmemiş bakiye` · `Ödeme riski — kart reddedildi` · `19.10 14:05`
 
@@ -111,17 +111,21 @@ Dönüşümler sayılmıyor ya da kurulum eksik; optimizasyon yanlış veriyle i
 Türe özel şablon bulunamazsa ve Ekip sayfasındaki "Test mesajı gönder" için.
 
 ```
-ℹ️ {{1}}
+⚠️ Hesap uyarısı: {{1}}
 
-{{2}}
-{{3}}
+Uyarı: {{2}}
+Detay: {{3}}
+
+Bu otomatik bir sistem bildirimidir. Durumu 593 Admin Paneli üzerinden kontrol edin.
 ```
-Örnek: `593 Panel` · `Test bildirimi · Ajans` · `WhatsApp bildirim kanalı çalışıyor.`
+Örnek: `BAHEX İNSTA` · `Google Ads çekim hatası · Google ekibi` · `API erişim süresi doldu`
 
 ---
 
 ## Onay notları
 - Parametreler satır sonu içeremez; kod boşluğa çevirir ve 300 karakterde keser.
+- Gövde değişkenle başlayamaz veya bitemez. Çok genel metinleri Meta Marketing'e
+  çevirebilir; şablon açıldıktan sonra kategoriyi kontrol edin.
 - Utility kategorisi işlem/uyarı bildirimi içindir; pazarlama cümlesi eklenirse Meta
   kategoriyi Marketing'e çevirir (daha pahalı). Metinleri olduğu gibi kullanın.
 - Örnek değerleri Meta ister; yukarıdaki örnekleri girin.

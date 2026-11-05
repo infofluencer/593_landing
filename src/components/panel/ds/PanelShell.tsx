@@ -10,6 +10,7 @@ import {
   type ReactNode,
 } from "react";
 import {
+  Bell,
   Building2,
   CalendarDays,
   ClipboardList,
@@ -56,6 +57,7 @@ const NAV_ICONS: Record<string, LucideIcon> = {
   "/kampanyalar": Megaphone,
   "/takvim": CalendarDays,
   "/ekip": Users,
+  "/bildirimler": Bell,
   "/audit": History,
   "/settings": Settings,
   "/oneriler": Lightbulb,

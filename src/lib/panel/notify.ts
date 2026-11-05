@@ -5,6 +5,7 @@
  *
  * Env:
  *   WHATSAPP_ACCESS_TOKEN, WHATSAPP_PHONE_NUMBER_ID
+ *   Env tek başına göndermez: /bildirimler sayfasındaki ana anahtar da açık olmalı.
  *   WHATSAPP_ALERT_TEMPLATE (vars. "panel_alert"), WHATSAPP_TEMPLATE_LANG (vars. "tr")
  *   Şablon gövdesi 3 parametre alır: {{1}} marka, {{2}} başlık, {{3}} açıklama.
  *   SMTP_HOST/PORT/USER/PASS (e-posta yedek).
@@ -13,6 +14,7 @@ import nodemailer from "nodemailer";
 import type { AlertSeverity } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { rootDomain } from "@/lib/panel/host";
+import { whatsappEnabled } from "@/lib/panel/notification-settings";
 
 const GRAPH = "https://graph.facebook.com/v21.0";
 
@@ -89,7 +91,7 @@ export function whatsappConfigured(): boolean {
   );
 }
 
-function smtpConfigured(): boolean {
+export function smtpConfigured(): boolean {
   return Boolean(
     process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS,
   );
@@ -181,13 +183,24 @@ export class WhatsAppError extends Error {
  */
 export type WaTemplateKey = "odeme" | "harcama" | "butce" | "maliyet" | "veri" | "olcum" | "alert";
 
+/** Panelin ihtiyaç duyduğu şablonlar — yönetim sayfası Meta durumuyla eşleştirir. */
+export const WA_TEMPLATES: ReadonlyArray<{ key: WaTemplateKey; label: string }> = [
+  { key: "odeme", label: "Reklam ödemesi / hesap sorunu" },
+  { key: "harcama", label: "Harcama durdu" },
+  { key: "butce", label: "Bütçe aşıldı" },
+  { key: "maliyet", label: "Maliyet hedefi aşıldı" },
+  { key: "veri", label: "Veri çekimi / erişim sorunu" },
+  { key: "olcum", label: "Ölçüm / kurulum sorunu" },
+  { key: "alert", label: "Genel yedek ve test mesajı" },
+];
+
 function templatePrefix(): string {
   return process.env.WHATSAPP_TEMPLATE_PREFIX?.trim() ?? "panel_";
 }
 export function templateName(key: WaTemplateKey): string {
   return `${templatePrefix()}${key}`;
 }
-function genericTemplateName(): string {
+export function genericTemplateName(): string {
   return process.env.WHATSAPP_ALERT_TEMPLATE?.trim() ?? templateName("alert");
 }
 
@@ -296,7 +309,7 @@ export function buildAlertTemplate(alert: {
   }
 }
 
-/** Türe özel şablon; Meta'da yoksa (#132001) veya parametre uymazsa (#132012/132018) genel şablon. */
+/** Türe özel şablon; Meta'da yoksa (#132001) veya parametre uymazsa (#132000/132012/132018) genel şablon. */
 export async function sendAlertWhatsApp(opts: {
   to: string;
   alert: Parameters<typeof buildAlertTemplate>[0];
@@ -308,7 +321,7 @@ export async function sendAlertWhatsApp(opts: {
   } catch (err) {
     const code = err instanceof WhatsAppError ? err.code : null;
     const generic = genericTemplateName();
-    if (spec.template === generic || ![132001, 132012, 132018, 132015].includes(code ?? -1)) throw err;
+    if (spec.template === generic || ![132000, 132001, 132012, 132018, 132015].includes(code ?? -1)) throw err;
     const team = NOTIFY_ALERT_TEAM[opts.alert.type] ? TEAM_TITLE[NOTIFY_ALERT_TEAM[opts.alert.type]!] : "Marka sorumlusu";
     const r = await sendWhatsAppTemplate({
       to: opts.to,
@@ -444,11 +457,12 @@ export async function notifyAlert(alertId: string): Promise<void> {
       return;
     }
     let delivered = 0;
+    const whatsappOn = whatsappConfigured() && (await whatsappEnabled());
 
     for (const r of recipients) {
       let sentVia: "whatsapp" | "email" | null = null;
       let waError: string | null = null;
-      if (whatsappConfigured() && r.phone) {
+      if (whatsappOn && r.phone) {
         try {
           const sent = await sendAlertWhatsApp({ to: r.phone, alert });
           sentVia = "whatsapp";
@@ -484,9 +498,9 @@ export async function notifyAlert(alertId: string): Promise<void> {
             r.email,
             waError
               ? `WhatsApp başarısız (${waError}); SMTP de tanımlı değil.`
-              : whatsappConfigured()
+              : whatsappOn
                 ? "Kullanıcının telefonu yok; SMTP tanımlı değil."
-                : "WhatsApp ve SMTP tanımlı değil.",
+                : "WhatsApp kapalı veya tanımlı değil; SMTP tanımlı değil.",
           );
           continue;
         }
@@ -544,7 +558,8 @@ export async function sendTestWhatsApp(opts: {
   const r = await sendWhatsAppTemplate({
     to: phone,
     bodyParams: ["593 Panel", "Test bildirimi · Ajans", `WhatsApp bildirim kanalı çalışıyor (${opts.byEmail ?? "panel"}).`],
-    buttonParam: "",
+    // Şablondaki dinamik URL butonu parametresiz gönderilirse Meta #132000 ile reddeder.
+    buttonParam: "test",
   });
   await prisma.notificationLog.create({
     data: {

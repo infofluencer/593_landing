@@ -46,6 +46,8 @@ const ACTION_LABEL: Record<string, string> = {
   "meeting.create": "Toplantı eklendi",
   "meeting.update": "Toplantı güncellendi",
   "meeting.delete": "Toplantı silindi",
+  "notification.whatsapp_toggle": "WhatsApp anahtarı",
+  "notification.manual_send": "Elle bildirim",
 };
 
 export function auditActionLabel(action: string): string {

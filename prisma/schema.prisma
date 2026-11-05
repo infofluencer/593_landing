@@ -1064,6 +1064,13 @@ model BrandReport {
   @@index([tenantId, createdAt])
 }
 
+/// Panel genelinde çalışma zamanı ayarı (ör. whatsapp.enabled).
+model AppSetting {
+  key       String   @id
+  value     Json
+  updatedAt DateTime @updatedAt
+}
+
 /// Bildirim gönderim kaydı (WhatsApp / e-posta).
 model NotificationLog {
   id        String   @id @default(cuid())

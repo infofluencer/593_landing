@@ -95,7 +95,8 @@ export default async function PanelLayout({
       browserPath === "/settings" ||
       browserPath.startsWith("/settings") ||
       browserPath === "/oneriler" ||
-      browserPath === "/yedekler";
+      browserPath === "/yedekler" ||
+      browserPath === "/bildirimler";
     if (!staffOk) {
       redirect("/brands");
     }
