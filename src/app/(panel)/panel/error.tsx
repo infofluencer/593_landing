@@ -28,6 +28,18 @@ export default function PanelError({
   useEffect(() => {
     finishPeriodNav();
     console.error(error);
+    // Sunucu loguna da yaz: tarayıcı hataları başka hiçbir yerde kalmıyor.
+    void fetch("/api/panel/client-error", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      keepalive: true,
+      body: JSON.stringify({
+        message: error.message,
+        stack: error.stack,
+        digest: error.digest,
+        url: window.location.href,
+      }),
+    }).catch(() => {});
   }, [error]);
 
   return (
