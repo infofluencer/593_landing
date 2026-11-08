@@ -555,21 +555,25 @@ export async function sendTestWhatsApp(opts: {
 }): Promise<{ messageId: string | null }> {
   const phone = normalizePhone(opts.to);
   if (!phone) throw new Error("Telefon +90 5xx xxx xx xx biçiminde olmalı.");
-  const r = await sendWhatsAppTemplate({
-    to: phone,
-    bodyParams: ["593 Panel", "Test bildirimi · Ajans", `WhatsApp bildirim kanalı çalışıyor (${opts.byEmail ?? "panel"}).`],
-    // Şablondaki dinamik URL butonu parametresiz gönderilirse Meta #132000 ile reddeder.
-    buttonParam: "test",
-  });
-  await prisma.notificationLog.create({
-    data: {
-      channel: "whatsapp",
-      recipient: phone,
-      template: genericTemplateName(),
-      status: "sent",
-      error: "test",
-    },
-  });
+  // Utility kalan bir şablon: genel şablon Marketing'e dönebiliyor.
+  const template = templateName("butce");
+  const base = { channel: "whatsapp", recipient: phone, template };
+  let r: { messageId: string | null };
+  try {
+    r = await sendWhatsAppTemplate({
+      to: phone,
+      template,
+      bodyParams: ["593 Panel TEST", `Test (${opts.byEmail ?? "panel"})`, "0", "0", "%0"],
+      // Şablondaki dinamik URL butonu parametresiz gönderilirse Meta #132000 ile reddeder.
+      buttonParam: "test",
+    });
+  } catch (err) {
+    await prisma.notificationLog.create({
+      data: { ...base, status: "failed", error: err instanceof Error ? err.message : String(err) },
+    });
+    throw err;
+  }
+  await prisma.notificationLog.create({ data: { ...base, status: "sent", error: "test" } });
   return r;
 }
 

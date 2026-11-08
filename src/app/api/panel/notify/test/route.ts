@@ -29,7 +29,8 @@ export async function POST(request: Request) {
   } catch (err) {
     return NextResponse.json(
       { error: err instanceof Error ? err.message : String(err) },
-      { status: 502 },
+      // 502 değil: Cloudflare 502 gövdesini kendi sayfasıyla değiştirip hata metnini yutuyor.
+      { status: 422 },
     );
   }
 }

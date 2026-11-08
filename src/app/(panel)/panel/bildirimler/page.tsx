@@ -19,6 +19,7 @@ import {
   LOG_STATUSES,
   listNotificationLog,
   listPendingAlerts,
+  listRecentTests,
   loadNotificationStats,
   loadPhoneStatus,
   loadTemplateStatus,
@@ -107,13 +108,14 @@ export default async function NotificationsPage({
   const status = pick(sp.status, LOG_STATUSES);
   const page = Math.max(1, Math.floor(Number(sp.page)) || 1);
 
-  const [enabled, phone, templates, pending, log, stats] = await Promise.all([
+  const [enabled, phone, templates, pending, log, stats, tests] = await Promise.all([
     whatsappEnabled(),
     loadPhoneStatus(),
     loadTemplateStatus(),
     listPendingAlerts(),
     listNotificationLog({ channel, status, page }),
     loadNotificationStats(),
+    listRecentTests(),
   ]);
   const configured = whatsappConfigured();
   const smtp = smtpConfigured();
@@ -168,7 +170,32 @@ export default async function NotificationsPage({
               </Link>
             </dd>
           </dl>
-          <TestSendForm configured={configured} />
+          <div className="min-w-0 space-y-4">
+            <TestSendForm configured={configured} />
+            {tests.length > 0 ? (
+              <div>
+                <p className="mb-2 text-xs font-semibold text-panel-fg-muted">Son test denemeleri</p>
+                <ul className="space-y-2">
+                  {tests.map((t) => (
+                    <li key={t.id} className="text-sm">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <StatusBadge
+                          size="sm"
+                          status={STATUS_SEVERITY[t.status] ?? "unknown"}
+                          label={STATUS_LABEL[t.status] ?? t.status}
+                        />
+                        <span className="text-panel-fg">{t.recipient}</span>
+                        <span className="text-xs text-panel-fg-muted">{formatDate(t.createdAt)}</span>
+                      </div>
+                      {t.error ? (
+                        <p className="mt-1 break-words text-xs text-panel-critical">{t.error}</p>
+                      ) : null}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+          </div>
         </div>
       </SectionCard>
 

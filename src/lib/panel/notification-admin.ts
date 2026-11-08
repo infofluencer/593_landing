@@ -210,6 +210,30 @@ export async function listNotificationLog(opts: {
   };
 }
 
+export type TestAttempt = {
+  id: string;
+  recipient: string;
+  status: string;
+  error: string | null;
+  createdAt: string;
+};
+
+/** Test formundan yapılan son denemeler (markaya / uyarıya bağlı olmayan kayıtlar). */
+export async function listRecentTests(take = 5): Promise<TestAttempt[]> {
+  const rows = await prisma.notificationLog.findMany({
+    where: { channel: "whatsapp", tenantId: null, alertId: null },
+    orderBy: { createdAt: "desc" },
+    take,
+  });
+  return rows.map((r) => ({
+    id: r.id,
+    recipient: r.recipient,
+    status: r.status,
+    error: r.error === "test" ? null : r.error,
+    createdAt: r.createdAt.toISOString(),
+  }));
+}
+
 /** Son 7 günün durum sayıları ve bildirim alamayacak (telefonsuz) staff sayısı. */
 export async function loadNotificationStats() {
   const since = new Date(Date.now() - 7 * 24 * 3_600_000);
