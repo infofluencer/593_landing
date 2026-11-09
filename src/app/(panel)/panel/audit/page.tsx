@@ -21,6 +21,7 @@ const ENTITY_OPTIONS = [
   { value: "brand_note", label: "Marka notları" },
   { value: "alert", label: "Uyarılar" },
   { value: "backup", label: "Yedekler" },
+  { value: "office_shift", label: "Shift" },
 ];
 
 type Props = {

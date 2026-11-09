@@ -97,6 +97,13 @@ export function startOfIstanbulMonthYmd(ymd: string): string {
   return `${ymd.slice(0, 7)}-01`;
 }
 
+/** Pazartesi başlangıçlı ISO hafta (YMD takvim günü). */
+export function startOfWeekMondayYmd(ymd: string): string {
+  const dow = ymdToUtcDate(ymd).getUTCDay(); // 0 Pazar
+  const back = dow === 0 ? 6 : dow - 1;
+  return addDaysYmd(ymd, -back);
+}
+
 /** Subtract N calendar months from a YMD; clamp day to month length. */
 export function subMonthsYmd(ymd: string, months: number): string {
   const [y, m, d] = ymd.split("-").map(Number);

@@ -87,6 +87,8 @@ export default async function PanelLayout({
       browserPath === "/kampanyalar" ||
       browserPath === "/ekip" ||
       browserPath.startsWith("/ekip/") ||
+      browserPath === "/vardiya" ||
+      browserPath.startsWith("/vardiya/") ||
       browserPath === "/toplantilar" ||
       browserPath.startsWith("/toplantilar/") ||
       browserPath === "/takvim" ||
@@ -114,7 +116,7 @@ export default async function PanelLayout({
                 ? STAFF_NAV_LINKS.filter((l) => VIEW_ONLY_PATHS.includes(l.href))
                 : STAFF_NAV_LINKS
             }
-            wide={browserPath === "/takvim"}
+            wide={browserPath === "/takvim" || browserPath === "/vardiya"}
             userEmail={session.user.email ?? ""}
             userRoleLabel={viewOnly ? "görüntüleyici" : session.user.role}
           >

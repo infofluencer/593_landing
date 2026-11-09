@@ -67,6 +67,13 @@ enum BoardCardPriority {
   urgent
 }
 
+/// Ajans ofis vardiyası — kim o gün ofiste / uzaktan / izinde.
+enum OfficeShiftKind {
+  office
+  remote
+  off
+}
+
 /// Marka notu türü — toplantı isteği "Göreve çevir" ile panoya düşer.
 enum BrandNoteKind {
   general
@@ -310,6 +317,8 @@ model User {
   role          Role
   /// Rol ve ekipten bağımsız: portalda yalnızca takvimi ve durum panosunu salt okunur görür (scripts/set-view-only.ts).
   viewOnly      Boolean  @default(false)
+  /// ISO hafta günleri (1=Pazartesi … 7=Pazar). Kişinin düzenli ofis günleri; herkesinki ayrı.
+  officeWeekdays Int[]   @default([])
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
@@ -331,6 +340,8 @@ model User {
   actionItemAssignments MeetingActionItemAssignee[]
   suggestions        Suggestion[]
   backups            Backup[]            @relation("BackupCreator")
+  officeShifts         OfficeShift[]
+  officeShiftsUpdated  OfficeShift[]     @relation("OfficeShiftEditor")
 }
 
 /// Ajans içi sabit ekip (src/lib/panel/teams.ts). Üye çoka-çok (TeamMember).
@@ -1062,6 +1073,24 @@ model BrandReport {
   createdBy User?  @relation(fields: [createdById], references: [id], onDelete: SetNull)
 
   @@index([tenantId, createdAt])
+}
+
+/// Haftalık ofis planı — bir kişi, bir gün, bir durum.
+model OfficeShift {
+  id          String          @id @default(cuid())
+  userId      String
+  date        DateTime        @db.Date
+  kind        OfficeShiftKind
+  note        String?
+  updatedById String?
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  user      User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  updatedBy User? @relation("OfficeShiftEditor", fields: [updatedById], references: [id], onDelete: SetNull)
+
+  @@unique([userId, date])
+  @@index([date])
 }
 
 /// Panel genelinde çalışma zamanı ayarı (ör. whatsapp.enabled).

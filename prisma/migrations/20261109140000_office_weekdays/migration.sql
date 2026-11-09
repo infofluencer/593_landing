@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE "User" ADD COLUMN "officeWeekdays" INTEGER[] NOT NULL DEFAULT ARRAY[]::INTEGER[];

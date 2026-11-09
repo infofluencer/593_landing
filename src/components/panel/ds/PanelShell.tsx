@@ -12,6 +12,7 @@ import {
 import {
   Bell,
   Building2,
+  CalendarCheck,
   CalendarDays,
   ClipboardList,
   History,
@@ -57,6 +58,7 @@ const NAV_ICONS: Record<string, LucideIcon> = {
   "/kampanyalar": Megaphone,
   "/takvim": CalendarDays,
   "/ekip": Users,
+  "/vardiya": CalendarCheck,
   "/bildirimler": Bell,
   "/audit": History,
   "/settings": Settings,

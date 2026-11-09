@@ -30,6 +30,7 @@ export const STAFF_NAV_LINKS: PanelNavLink[] = [
   { href: "/oneriler", label: "Öneriler" },
   { href: "/yedekler", label: "Yedekler" },
   { href: "/settings", label: "Ayarlar" },
+  { href: "/vardiya", label: "Shift" },
 ];
 
 /** Markada kapatılan platformların sayfalarını menüden çıkarır. */
@@ -56,6 +57,7 @@ export function staffPageTitle(rawPath: string): string {
   if (matches(path, "/toplantilar")) return "Toplantılar";
   if (matches(path, "/takvim")) return "İçerik takvimi";
   if (matches(path, "/ekip")) return "Ekip";
+  if (matches(path, "/vardiya")) return "Shift";
   if (matches(path, "/bildirimler")) return "Bildirimler";
   if (matches(path, "/settings")) return "Ayarlar";
   if (matches(path, "/oneriler")) return "Öneri kutusu";
