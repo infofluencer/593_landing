@@ -1,8 +1,12 @@
 import type { Metadata, Viewport } from "next";
-import { DM_Sans, Montserrat, Syne } from "next/font/google";
 import Script from "next/script";
 import ContactProvider from "@/components/ContactProvider";
 import { OPENAI_PIXEL_ID } from "@/lib/openai-pixel";
+// Fontlar npm paketinden gelir (self-hosted). next/font/google build
+// sırasında Google'a bağlanır; Dokploy sunucusu erişemeyince build düşüyordu.
+import "@fontsource-variable/syne/wght.css";
+import "@fontsource-variable/dm-sans/wght.css";
+import "@fontsource-variable/montserrat/wght.css";
 import "./globals.css";
 
 export const viewport: Viewport = {
@@ -14,24 +18,6 @@ export const viewport: Viewport = {
   colorScheme: "dark",
   themeColor: "#141111",
 };
-
-const syne = Syne({
-  variable: "--font-syne",
-  subsets: ["latin"],
-  weight: ["500", "600", "700", "800"],
-});
-
-const dmSans = DM_Sans({
-  variable: "--font-dm-sans",
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
-});
-
-const montserrat = Montserrat({
-  variable: "--font-montserrat",
-  subsets: ["latin", "latin-ext"],
-  weight: ["600", "700", "800"],
-});
 
 export const metadata: Metadata = {
   title: "593 E-Marketing | Creative Marketing Studio",
@@ -61,7 +47,7 @@ export default function RootLayout({
   return (
     <html
       lang="tr"
-      className={`${syne.variable} ${dmSans.variable} ${montserrat.variable} h-full antialiased`}
+      className="h-full antialiased"
       suppressHydrationWarning
     >
       <head>
