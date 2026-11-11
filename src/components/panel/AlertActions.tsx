@@ -13,16 +13,25 @@ export default function AlertActions({
   const router = useRouter();
   const [value, setValue] = useState(assignee ?? "");
   const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   async function patch(body: Record<string, string>) {
     setPending(true);
+    setError(null);
     try {
-      await fetch(`/api/panel/alerts/${alertId}`, {
+      const res = await fetch(`/api/panel/alerts/${alertId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
+      if (!res.ok) {
+        const json = (await res.json().catch(() => null)) as { error?: string } | null;
+        setError(json?.error ?? `İşlem başarısız (HTTP ${res.status})`);
+        return;
+      }
       router.refresh();
+    } catch {
+      setError("Bağlantı hatası, tekrar deneyin");
     } finally {
       setPending(false);
     }
@@ -48,10 +57,16 @@ export default function AlertActions({
         type="button"
         disabled={pending}
         onClick={() => patch({ action: "resolve", note: "panel" })}
-        className="rounded px-2 py-1 text-[11px] text-emerald-300 ring-1 ring-emerald-500/30 hover:bg-emerald-500/10 disabled:opacity-40"
+        title="Uyarıyı kapatır; sorun sürse de bu tür için 24 saat bildirim gitmez"
+        className="rounded px-2 py-1 text-[11px] font-medium text-emerald-700 ring-1 ring-emerald-600/40 hover:bg-emerald-50 disabled:opacity-40"
       >
-        Çözüldü
+        {pending ? "…" : "Çözüldü"}
       </button>
+      {error ? (
+        <span role="alert" className="text-[11px] text-red-600">
+          {error}
+        </span>
+      ) : null}
     </div>
   );
 }

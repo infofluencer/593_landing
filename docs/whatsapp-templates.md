@@ -1,133 +1,138 @@
 # WhatsApp bildirim şablonları
 
-Panel, her uyarı türü için ayrı bir onaylı şablon kullanır. Şablonlar **WhatsApp
-Manager → Message templates** altında aşağıdaki adlarla, **Utility** kategorisinde,
-**Türkçe (tr)** dilinde oluşturulur. Gövdedeki `{{n}}` sırası koddaki parametre
-sırasıyla birebirdir (`src/lib/panel/notify.ts` → `buildAlertTemplate`).
+Panel, her uyarı türü için ayrı bir onaylı şablon kullanır. Kullanılan set **`uyari_`**
+önekli, emojisiz yedi şablondur (WABA `1263053265615370`, dil **tr**). Hepsi onaylı;
+`uyari_alert` Meta tarafından **Marketing** kategorisine alındı, diğerleri **Utility**.
+Gövdedeki `{{n}}` sırası koddaki parametre sırasıyla birebirdir
+(`src/lib/panel/notify.ts` → `buildAlertTemplate`).
 
-Ortak ayarlar — her şablonda:
+Ad öneki env ile değiştirilebilir: `WHATSAPP_TEMPLATE_PREFIX` (varsayılan `uyari_`).
+Genel yedek: `WHATSAPP_ALERT_TEMPLATE` (varsayılan `uyari_alert`). Türe özel şablon
+yoksa veya parametre uymazsa kod genel şablona düşer, o da olmazsa e-postaya.
+
+Hesapta ayrıca eski `panel_` (emojili; yalnız odeme + butce) ve `hesap_` setleri var;
+kullanılmıyorlar.
+
+Ortak bileşenler — her şablonda:
 
 - **Header (metin):** `593 Panel · Uyarı`
 - **Footer:** `Uyarıyı panelden "Çözüldü" işaretleyince bildirim durur.`
-- **Button (URL, dinamik):** metin `Markayı aç`, URL `https://admin.593emarketing.com/brands/{{1}}`
-  (dinamik son ek = marka slug'ı; kod otomatik gönderir)
-
-Ad öneki env ile değiştirilebilir: `WHATSAPP_TEMPLATE_PREFIX` (varsayılan `panel_`).
-Türe özel şablon Meta'da yoksa kod otomatik olarak genel `panel_alert`'e düşer.
+  Kod bunu karşılar: elle "Çözüldü" işaretlenen marka + tür 24 saat susar (bkz. aşağıda).
+- **Button (URL, dinamik):** `Markayı aç` → `https://admin.593emarketing.com/brands/{{1}}`
+  (dinamik son ek = marka slug'ı)
 
 ---
 
-## 1. `panel_odeme` — Reklam ödemesi / hesap sorunu
+## `uyari_odeme` — Reklam ödemesi / hesap sorunu
 Tipler: `payment_meta`, `payment_google` → Meta / Google ekibi + marka sorumlusu
-
 ```
-🔴 Reklam ödemesi sorunu — {{1}}
+593 Panel hesabınız için ödeme durumu bildirimi
 
+Marka: {{1}}
 Platform: {{2}}
 Hesap durumu: {{3}}
-{{4}}
+Detay: {{4}}
 Kontrol zamanı: {{5}}
 
-Reklamlar durmuş olabilir. Ödeme yöntemini ve hesap durumunu hemen kontrol edin.
+Bu bildirim, hesabınıza bağlı reklam hesabının ödeme durumu değiştiği için gönderildi.
 ```
-Örnek: `BAHEX İNSTA` · `Meta` · `Ödenmemiş bakiye` · `Ödeme riski — kart reddedildi` · `19.10 14:05`
 
-## 2. `panel_harcama` — Harcama durdu
+## `uyari_harcama` — Harcama durdu
 Tipler: `spend_stopped_meta`, `spend_stopped_google`
-
 ```
-⏸️ Harcama durdu — {{1}}
+593 Panel hesabınız için harcama durumu bildirimi
 
+Marka: {{1}}
 Platform: {{2}}
-{{3}} gündür harcama yok · son harcama {{4}}
-Tespit edilen sebep: {{5}}
+Harcama olmayan gün: {{3}}
+Son harcama: {{4}}
+Kayıtlı sebep: {{5}}
 
-Planlı bütçesi olan bir markada reklam çıkmıyor; kampanya durumunu ve hesabı kontrol edin.
+Bu bildirim, hesabınıza bağlı reklam hesabında harcama kaydı oluşmadığı için gönderildi.
 ```
-Örnek: `BAHEX İNSTA` · `Google Ads` · `12` · `07.10` · `Aktif kampanya yok`
 
-## 3. `panel_butce` — Bütçe aşıldı
+## `uyari_butce` — Bütçe aşıldı (panel test mesajı da bunu kullanır)
 Tip: `budget_over` → marka sorumlusu
-
 ```
-💸 Bütçe aşıldı — {{1}}
+593 Panel hesabınız için bütçe durumu bildirimi
 
+Marka: {{1}}
 Dönem: {{2}}
 Harcanan: {{3}}
 Planlanan: {{4}}
 Kullanım: {{5}}
 
-Harcama planı geçti; kampanya bütçelerini düşürün ya da planı güncelleyin.
+Bu bildirim, hesabınıza bağlı markanın harcaması aylık planı geçtiği için gönderildi.
 ```
-Örnek: `BAHEX İNSTA` · `Ekim 2026` · `₺61.200` · `₺60.000` · `%102`
 
-## 4. `panel_maliyet` — Lead / satış maliyeti hedefi aşıldı
+## `uyari_maliyet` — Lead / satış maliyeti hedefi aşıldı
 Tip: `cpl_over` → marka sorumlusu
-
 ```
-📈 Maliyet hedefi aşıldı — {{1}}
+593 Panel hesabınız için maliyet durumu bildirimi
 
-{{2}}: {{3}}
-Hedef: {{4}}
+Marka: {{1}}
+Metrik: {{2}}
+Güncel değer: {{3}}
+Hedef değer: {{4}}
 Dönem: {{5}}
 
-Kampanya ve kreatif performansını gözden geçirin; hedef dışı harcama birikiyor.
+Bu bildirim, hesabınıza bağlı markanın maliyeti kayıtlı hedefi geçtiği için gönderildi.
 ```
-Örnek: `BAHEX İNSTA` · `Lead maliyeti` · `₺58` · `₺40` · `Ekim 2026`
 
-## 5. `panel_veri` — Veri çekimi / erişim sorunu
-Tipler: `sync_error`, `sync_error_meta`, `sync_error_ga4`, `missing_mapping`
-(Google Ads), `missing_mapping_meta`, `missing_mapping_ga4`, `missing_mapping_gtm`,
-`missing_mapping_gsc`, `token_expired_meta`, `token_expired_google` → ilgili ekip
-
+## `uyari_veri` — Veri çekimi / erişim sorunu
+Tipler: `sync_error`, `sync_error_meta`, `sync_error_ga4`, `missing_mapping*`,
+`token_expired_meta`, `token_expired_google` → ilgili ekip + sorumlu
 ```
-🔌 Veri çekilemiyor — {{1}}
+593 Panel hesabınız için sistem bildirimi
 
-Platform: {{2}}
-Sorun: {{3}}
-Yapılacak: {{4}}
+Marka: {{1}}
+Entegrasyon: {{2}}
+Hata: {{3}}
+Gerekli işlem: {{4}}
 Sorumlu ekip: {{5}}
 
-Panelde bu platformun rakamları güncellenmiyor; müşteri eski veri görüyor.
+Bu bildirim, hesabınıza bağlı veri entegrasyonundaki hata nedeniyle gönderildi.
 ```
-Örnek: `BAHEX İNSTA` · `Google Ads` · `API erişim süresi doldu / token geçersiz` · `Google OAuth yetkisini yenileyin (refresh token)` · `Google ekibi`
 
-## 6. `panel_olcum` — Ölçüm / kurulum sorunu
-Tipler: `conv_dropout`, `setup_missing`, `site_tag_verify` → Analytics ekibi
-
+## `uyari_olcum` — Ölçüm / kurulum sorunu
+Tipler: `conv_dropout`, `setup_missing`, `site_tag_verify` → Analytics ekibi + sorumlu
 ```
-🎯 Ölçüm sorunu — {{1}}
+593 Panel hesabınız için kurulum bildirimi
 
+Marka: {{1}}
+Konu: {{2}}
+Hata: {{3}}
+Gerekli işlem: {{4}}
+Sorumlu ekip: {{5}}
+
+Bu bildirim, hesabınıza bağlı ölçüm kurulumundaki hata nedeniyle gönderildi.
+```
+
+## `uyari_alert` — Genel yedek (Marketing)
+```
+593 Panel hesabınız için sistem bildirimi
+
+Marka: {{1}}
 Konu: {{2}}
 Detay: {{3}}
-Yapılacak: {{4}}
-Sorumlu ekip: {{5}}
 
-Dönüşümler sayılmıyor ya da kurulum eksik; optimizasyon yanlış veriyle ilerler.
+Bu bildirim, hesabınıza bağlı bir kayıtta hata oluştuğu için gönderildi.
 ```
-Örnek: `BAHEX İNSTA` · `Kurulum eksik` · `Meta CAPI: olaylar yalnızca tarayıcıdan geliyor` · `Marka detayındaki kurulum kontrol listesinden eksikleri tamamlayın` · `Analytics ekibi`
-
-## 7. `panel_alert` — Genel (yedek + test mesajı)
-Türe özel şablon bulunamazsa ve Ekip sayfasındaki "Test mesajı gönder" için.
-
-```
-⚠️ Hesap uyarısı: {{1}}
-
-Uyarı: {{2}}
-Detay: {{3}}
-
-Bu otomatik bir sistem bildirimidir. Durumu 593 Admin Paneli üzerinden kontrol edin.
-```
-Örnek: `BAHEX İNSTA` · `Google Ads çekim hatası · Google ekibi` · `API erişim süresi doldu`
 
 ---
 
-## Onay notları
+## Gönderim kuralları (`notifyAlert`)
+- Bir uyarı aynı seviyede bir kez bildirilir; seviye yükselirse tekrar gider.
+- **Susturma (24 saat):** aynı marka + tür elle "Çözüldü" işaretlendiyse veya son 24
+  saatte zaten bildirildiyse yeni açılan uyarı bildirilmez (seviye yükselmedikçe).
+  Süre dolup koşul sürüyorsa bir sonraki kontrolde gider.
+- **Ortak token:** `token_expired_*` bir markada bildirildiyse 24 saat boyunca diğer
+  markalar için tekrar edilmez (Meta/Google token'ı tüm markalarda ortak).
+- Token kaynaklı çekim hatası yalnızca `token_expired_*` açar; ayrıca `sync_error*` açılmaz.
+- Susturulan / atlanan gönderimler bildirim log'una `skipped` olarak düşer.
+
+## Şablon değiştirme notları
+- Onaylı şablonu düzenlemek yeniden incelemeye gönderir; yeni adla açmak daha güvenli.
 - Parametreler satır sonu içeremez; kod boşluğa çevirir ve 300 karakterde keser.
-- Gövde değişkenle başlayamaz veya bitemez. Çok genel metinleri Meta Marketing'e
-  çevirebilir; şablon açıldıktan sonra kategoriyi kontrol edin.
-- Utility kategorisi işlem/uyarı bildirimi içindir; pazarlama cümlesi eklenirse Meta
-  kategoriyi Marketing'e çevirir (daha pahalı). Metinleri olduğu gibi kullanın.
-- Örnek değerleri Meta ister; yukarıdaki örnekleri girin.
-- Uygulama geliştirme modundaysa yalnızca "test numaraları"na gider; Live mod için
-  işletme doğrulaması gerekir.
+- Gövde değişkenle başlayamaz/bitemez; iki değişken yan yana olmamalı.
+- Pazarlama cümlesi eklenirse Meta kategoriyi Marketing'e çevirir (daha pahalı).

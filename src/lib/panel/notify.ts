@@ -6,8 +6,8 @@
  * Env:
  *   WHATSAPP_ACCESS_TOKEN, WHATSAPP_PHONE_NUMBER_ID
  *   Env tek başına göndermez: /bildirimler sayfasındaki ana anahtar da açık olmalı.
- *   WHATSAPP_ALERT_TEMPLATE (vars. "panel_alert"), WHATSAPP_TEMPLATE_LANG (vars. "tr")
- *   Şablon gövdesi 3 parametre alır: {{1}} marka, {{2}} başlık, {{3}} açıklama.
+ *   WHATSAPP_TEMPLATE_PREFIX (vars. "uyari_"), WHATSAPP_ALERT_TEMPLATE (vars. "uyari_alert"),
+ *   WHATSAPP_TEMPLATE_LANG (vars. "tr"). Şablonlar: docs/whatsapp-templates.md.
  *   SMTP_HOST/PORT/USER/PASS (e-posta yedek).
  */
 import nodemailer from "nodemailer";
@@ -195,13 +195,13 @@ export const WA_TEMPLATES: ReadonlyArray<{ key: WaTemplateKey; label: string }> 
 ];
 
 function templatePrefix(): string {
-  return process.env.WHATSAPP_TEMPLATE_PREFIX?.trim() ?? "panel_";
+  return process.env.WHATSAPP_TEMPLATE_PREFIX?.trim() || "uyari_";
 }
 export function templateName(key: WaTemplateKey): string {
   return `${templatePrefix()}${key}`;
 }
 export function genericTemplateName(): string {
-  return process.env.WHATSAPP_ALERT_TEMPLATE?.trim() ?? templateName("alert");
+  return process.env.WHATSAPP_ALERT_TEMPLATE?.trim() || templateName("alert");
 }
 
 const TEMPLATE_BY_TYPE: Record<string, WaTemplateKey> = {
@@ -404,6 +404,53 @@ function brandLink(slug: string): string {
   return `https://admin.${rootDomain()}/brands/${slug}`;
 }
 
+/** Susturma penceresi: "Çözüldü" sonrası ve tekrar eden arızalarda. */
+const MUTE_MS = 24 * 3_600_000;
+const SEVERITY_RANK: Record<AlertSeverity, number> = { ok: 0, unknown: 1, warn: 1, critical: 2 };
+
+/**
+ * Bildirimi şimdilik bastırmak için sebep; null = gönder.
+ * 1) Aynı marka + tür son 24 saatte elle "Çözüldü" işaretlendiyse (şablon footer'ındaki söz).
+ * 2) Aynı marka + tür son 24 saatte zaten bildirildiyse (kapanıp açılan çekim hataları).
+ * 3) Erişim (token) arızası ortak token'dan gelir: başka markada 24 saatte bildirildiyse tekrar etme.
+ * Seviye yükselirse (uyarı → kritik) 1 ve 2 geçerli değildir. Susturulan uyarı bildirildi
+ * sayılmaz; süre dolunca koşul sürüyorsa bir sonraki kontrolde gider.
+ */
+async function muteReason(alert: {
+  id: string;
+  type: string;
+  severity: AlertSeverity;
+  tenantId: string;
+}): Promise<string | null> {
+  const since = new Date(Date.now() - MUTE_MS);
+  const rank = SEVERITY_RANK[alert.severity];
+
+  const prev = await prisma.alert.findFirst({
+    where: { tenantId: alert.tenantId, type: alert.type, resolved: true, id: { not: alert.id }, updatedAt: { gt: since } },
+    orderBy: { updatedAt: "desc" },
+    select: { severity: true, history: true, notifiedAt: true, notifiedSeverity: true },
+  });
+  if (prev) {
+    const history = Array.isArray(prev.history) ? (prev.history as Array<{ action?: string; by?: string | null }>) : [];
+    const resolvedBy = [...history].reverse().find((h) => h.action === "resolved")?.by ?? null;
+    if (resolvedBy && resolvedBy !== "system" && rank <= SEVERITY_RANK[prev.severity]) {
+      return `${resolvedBy} "Çözüldü" işaretledi; 24 saat susturuldu.`;
+    }
+    if (prev.notifiedAt && prev.notifiedAt > since && prev.notifiedSeverity && rank <= SEVERITY_RANK[prev.notifiedSeverity]) {
+      return "Aynı uyarı son 24 saatte bildirildi; tekrar gönderilmedi.";
+    }
+  }
+
+  if (alert.type.startsWith("token_expired_")) {
+    const other = await prisma.alert.findFirst({
+      where: { type: alert.type, tenantId: { not: alert.tenantId }, notifiedAt: { gt: since } },
+      select: { tenant: { select: { name: true } } },
+    });
+    if (other) return `Ortak erişim sorunu ${other.tenant.name} uyarısıyla son 24 saatte bildirildi.`;
+  }
+  return null;
+}
+
 /**
  * Uyarıyı sorumlu + ekibe iletir. Hiçbir zaman fırlatmaz; sonuç
  * NotificationLog'a yazılır. Aynı seviyede tekrar gönderilmez.
@@ -447,6 +494,12 @@ export async function notifyAlert(alertId: string): Promise<void> {
         data: { tenantId: alert.tenant.id, alertId: alert.id, channel, recipient, status: "skipped", error },
       });
     };
+
+    const muted = await muteReason({ ...alert, tenantId: alert.tenant.id });
+    if (muted) {
+      await logSkip("none", "-", muted);
+      return;
+    }
 
     if (recipients.length === 0) {
       await logSkip(
@@ -563,7 +616,13 @@ export async function sendTestWhatsApp(opts: {
     r = await sendWhatsAppTemplate({
       to: phone,
       template,
-      bodyParams: ["593 Panel TEST", `Test (${opts.byEmail ?? "panel"})`, "0", "0", "%0"],
+      bodyParams: [
+        `593 Panel TEST (${opts.byEmail ?? "panel"})`,
+        monthTr(new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Istanbul", year: "numeric", month: "2-digit" }).format(new Date())),
+        "₺0",
+        "₺0",
+        "%0",
+      ],
       // Şablondaki dinamik URL butonu parametresiz gönderilirse Meta #132000 ile reddeder.
       buttonParam: "test",
     });

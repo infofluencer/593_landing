@@ -243,10 +243,14 @@ export async function evaluateTenantAlerts(tenantId: string) {
     });
   }
 
+  // Token kaynaklı çekim hatası yalnızca token_expired_* uyarısı açar (aynı arıza için çift mesaj olmasın).
+  const nonTokenError = (j: { status: string; error: string | null } | undefined) =>
+    j?.status === "error" && classifySyncError(j.error) !== "token";
+
   const adsJob = tenant.syncJobs.find(
     (j) => j.provider === "google" && j.service === "ads",
   );
-  if (!off.has("google_ads") && adsJob?.status === "error") {
+  if (!off.has("google_ads") && nonTokenError(adsJob) && adsJob) {
     await upsertOpenAlert({
       tenantId,
       type: "sync_error",
@@ -265,7 +269,7 @@ export async function evaluateTenantAlerts(tenantId: string) {
   const metaJob = tenant.syncJobs.find(
     (j) => j.provider === "meta" && j.service === "insights",
   );
-  if (!off.has("meta") && metaJob?.status === "error") {
+  if (!off.has("meta") && nonTokenError(metaJob) && metaJob) {
     await upsertOpenAlert({
       tenantId,
       type: "sync_error_meta",
@@ -284,7 +288,7 @@ export async function evaluateTenantAlerts(tenantId: string) {
   const ga4Job = tenant.syncJobs.find(
     (j) => j.provider === "google" && j.service === "ga4",
   );
-  if (!off.has("ga4") && ga4Job?.status === "error") {
+  if (!off.has("ga4") && nonTokenError(ga4Job) && ga4Job) {
     await upsertOpenAlert({
       tenantId,
       type: "sync_error_ga4",
