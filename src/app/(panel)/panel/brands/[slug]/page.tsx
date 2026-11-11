@@ -390,6 +390,19 @@ export default async function BrandDetailPage({ params, searchParams }: Props) {
         </p>
       ) : null}
 
+      {openAlerts.length > 0 ? (
+        <a
+          href="#uyarilar"
+          className="flex items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 hover:bg-amber-100"
+        >
+          <span>
+            <strong className="font-semibold">{openAlerts.length} açık uyarı</strong> — atamak veya
+            &ldquo;Çözüldü&rdquo; işaretlemek için uyarılar bölümüne gidin.
+          </span>
+          <span className="shrink-0 font-medium">Uyarılara git ↓</span>
+        </a>
+      ) : null}
+
       {tenantStatus ? (
         <BrandStatusExplainer status={tenantStatus} openAlerts={openAlerts} />
       ) : null}

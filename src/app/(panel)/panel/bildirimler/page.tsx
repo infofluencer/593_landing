@@ -8,6 +8,7 @@ import {
   TestSendForm,
   WhatsAppToggle,
 } from "@/components/panel/NotificationControls";
+import AlertActions from "@/components/panel/AlertActions";
 import { chipClass } from "@/components/panel/ds/buttons";
 import { EmptyState } from "@/components/panel/ds/EmptyState";
 import { SectionCard } from "@/components/panel/ds/SectionCard";
@@ -261,7 +262,7 @@ export default async function NotificationsPage({
 
       <SectionCard
         title={`Bekleyen uyarılar (${pending.length})`}
-        description="Henüz iletilmemiş açık uyarılar. WhatsApp'ı açmadan önce eskimiş olanları marka sayfasından çözün."
+        description="Henüz iletilmemiş açık uyarılar. WhatsApp'ı açmadan önce eskimiş olanları buradan “Çözüldü” ile kapatın."
       >
         {pending.length === 0 ? (
           <EmptyState title="Bekleyen uyarı yok" description="Açık uyarıların hepsi iletilmiş." />
@@ -272,7 +273,7 @@ export default async function NotificationsPage({
                 <div className="mr-auto min-w-0 flex-1 basis-64">
                   <div className="flex flex-wrap items-center gap-2">
                     <Link
-                      href={`/brands/${a.tenantSlug}`}
+                      href={`/brands/${a.tenantSlug}#uyarilar`}
                       className="text-sm font-semibold text-panel-fg underline-offset-2 hover:underline"
                     >
                       {a.tenantName}
@@ -285,7 +286,10 @@ export default async function NotificationsPage({
                     {a.message ? ` — ${a.message}` : ""}
                   </p>
                 </div>
-                <SendAlertButton alertId={a.id} />
+                <div className="flex items-center gap-2">
+                  <AlertActions alertId={a.id} compact />
+                  <SendAlertButton alertId={a.id} />
+                </div>
               </li>
             ))}
           </ul>

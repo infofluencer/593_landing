@@ -5,10 +5,13 @@ import { useRouter } from "next/navigation";
 
 export default function AlertActions({
   alertId,
-  assignee,
+  assignee = null,
+  compact = false,
 }: {
   alertId: string;
-  assignee: string | null;
+  assignee?: string | null;
+  /** Yalnızca "Çözüldü" (atama alanı yok) — bildirim listesi gibi dar yerler için. */
+  compact?: boolean;
 }) {
   const router = useRouter();
   const [value, setValue] = useState(assignee ?? "");
@@ -39,20 +42,24 @@ export default function AlertActions({
 
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <input
-        value={value}
-        onChange={(e) => setValue(e.target.value)}
-        placeholder="sorumlu@…"
-        className="w-40 rounded border border-zinc-200 bg-zinc-50 px-2 py-1 text-xs text-zinc-800"
-      />
-      <button
-        type="button"
-        disabled={pending || !value.trim()}
-        onClick={() => patch({ action: "assign", assignee: value.trim() })}
-        className="rounded px-2 py-1 text-[11px] text-zinc-700 ring-1 ring-zinc-200 hover:bg-zinc-50 disabled:opacity-40"
-      >
-        Ata
-      </button>
+      {compact ? null : (
+        <>
+          <input
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            placeholder="sorumlu@…"
+            className="w-40 rounded border border-zinc-200 bg-zinc-50 px-2 py-1 text-xs text-zinc-800"
+          />
+          <button
+            type="button"
+            disabled={pending || !value.trim()}
+            onClick={() => patch({ action: "assign", assignee: value.trim() })}
+            className="rounded px-2 py-1 text-[11px] text-zinc-700 ring-1 ring-zinc-200 hover:bg-zinc-50 disabled:opacity-40"
+          >
+            Ata
+          </button>
+        </>
+      )}
       <button
         type="button"
         disabled={pending}

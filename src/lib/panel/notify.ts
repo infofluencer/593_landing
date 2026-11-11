@@ -401,7 +401,7 @@ async function alertRecipients(opts: {
 }
 
 function brandLink(slug: string): string {
-  return `https://admin.${rootDomain()}/brands/${slug}`;
+  return `https://admin.${rootDomain()}/brands/${slug}#uyarilar`;
 }
 
 /** Susturma penceresi: "Çözüldü" sonrası ve tekrar eden arızalarda. */
