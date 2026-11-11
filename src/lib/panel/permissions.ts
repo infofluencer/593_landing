@@ -25,6 +25,8 @@ export type Permission =
   | "teams.manageMembers"
   /** Staff + müşteri şifrelerini görme. */
   | "users.viewPasswords"
+  /** Marka detayında müşteri panel şifresini görme / kopyalama. */
+  | "brands.viewPanelPassword"
   /** Toplantı oluşturma / düzenleme, not ve aksiyon yazma. */
   | "meetings.manage"
   /** Toplantı silme. */
@@ -47,13 +49,20 @@ const ROLE_PERMISSIONS: Record<PanelRole, readonly Permission[]> = {
     "users.manage",
     "teams.manageMembers",
     "users.viewPasswords",
+    "brands.viewPanelPassword",
     "meetings.manage",
     "meetings.delete",
     "suggestions.view",
     "backups.manage",
     "notifications.manage",
   ],
-  team: ["staff.access", "brands.edit", "board.deleteCards", "meetings.manage"],
+  team: [
+    "staff.access",
+    "brands.edit",
+    "brands.viewPanelPassword",
+    "board.deleteCards",
+    "meetings.manage",
+  ],
   client: [],
 };
 
@@ -73,6 +82,7 @@ export const PERMISSION_LABELS: Record<Permission, string> = {
   "users.manage": "Kullanıcı ekleme / silme",
   "teams.manageMembers": "Ekip üyeliklerini düzenleme",
   "users.viewPasswords": "Staff ve müşteri şifrelerini görme",
+  "brands.viewPanelPassword": "Marka panel şifresini görme / kopyalama",
   "meetings.manage": "Toplantı oluşturma, not ve aksiyon yazma",
   "meetings.delete": "Toplantı silme",
   "suggestions.view": "Öneri kutusuna gelenleri görme",

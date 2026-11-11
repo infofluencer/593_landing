@@ -12,6 +12,7 @@ import BrandNotes from "@/components/panel/BrandNotes";
 import BrandReportPanel from "@/components/panel/BrandReportPanel";
 import BrandDetailHeaderActions from "@/components/panel/BrandDetailHeaderActions";
 import BrandPanelLinkActions from "@/components/panel/BrandPanelLinkActions";
+import BrandPanelPassword from "@/components/panel/BrandPanelPassword";
 import { StatusBadge } from "@/components/panel/StatusBadge";
 import TenantSettingsForm from "@/components/panel/TenantSettingsForm";
 import BrandSettingsDisclosure from "@/components/panel/BrandSettingsDisclosure";
@@ -511,6 +512,9 @@ export default async function BrandDetailPage({ params, searchParams }: Props) {
             </a>
             <BrandPanelLinkActions panelHost={panelHost} panelUrl={panelUrl} />
           </div>
+          {existsInDb && clientOk && can(session.user.role, "brands.viewPanelPassword") ? (
+            <BrandPanelPassword tenantSlug={bundle.tenant.slug} />
+          ) : null}
         </div>
       </div>
 
