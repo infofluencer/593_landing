@@ -30,6 +30,7 @@ import {
   Clock,
   ChevronDown,
   GripVertical,
+  ClipboardPaste,
   ImagePlus,
   Link2,
   LayoutGrid,
@@ -860,6 +861,12 @@ export default function StatusBoard({
     ]);
   }
 
+  /** Pencereye gelen görseller: yeni görevde bekletilir, mevcut kartta hemen yüklenir. */
+  function addDialogImages(files: File[]) {
+    if (editing) void uploadCardImages(editing.id, files);
+    else addPendingImages(files);
+  }
+
   function removePendingImage(url: string) {
     URL.revokeObjectURL(url);
     setPendingImages((prev) => prev.filter((p) => p.url !== url));
@@ -1239,6 +1246,20 @@ export default function StatusBoard({
                 role="dialog"
                 aria-modal
                 aria-labelledby="card-edit-title"
+                onPaste={(e) => {
+                  // Açıklama alanı görseli kendisi yakalar (defaultPrevented);
+                  // metin alanlarına metin yapıştırma normal kalır.
+                  if (e.defaultPrevented || !canEdit) return;
+                  const target = e.target as HTMLElement;
+                  const inText = target.closest("input, textarea, [contenteditable=true]");
+                  if (inText && e.clipboardData.getData("text/plain").trim()) return;
+                  const files = Array.from(e.clipboardData.files).filter((f) =>
+                    f.type.startsWith("image/"),
+                  );
+                  if (files.length === 0) return;
+                  e.preventDefault();
+                  addDialogImages(files);
+                }}
                 className="flex max-h-[90dvh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl bg-white text-zinc-900 shadow-2xl outline-none lg:max-w-5xl"
               >
                 <div className="flex shrink-0 items-center justify-between gap-3 border-b border-zinc-100 px-5 py-3">
@@ -1280,10 +1301,7 @@ export default function StatusBoard({
                       value={draftDesc}
                       readOnly={!canEdit}
                       onChange={setDraftDesc}
-                      onPasteImages={(files) => {
-                        if (editing) void uploadCardImages(editing.id, files);
-                        else addPendingImages(files);
-                      }}
+                      onPasteImages={addDialogImages}
                     />
                     {editing ? (
                       <CardImagesField
@@ -2101,8 +2119,35 @@ function CardImagesField({
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragOver, setDragOver] = useState(false);
+  const [clipError, setClipError] = useState<string | null>(null);
 
   if (readOnly && images.length === 0) return null;
+
+  async function pasteFromClipboard() {
+    setClipError(null);
+    if (!navigator.clipboard?.read) {
+      setClipError("Tarayıcı izin vermiyor — ⌘V / Ctrl+V ile yapıştırın.");
+      return;
+    }
+    try {
+      const items = await navigator.clipboard.read();
+      const files: File[] = [];
+      for (const item of items) {
+        const type = item.types.find((t) => t.startsWith("image/"));
+        if (!type) continue;
+        const blob = await item.getType(type);
+        const ext = type.split("/")[1] || "png";
+        files.push(new File([blob], `pano-${Date.now()}-${files.length}.${ext}`, { type }));
+      }
+      if (files.length === 0) {
+        setClipError("Panoda görsel yok.");
+        return;
+      }
+      onAdd(files);
+    } catch {
+      setClipError("Panoya erişilemedi — ⌘V / Ctrl+V ile yapıştırın.");
+    }
+  }
 
   return (
     <div
@@ -2123,14 +2168,14 @@ function CardImagesField({
         dragOver ? "border-[#e91825] bg-rose-50/50" : "border-zinc-200",
       ].join(" ")}
     >
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <span className="text-xs font-medium text-zinc-500">
           Referans görselleri
         </span>
         {readOnly ? null : (
           <>
             <span className="hidden text-[10px] text-zinc-400 sm:inline">
-              İlk görsel kart kapağı olur
+              İlk görsel kart kapağı olur · ⌘V ile yapıştırılabilir
             </span>
             <button
               type="button"
@@ -2140,6 +2185,16 @@ function CardImagesField({
             >
               <ImagePlus className="size-3.5" aria-hidden />
               {uploading ? "Yükleniyor…" : "Görsel ekle"}
+            </button>
+            <button
+              type="button"
+              onClick={() => void pasteFromClipboard()}
+              disabled={uploading}
+              title="Panodaki görseli ekle (pencerede ⌘V / Ctrl+V de çalışır)"
+              className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-md border border-zinc-200 px-2 py-1 text-xs text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
+            >
+              <ClipboardPaste className="size-3.5" aria-hidden />
+              Panodan yapıştır
             </button>
             <input
               ref={inputRef}
@@ -2155,6 +2210,7 @@ function CardImagesField({
           </>
         )}
       </div>
+      {clipError ? <p className="mt-1.5 text-[11px] text-rose-600">{clipError}</p> : null}
       {images.length > 0 ? (
         <ul className="mt-2 grid grid-cols-3 gap-2">
           {images.map((url, i) => (
