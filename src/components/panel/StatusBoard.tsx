@@ -351,6 +351,29 @@ export default function StatusBoard({
     setEditing(card);
   }, []);
 
+  // Yeni görev: düzenleme penceresiyle aynı büyük pencere, boş taslakla.
+  const creating = composerColumnId !== null && editing === null;
+  const dialogOpen = editing !== null || creating;
+
+  const openComposer = useCallback(
+    (columnId: string) => {
+      resetDraft();
+      editorBase.current = editorSnapshot({
+        title: "",
+        description: "",
+        assigneeIds: [],
+        teamId: "",
+        tenantId: "",
+        priority: "normal",
+        due: "",
+        labels: "",
+      });
+      setError(null);
+      setComposerColumnId(columnId);
+    },
+    [resetDraft],
+  );
+
   // Kaydedilmemiş değişiklik varsa kapatmadan önce sorar.
   const closeEditor = useCallback(() => {
     const current = editorSnapshot({
@@ -367,6 +390,7 @@ export default function StatusBoard({
       return;
     }
     setEditing(null);
+    setComposerColumnId(null);
   }, [
     draftTitle,
     draftDesc,
@@ -378,20 +402,36 @@ export default function StatusBoard({
     draftLabels,
   ]);
 
+  // WhatsApp "Görevi aç" bağlantısı: /board?card=<id> → kart açılır, parametre temizlenir.
+  const deepLinkCardId = searchParams.get("card");
+  const deepLinkHandled = useRef(false);
+  useEffect(() => {
+    if (!deepLinkCardId || deepLinkHandled.current) return;
+    deepLinkHandled.current = true;
+    const card = board.columns.flatMap((c) => c.cards).find((c) => c.id === deepLinkCardId);
+    // URL'den gelen dış tetik; açılış bir sonraki karede (efekt içinde setState yok).
+    // Temizlenmez: router.replace efekti yeniden çalıştırınca açılış iptal olmasın.
+    if (card) window.setTimeout(() => openEditor(card), 0);
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete("card");
+    const qs = params.toString();
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+  }, [deepLinkCardId, board.columns, openEditor, pathname, router, searchParams]);
+
   // Esc: odak pencere dışına düşse de (ör. arka plana tıklayınca) çalışsın.
   useEffect(() => {
-    if (!editing) return;
+    if (!dialogOpen) return;
     function onEscape(e: KeyboardEvent) {
       if (e.key === "Escape") closeEditor();
     }
     window.addEventListener("keydown", onEscape);
     return () => window.removeEventListener("keydown", onEscape);
-  }, [editing, closeEditor]);
+  }, [dialogOpen, closeEditor]);
 
   // Pencere açılınca odak panodaki karttan pencereye geçer (kart vurgulu
   // kalmasın), arka plan kaydırılamaz; kapanınca eski hâline döner.
   useEffect(() => {
-    if (!editing) return;
+    if (!dialogOpen) return;
     const prevOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     if (document.activeElement instanceof HTMLElement) {
@@ -405,7 +445,7 @@ export default function StatusBoard({
       window.clearTimeout(t);
       document.body.style.overflow = prevOverflow;
     };
-  }, [editing]);
+  }, [dialogOpen]);
 
   const columnIds = useMemo(
     () => board.columns.map((c) => c.id),
@@ -783,6 +823,21 @@ export default function StatusBoard({
     replaceCard(normalizeCard(j.card));
   }
 
+  /**
+   * Takım seçilince o takımın üyeleri atanır; önceki takımın otomatik
+   * eklenen üyeleri çıkarılır. Elle eklenen diğer kişiler korunur.
+   */
+  function selectTeam(teamId: string) {
+    const members = (id: string) =>
+      new Set(teams.find((t) => t.id === id)?.members?.map((m) => m.userId) ?? []);
+    const prevMembers = members(draftTeamId);
+    const nextMembers = [...members(teamId)].filter((id) => staff.some((u) => u.id === id));
+    setDraftTeamId(teamId);
+    setDraftAssigneeIds((prev) => [
+      ...new Set([...prev.filter((id) => !prevMembers.has(id)), ...nextMembers]),
+    ]);
+  }
+
   function toggleAssignee(userId: string) {
     setDraftAssigneeIds((prev) =>
       prev.includes(userId)
@@ -1104,39 +1159,11 @@ export default function StatusBoard({
                 column={col}
                 canEdit={canEdit}
                 reducedMotion={reducedMotion}
-                composerOpen={composerColumnId === col.id}
-                onOpenComposer={() => {
-                  resetDraft();
-                  setComposerColumnId(col.id);
-                }}
-                onCloseComposer={() => {
-                  setComposerColumnId(null);
-                  resetDraft();
-                }}
-                onCreate={() => void createCard(col.id)}
+                onOpenComposer={() => openComposer(col.id)}
                 onEditCard={openEditor}
                 onDeleteCard={
                   canDeleteCards ? (id) => void deleteCard(id) : undefined
                 }
-                draftTitle={draftTitle}
-                setDraftTitle={setDraftTitle}
-                draftDesc={draftDesc}
-                setDraftDesc={setDraftDesc}
-                draftAssigneeIds={draftAssigneeIds}
-                toggleAssignee={toggleAssignee}
-                draftTeamId={draftTeamId}
-                setDraftTeamId={setDraftTeamId}
-                draftTenantId={draftTenantId}
-                setDraftTenantId={setDraftTenantId}
-                draftPriority={draftPriority}
-                setDraftPriority={setDraftPriority}
-                draftDue={draftDue}
-                setDraftDue={setDraftDue}
-                draftLabels={draftLabels}
-                setDraftLabels={setDraftLabels}
-                staff={staff}
-                teams={teams}
-                tenants={tenants}
               />
             ))}
           </div>
@@ -1167,7 +1194,7 @@ export default function StatusBoard({
       )}
 
       {/* .panel-root'a taşınır: tahta z-10 katmanında; içeride kalsa üst panelin (z-30) altında kalırdı. */}
-      {editing
+      {dialogOpen
         ? createPortal(
             <div
               className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
@@ -1189,7 +1216,11 @@ export default function StatusBoard({
               >
                 <div className="flex shrink-0 items-center justify-between gap-3 border-b border-zinc-100 px-5 py-3">
                   <h3 id="card-edit-title" className="text-sm font-semibold text-zinc-500">
-                    {canEdit ? "Görevi düzenle" : "Görev"}
+                    {creating
+                      ? `Yeni görev · ${board.columns.find((c) => c.id === composerColumnId)?.name ?? ""}`
+                      : canEdit
+                        ? "Görevi düzenle"
+                        : "Görev"}
                   </h3>
                   <button
                     type="button"
@@ -1210,6 +1241,7 @@ export default function StatusBoard({
                   {/* içerik */}
                   <div className="min-w-0 space-y-4 px-5 py-4 lg:overflow-y-auto">
                     <input
+                      autoFocus={creating}
                       value={draftTitle}
                       onChange={(e) => setDraftTitle(e.target.value)}
                       placeholder="Görev başlığı"
@@ -1217,20 +1249,28 @@ export default function StatusBoard({
                       className="-mx-2 w-[calc(100%+1rem)] rounded-lg border border-transparent bg-transparent px-2 py-1 text-xl font-semibold text-zinc-900 outline-none hover:border-zinc-200 focus:border-[#e91825]"
                     />
                     <DescriptionField
-                      key={editing.id}
+                      key={editing?.id ?? `new-${composerColumnId}`}
                       value={draftDesc}
                       readOnly={!canEdit}
                       onChange={setDraftDesc}
-                      onPasteImages={(files) => void uploadCardImages(editing.id, files)}
+                      onPasteImages={(files) => {
+                        if (editing) void uploadCardImages(editing.id, files);
+                      }}
                     />
-                    <CardImagesField
-                      images={editingImages}
-                      uploading={uploadingImages > 0}
-                      readOnly={!canEdit}
-                      onAdd={(files) => void uploadCardImages(editing.id, files)}
-                      onRemove={(url) => void removeCardImage(editing.id, url)}
-                    />
-                    {(editing.activities?.length ?? 0) > 0 ? (
+                    {editing ? (
+                      <CardImagesField
+                        images={editingImages}
+                        uploading={uploadingImages > 0}
+                        readOnly={!canEdit}
+                        onAdd={(files) => void uploadCardImages(editing.id, files)}
+                        onRemove={(url) => void removeCardImage(editing.id, url)}
+                      />
+                    ) : (
+                      <p className="text-xs text-zinc-400">
+                        Referans görselleri görev kaydedildikten sonra eklenebilir.
+                      </p>
+                    )}
+                    {editing && (editing.activities?.length ?? 0) > 0 ? (
                       <div>
                         <p className={modalLabel}>Aktivite</p>
                         <ul className="mt-1.5 max-h-36 space-y-1.5 overflow-y-auto rounded-lg border border-zinc-100 bg-zinc-50 p-3 text-xs text-zinc-600">
@@ -1262,7 +1302,7 @@ export default function StatusBoard({
                       Takım
                       <select
                         value={draftTeamId}
-                        onChange={(e) => setDraftTeamId(e.target.value)}
+                        onChange={(e) => selectTeam(e.target.value)}
                         className={modalField}
                       >
                         <option value="">Takım yok</option>
@@ -1317,7 +1357,12 @@ export default function StatusBoard({
                     </label>
 
                     <div className="sm:col-span-2 lg:col-span-1">
-                      <p className={modalLabel}>Atananlar</p>
+                      <p className={modalLabel}>
+                        Atananlar
+                        <span className="ml-1 font-normal text-zinc-400">
+                          · atananlara WhatsApp bildirimi gider
+                        </span>
+                      </p>
                       <div className="mt-1.5 flex max-h-40 flex-wrap gap-1.5 overflow-y-auto">
                         {staff.map((u) => {
                           const on = draftAssigneeIds.includes(u.id);
@@ -1359,10 +1404,15 @@ export default function StatusBoard({
                   {canEdit ? (
                     <button
                       type="button"
-                      onClick={() => void saveEdit()}
-                      className="rounded-lg bg-[#e91825] px-4 py-2 text-sm font-medium text-white hover:bg-[#c91420]"
+                      disabled={creating && !draftTitle.trim()}
+                      onClick={() =>
+                        void (creating && composerColumnId
+                          ? createCard(composerColumnId)
+                          : saveEdit())
+                      }
+                      className="rounded-lg bg-[#e91825] px-4 py-2 text-sm font-medium text-white hover:bg-[#c91420] disabled:opacity-50"
                     >
-                      Kaydet
+                      {creating ? "Görevi ekle" : "Kaydet"}
                     </button>
                   ) : null}
                   <button
@@ -1372,7 +1422,12 @@ export default function StatusBoard({
                   >
                     Kapat
                   </button>
-                  {canDeleteCards ? (
+                  {error ? (
+                    <p role="alert" className="self-center text-xs text-rose-600">
+                      {error}
+                    </p>
+                  ) : null}
+                  {canDeleteCards && editing ? (
                     <button
                       type="button"
                       onClick={() => void deleteCard(editing.id)}
@@ -1395,60 +1450,16 @@ function BoardColumn({
   column,
   canEdit,
   reducedMotion,
-  composerOpen,
   onOpenComposer,
-  onCloseComposer,
-  onCreate,
   onEditCard,
   onDeleteCard,
-  draftTitle,
-  setDraftTitle,
-  draftDesc,
-  setDraftDesc,
-  draftAssigneeIds,
-  toggleAssignee,
-  draftTeamId,
-  setDraftTeamId,
-  draftTenantId,
-  setDraftTenantId,
-  draftPriority,
-  setDraftPriority,
-  draftDue,
-  setDraftDue,
-  draftLabels,
-  setDraftLabels,
-  staff,
-  teams,
-  tenants,
 }: {
   column: Column;
   canEdit: boolean;
   reducedMotion: boolean;
-  composerOpen: boolean;
   onOpenComposer: () => void;
-  onCloseComposer: () => void;
-  onCreate: () => void;
   onEditCard: (card: Card) => void;
   onDeleteCard?: (cardId: string) => void;
-  draftTitle: string;
-  setDraftTitle: (v: string) => void;
-  draftDesc: string;
-  setDraftDesc: (v: string) => void;
-  draftAssigneeIds: string[];
-  toggleAssignee: (id: string) => void;
-  draftTeamId: string;
-  setDraftTeamId: (v: string) => void;
-  draftTenantId: string;
-  setDraftTenantId: (v: string) => void;
-  draftPriority: Card["priority"];
-  setDraftPriority: (v: Card["priority"]) => void;
-  draftDue: string;
-  setDraftDue: (v: string) => void;
-  draftLabels: string;
-  setDraftLabels: (v: string) => void;
-  staff: StaffUser[];
-  teams: TeamRef[];
-  tenants: TenantRef[];
 }) {
   const {
     attributes,
@@ -1542,111 +1553,7 @@ function BoardColumn({
         </ul>
       </SortableContext>
 
-      {composerOpen ? (
-        <div className="space-y-2 border-t border-zinc-200 bg-white p-3">
-          <input
-            autoFocus
-            value={draftTitle}
-            onChange={(e) => setDraftTitle(e.target.value)}
-            placeholder="Görev başlığı"
-            className="w-full rounded-md border border-zinc-200 px-2.5 py-1.5 text-sm outline-none focus:border-[#e91825]"
-          />
-          <textarea
-            value={draftDesc}
-            onChange={(e) => setDraftDesc(e.target.value)}
-            placeholder="Açıklama (isteğe bağlı)"
-            rows={2}
-            className="w-full resize-none rounded-md border border-zinc-200 px-2.5 py-1.5 text-sm outline-none focus:border-[#e91825]"
-          />
-          <select
-            value={draftTeamId}
-            onChange={(e) => setDraftTeamId(e.target.value)}
-            className="w-full rounded-md border border-zinc-200 px-2.5 py-1.5 text-sm"
-          >
-            <option value="">Takım yok</option>
-            {teams.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.name}
-              </option>
-            ))}
-          </select>
-          <select
-            value={draftTenantId}
-            onChange={(e) => setDraftTenantId(e.target.value)}
-            className="w-full rounded-md border border-zinc-200 px-2.5 py-1.5 text-sm"
-          >
-            <option value="">Marka yok</option>
-            {tenants.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.name}
-              </option>
-            ))}
-          </select>
-          <div className="flex max-h-20 flex-wrap gap-1 overflow-y-auto">
-            {staff.map((u) => {
-              const on = draftAssigneeIds.includes(u.id);
-              return (
-                <button
-                  key={u.id}
-                  type="button"
-                  onClick={() => toggleAssignee(u.id)}
-                  className={`inline-flex items-center gap-1 rounded-full border py-0.5 pl-0.5 pr-2 text-[11px] ${
-                    on
-                      ? "border-[#e91825]/40 bg-[#e91825]/10 text-[#e91825]"
-                      : "border-zinc-200 text-zinc-600"
-                  }`}
-                >
-                  <StaffAvatar user={u} className="h-5 w-5 text-[8px]" />
-                  {displayName(u)}
-                </button>
-              );
-            })}
-          </div>
-          <div className="flex gap-2">
-            <select
-              value={draftPriority}
-              onChange={(e) =>
-                setDraftPriority(e.target.value as Card["priority"])
-              }
-              className="flex-1 rounded-md border border-zinc-200 px-2.5 py-1.5 text-sm"
-            >
-              {(Object.keys(PRIORITY_LABEL) as Card["priority"][]).map((p) => (
-                <option key={p} value={p}>
-                  {PRIORITY_LABEL[p]}
-                </option>
-              ))}
-            </select>
-            <input
-              type="date"
-              value={draftDue}
-              onChange={(e) => setDraftDue(e.target.value)}
-              className="flex-1 rounded-md border border-zinc-200 px-2.5 py-1.5 text-sm"
-            />
-          </div>
-          <input
-            value={draftLabels}
-            onChange={(e) => setDraftLabels(e.target.value)}
-            placeholder="Etiketler (virgülle)"
-            className="w-full rounded-md border border-zinc-200 px-2.5 py-1.5 text-sm"
-          />
-          <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={onCreate}
-              className="rounded-md bg-[#e91825] px-3 py-1.5 text-sm font-medium text-white hover:bg-[#c91420]"
-            >
-              Ekle
-            </button>
-            <button
-              type="button"
-              onClick={onCloseComposer}
-              className="rounded-md px-3 py-1.5 text-sm text-zinc-600 hover:bg-zinc-100"
-            >
-              İptal
-            </button>
-          </div>
-        </div>
-      ) : canEdit ? (
+      {canEdit ? (
         <button
           type="button"
           onClick={onOpenComposer}

@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 const DEFAULT_COLUMNS: Array<{ name: string; color: string }> = [
   { name: "Yapılacak", color: "#71717a" },
   { name: "Devam ediyor", color: "#2563eb" },
+  { name: "Revize", color: "#7c3aed" },
   { name: "İncelemede", color: "#d97706" },
   { name: "Tamamlandı", color: "#16a34a" },
 ];

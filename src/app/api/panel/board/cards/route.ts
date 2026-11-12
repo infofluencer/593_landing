@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 import type { BoardCardPriority } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { audit } from "@/lib/panel/audit";
@@ -7,6 +7,7 @@ import {
   serializeBoardCard,
 } from "@/lib/panel/board";
 import { requireStaffApi, resolveStaffUserId } from "@/lib/panel/staff-auth";
+import { notifyTaskAssigned } from "@/lib/panel/task-notify";
 
 export const runtime = "nodejs";
 
@@ -180,6 +181,10 @@ export async function POST(request: Request) {
     tenantId,
     summary: `Kart oluşturuldu: ${title} (${column.name})`,
   });
+
+  if (assigneeIds.length > 0) {
+    after(() => notifyTaskAssigned({ cardId: card.id, userIds: assigneeIds, actorId }));
+  }
 
   return NextResponse.json(
     { card: serializeBoardCard(card) },

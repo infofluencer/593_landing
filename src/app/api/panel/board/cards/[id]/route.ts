@@ -1,8 +1,9 @@
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 import type { BoardCardPriority, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { audit } from "@/lib/panel/audit";
 import { deleteBoardImageFiles } from "@/lib/panel/board-images";
+import { notifyTaskAssigned } from "@/lib/panel/task-notify";
 import {
   boardCardInclude,
   serializeBoardCard,
@@ -220,6 +221,9 @@ export async function PATCH(
     }
   }
 
+  // syncAssignees yeni eklenenleri buraya yazar → WhatsApp bildirimi.
+  const added: string[] = [];
+
   const moving =
     (body.columnId != null && body.columnId !== existing.columnId) ||
     typeof body.position === "number";
@@ -287,7 +291,7 @@ export async function PATCH(
       }
 
       if (nextAssigneeIds !== undefined) {
-        await syncAssignees(tx, id, nextAssigneeIds, activities);
+        added.push(...(await syncAssignees(tx, id, nextAssigneeIds, activities)));
       }
 
       for (const a of activities) {
@@ -308,7 +312,7 @@ export async function PATCH(
         await tx.boardCard.update({ where: { id }, data });
       }
       if (nextAssigneeIds !== undefined) {
-        await syncAssignees(tx, id, nextAssigneeIds, activities);
+        added.push(...(await syncAssignees(tx, id, nextAssigneeIds, activities)));
       }
       for (const a of activities) {
         await tx.boardCardActivity.create({
@@ -335,6 +339,10 @@ export async function PATCH(
     });
   }
 
+  if (added.length > 0) {
+    after(() => notifyTaskAssigned({ cardId: id, userIds: added, actorId }));
+  }
+
   const card = await prisma.boardCard.findUnique({
     where: { id },
     include: boardCardInclude,
@@ -354,7 +362,7 @@ async function syncAssignees(
     message: string;
     meta?: Prisma.InputJsonValue;
   }>,
-) {
+): Promise<string[]> {
   const current = await tx.boardCardAssignee.findMany({
     where: { cardId },
     select: { userId: true },
@@ -385,6 +393,7 @@ async function syncAssignees(
       meta: { userIds: toAdd },
     });
   }
+  return toAdd;
 }
 
 /** DELETE — kart sil. */

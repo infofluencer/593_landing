@@ -136,3 +136,29 @@ Bu bildirim, hesabınıza bağlı bir kayıtta hata oluştuğu için gönderildi
 - Parametreler satır sonu içeremez; kod boşluğa çevirir ve 300 karakterde keser.
 - Gövde değişkenle başlayamaz/bitemez; iki değişken yan yana olmamalı.
 - Pazarlama cümlesi eklenirse Meta kategoriyi Marketing'e çevirir (daha pahalı).
+
+---
+
+## `uyari_gorev` — Yeni görev ataması (durum panosu)
+Kaynak: `src/lib/panel/task-notify.ts` → `notifyTaskAssigned`. Panoda bir karta yeni
+atanan kişiye gider (kart oluşturma, atama ekleme, toplantı aksiyonu ve içerik
+takviminden tasarım görevi). Kendine atama bildirilmez; WhatsApp ana anahtarı geçerli.
+Bu şablonun header, footer ve butonu uyarılardan farklıdır:
+
+- **Header:** `593 Panel · Yeni görev`
+- **Footer:** `Görev durumunu panelden güncelleyebilirsiniz.`
+- **Button (URL, dinamik):** `Görevi aç` → `https://admin.593emarketing.com/board?card={{1}}`
+  (dinamik son ek = kart id; pano kartı açar)
+
+```
+Yeni bir göreviniz var.
+
+Görev: {{1}}
+Açıklama: {{2}}
+Marka: {{3}}
+Son tarih: {{4}}
+Öncelik: {{5}}
+Atayan: {{6}}
+
+Bu bildirim, 593 Panel durum panosunda size görev atandığı için gönderildi.
+```

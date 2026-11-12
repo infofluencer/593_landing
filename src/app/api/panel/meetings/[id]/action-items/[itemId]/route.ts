@@ -1,8 +1,9 @@
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { audit } from "@/lib/panel/audit";
 import { ensureAgencyBoard } from "@/lib/panel/board";
 import { formatDateTime } from "@/lib/panel/format";
+import { notifyTaskAssigned } from "@/lib/panel/task-notify";
 import {
   allStaffIds,
   cleanIdList,
@@ -166,6 +167,9 @@ export async function PATCH(request: Request, ctx: Ctx) {
       tenantId: item.meeting.tenantId,
       summary: `${item.meeting.title}: aksiyon göreve çevrildi — ${text}`,
     });
+    if (assigneeIds.length > 0) {
+      after(() => notifyTaskAssigned({ cardId: card.id, userIds: assigneeIds, actorId }));
+    }
   }
 
   const full = await loadMeeting(id);

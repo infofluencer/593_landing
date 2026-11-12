@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { audit, diffFields } from "@/lib/panel/audit";
 import {
@@ -9,6 +9,7 @@ import {
   serializePost,
 } from "@/lib/panel/content-posts";
 import { requirePermissionApi, resolveStaffUserId } from "@/lib/panel/staff-auth";
+import { notifyTaskAssigned } from "@/lib/panel/task-notify";
 
 export const runtime = "nodejs";
 
@@ -127,7 +128,11 @@ export async function PATCH(request: Request, ctx: Ctx) {
 
   if (body.convertToCard) {
     const actorId = await resolveStaffUserId(session);
-    await createDesignCardForPost({ postId: id, actorId });
+    const r = await createDesignCardForPost({ postId: id, actorId });
+    if (r.created && r.designerId) {
+      const designerId = r.designerId;
+      after(() => notifyTaskAssigned({ cardId: r.cardId, userIds: [designerId], actorId }));
+    }
   }
 
   const full = await prisma.contentPost.findUnique({ where: { id }, include: postInclude });

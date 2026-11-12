@@ -7,6 +7,7 @@ import {
   Loader,
   Megaphone,
   Palette,
+  RotateCcw,
   type LucideIcon,
 } from "lucide-react";
 import { Ga4Mark, GoogleAdsMark, MetaMark } from "@/components/panel/ds/BrandMarks";
@@ -90,6 +91,9 @@ export function getColumnStatusMeta(name: string): {
   }
   if (n.includes("incele")) {
     return { Icon: Eye, tone: "text-amber-700", bg: "bg-amber-100" };
+  }
+  if (n.includes("revize")) {
+    return { Icon: RotateCcw, tone: "text-violet-700", bg: "bg-violet-100" };
   }
   if (n.includes("devam")) {
     return { Icon: Loader, tone: "text-blue-700", bg: "bg-blue-100" };

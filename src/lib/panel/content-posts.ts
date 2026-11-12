@@ -125,13 +125,13 @@ export async function listContentPosts(opts: {
 export async function createDesignCardForPost(opts: {
   postId: string;
   actorId: string | null;
-}): Promise<{ cardId: string; created: boolean }> {
+}): Promise<{ cardId: string; created: boolean; designerId: string | null }> {
   const post = await prisma.contentPost.findUnique({
     where: { id: opts.postId },
     include: { tenant: { select: { name: true } } },
   });
   if (!post) throw new Error("İçerik bulunamadı");
-  if (post.boardCardId) return { cardId: post.boardCardId, created: false };
+  if (post.boardCardId) return { cardId: post.boardCardId, created: false, designerId: post.designerId };
 
   const [board, designTeam] = await Promise.all([
     ensureAgencyBoard(),
@@ -178,5 +178,5 @@ export async function createDesignCardForPost(opts: {
     where: { id: post.id },
     data: { boardCardId: card.id, status: post.status === "draft" ? "design" : post.status },
   });
-  return { cardId: card.id, created: true };
+  return { cardId: card.id, created: true, designerId: post.designerId };
 }
