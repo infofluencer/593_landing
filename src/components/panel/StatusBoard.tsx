@@ -299,6 +299,8 @@ export default function StatusBoard({
   const [composerColumnId, setComposerColumnId] = useState<string | null>(null);
   const [editing, setEditing] = useState<Card | null>(null);
   const [uploadingImages, setUploadingImages] = useState(0);
+  // Yeni görevde seçilen görseller: kart oluşunca sırayla yüklenir.
+  const [pendingImages, setPendingImages] = useState<Array<{ file: File; url: string }>>([]);
   const dialogRef = useRef<HTMLDivElement>(null);
   // Pencerenin açılıştaki hali; kaydedilmemiş değişikliği anlamak için.
   const editorBase = useRef("");
@@ -317,6 +319,10 @@ export default function StatusBoard({
   const [draftLabels, setDraftLabels] = useState("");
 
   const resetDraft = useCallback(() => {
+    setPendingImages((prev) => {
+      for (const p of prev) URL.revokeObjectURL(p.url);
+      return [];
+    });
     setDraftTitle("");
     setDraftDesc("");
     setDraftAssigneeIds([]);
@@ -391,6 +397,10 @@ export default function StatusBoard({
     }
     setEditing(null);
     setComposerColumnId(null);
+    setPendingImages((prev) => {
+      for (const p of prev) URL.revokeObjectURL(p.url);
+      return [];
+    });
   }, [
     draftTitle,
     draftDesc,
@@ -702,8 +712,11 @@ export default function StatusBoard({
           : col,
       ),
     }));
+    const files = pendingImages.map((p) => p.file);
     resetDraft();
     setComposerColumnId(null);
+    // Kart panoda görünür; görseller arkada yüklenip kartı günceller.
+    if (files.length > 0) void uploadCardImages(card.id, files);
   }
 
   async function saveEdit() {
@@ -836,6 +849,20 @@ export default function StatusBoard({
     setDraftAssigneeIds((prev) => [
       ...new Set([...prev.filter((id) => !prevMembers.has(id)), ...nextMembers]),
     ]);
+  }
+
+  function addPendingImages(files: File[]) {
+    const images = files.filter((f) => f.type.startsWith("image/"));
+    if (images.length === 0) return;
+    setPendingImages((prev) => [
+      ...prev,
+      ...images.map((file) => ({ file, url: URL.createObjectURL(file) })),
+    ]);
+  }
+
+  function removePendingImage(url: string) {
+    URL.revokeObjectURL(url);
+    setPendingImages((prev) => prev.filter((p) => p.url !== url));
   }
 
   function toggleAssignee(userId: string) {
@@ -1255,6 +1282,7 @@ export default function StatusBoard({
                       onChange={setDraftDesc}
                       onPasteImages={(files) => {
                         if (editing) void uploadCardImages(editing.id, files);
+                        else addPendingImages(files);
                       }}
                     />
                     {editing ? (
@@ -1266,9 +1294,13 @@ export default function StatusBoard({
                         onRemove={(url) => void removeCardImage(editing.id, url)}
                       />
                     ) : (
-                      <p className="text-xs text-zinc-400">
-                        Referans görselleri görev kaydedildikten sonra eklenebilir.
-                      </p>
+                      <CardImagesField
+                        images={pendingImages.map((p) => p.url)}
+                        uploading={false}
+                        readOnly={!canEdit}
+                        onAdd={addPendingImages}
+                        onRemove={removePendingImage}
+                      />
                     )}
                     {editing && (editing.activities?.length ?? 0) > 0 ? (
                       <div>
