@@ -4,6 +4,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import {
+  EmailAlertsToggle,
   SendAlertButton,
   TestSendForm,
   WhatsAppToggle,
@@ -26,7 +27,7 @@ import {
   loadTemplateStatus,
   type TemplateRow,
 } from "@/lib/panel/notification-admin";
-import { whatsappEnabled } from "@/lib/panel/notification-settings";
+import { emailAlertsEnabled, whatsappSwitch } from "@/lib/panel/notification-settings";
 import { ALERT_TITLE, smtpConfigured, whatsappConfigured } from "@/lib/panel/notify";
 import { can } from "@/lib/panel/permissions";
 
@@ -109,8 +110,9 @@ export default async function NotificationsPage({
   const status = pick(sp.status, LOG_STATUSES);
   const page = Math.max(1, Math.floor(Number(sp.page)) || 1);
 
-  const [enabled, phone, templates, pending, log, stats, tests] = await Promise.all([
-    whatsappEnabled(),
+  const [waSwitch, emailOn, phone, templates, pending, log, stats, tests] = await Promise.all([
+    whatsappSwitch(),
+    emailAlertsEnabled(),
     loadPhoneStatus(),
     loadTemplateStatus(),
     listPendingAlerts(),
@@ -128,9 +130,14 @@ export default async function NotificationsPage({
     <div className="space-y-6">
       <SectionCard
         title="WhatsApp kanalı"
-        description="Kapalıyken uyarılar WhatsApp'tan gitmez; SMTP tanımlıysa e-postayla gider."
+        description="Uyarılar WhatsApp'tan gider. E-posta yedeği açıksa, WhatsApp gidemeyen alıcıya e-postayla gider."
         actions={
-          <WhatsAppToggle enabled={enabled} configured={configured} pendingCount={pending.length} />
+          <WhatsAppToggle
+            enabled={waSwitch.on}
+            startAt={waSwitch.startAt}
+            configured={configured}
+            pendingCount={pending.length}
+          />
         }
       >
         <div className="grid gap-6 lg:grid-cols-2">
@@ -158,7 +165,9 @@ export default async function NotificationsPage({
               </>
             ) : null}
             <dt className="text-panel-fg-secondary">E-posta yedeği</dt>
-            <dd className="text-panel-fg">{smtp ? "Tanımlı" : "SMTP tanımlı değil"}</dd>
+            <dd className="text-panel-fg">
+              <EmailAlertsToggle enabled={emailOn} smtp={smtp} />
+            </dd>
             <dt className="text-panel-fg-secondary">Son 7 gün</dt>
             <dd className="text-panel-fg">
               {stats.sent} gönderildi · {stats.failed} başarısız · {stats.skipped} atlandı

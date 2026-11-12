@@ -10,13 +10,16 @@ async function readError(res: Response, fallback: string): Promise<string> {
   return j?.error || fallback;
 }
 
-/** WhatsApp ana anahtarı. Açmadan önce kaç uyarının gidebileceğini sorar. */
+/** WhatsApp ana anahtarı. Hemen ya da ertesi sabah kontrolünden itibaren açılır. */
 export function WhatsAppToggle({
   enabled,
+  startAt,
   configured,
   pendingCount,
 }: {
   enabled: boolean;
+  /** Planlı başlangıç (ISO) — açık ama henüz göndermiyor. */
+  startAt: string | null;
   configured: boolean;
   pendingCount: number;
 }) {
@@ -24,12 +27,12 @@ export function WhatsAppToggle({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function toggle() {
-    const next = !enabled;
+  async function save(next: boolean, start: "now" | "tomorrow" = "now") {
     if (
       next &&
+      start === "now" &&
       !window.confirm(
-        `WhatsApp bildirimleri açılacak. Bekleyen ${pendingCount} uyarı sonraki senkronda alıcılarına gidebilir. Devam edilsin mi?`,
+        `WhatsApp bildirimleri hemen açılacak. Bekleyen ${pendingCount} uyarı sonraki senkronda alıcılarına gidebilir. Devam edilsin mi?`,
       )
     ) {
       return;
@@ -40,7 +43,103 @@ export function WhatsAppToggle({
       const res = await fetch("/api/panel/notify/settings", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ whatsappEnabled: next }),
+        body: JSON.stringify({ whatsappEnabled: next, whatsappStart: start }),
+      });
+      if (!res.ok) {
+        setError(await readError(res, "Ayar kaydedilemedi"));
+        return;
+      }
+      router.refresh();
+    } catch {
+      setError("Sunucuya ulaşılamadı");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const startLabel = startAt
+    ? new Date(startAt).toLocaleString("tr-TR", {
+        timeZone: "Europe/Istanbul",
+        day: "2-digit",
+        month: "short",
+        hour: "2-digit",
+        minute: "2-digit",
+      })
+    : null;
+
+  return (
+    <div className="flex flex-col items-end gap-1">
+      <div className="flex flex-wrap justify-end gap-2">
+        {enabled ? (
+          <button
+            type="button"
+            role="switch"
+            aria-checked
+            aria-label="WhatsApp bildirimleri"
+            disabled={busy}
+            onClick={() => void save(false)}
+            className={startLabel ? btnSecondary : btnPrimary}
+          >
+            <span
+              aria-hidden
+              className={`size-2 rounded-full ${startLabel ? "bg-panel-warn" : "bg-panel-ok"}`}
+            />
+            {startLabel ? `${startLabel} başlayacak — iptal` : "Açık — kapat"}
+          </button>
+        ) : (
+          <>
+            <button
+              type="button"
+              disabled={busy || !configured}
+              onClick={() => void save(true, "tomorrow")}
+              className={btnPrimary}
+            >
+              Yarın 09:00 kontrolünden başlat
+            </button>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={false}
+              aria-label="WhatsApp bildirimlerini şimdi aç"
+              disabled={busy || !configured}
+              onClick={() => void save(true)}
+              className={btnSecondary}
+            >
+              <span aria-hidden className="size-2 rounded-full bg-zinc-400" />
+              Kapalı — şimdi aç
+            </button>
+          </>
+        )}
+      </div>
+      {error ? (
+        <p role="alert" className="text-xs text-panel-critical">
+          {error}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+/** Uyarıların e-posta yedeği. Kapalıyken uyarılar yalnızca WhatsApp'tan gider. */
+export function EmailAlertsToggle({
+  enabled,
+  smtp,
+}: {
+  enabled: boolean;
+  smtp: boolean;
+}) {
+  const router = useRouter();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function toggle() {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/panel/notify/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ emailAlertsEnabled: !enabled }),
       });
       if (!res.ok) {
         setError(await readError(res, "Ayar kaydedilemedi"));
@@ -55,28 +154,26 @@ export function WhatsAppToggle({
   }
 
   return (
-    <div className="flex flex-col items-end gap-1">
+    <span className="inline-flex flex-wrap items-center gap-2">
+      <span>{enabled ? "Açık" : "Kapalı"}</span>
       <button
         type="button"
         role="switch"
         aria-checked={enabled}
-        aria-label="WhatsApp bildirimleri"
-        disabled={busy || (!configured && !enabled)}
+        aria-label="Uyarı e-postaları"
+        disabled={busy || (!smtp && !enabled)}
         onClick={() => void toggle()}
-        className={enabled ? btnPrimary : btnSecondary}
+        className="text-xs underline underline-offset-2 text-panel-fg-secondary hover:text-panel-fg disabled:opacity-40"
       >
-        <span
-          aria-hidden
-          className={`size-2 rounded-full ${enabled ? "bg-panel-ok" : "bg-zinc-400"}`}
-        />
-        {enabled ? "Açık — kapat" : "Kapalı — aç"}
+        {enabled ? "kapat" : "aç"}
       </button>
+      {!smtp ? <span className="text-panel-fg-muted">· SMTP tanımlı değil</span> : null}
       {error ? (
-        <p role="alert" className="text-xs text-panel-critical">
+        <span role="alert" className="text-xs text-panel-critical">
           {error}
-        </p>
+        </span>
       ) : null}
-    </div>
+    </span>
   );
 }
 

@@ -14,7 +14,7 @@ import nodemailer from "nodemailer";
 import type { AlertSeverity } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { rootDomain } from "@/lib/panel/host";
-import { whatsappEnabled } from "@/lib/panel/notification-settings";
+import { emailAlertsEnabled, whatsappEnabled } from "@/lib/panel/notification-settings";
 
 const GRAPH = "https://graph.facebook.com/v21.0";
 
@@ -511,6 +511,7 @@ export async function notifyAlert(alertId: string): Promise<void> {
     }
     let delivered = 0;
     const whatsappOn = whatsappConfigured() && (await whatsappEnabled());
+    const emailOn = await emailAlertsEnabled();
 
     for (const r of recipients) {
       let sentVia: "whatsapp" | "email" | null = null;
@@ -545,6 +546,18 @@ export async function notifyAlert(alertId: string): Promise<void> {
         }
       }
       if (!sentVia && r.email) {
+        if (!emailOn) {
+          await logSkip(
+            "email",
+            r.email,
+            waError
+              ? `WhatsApp başarısız (${waError}); e-posta yedeği kapalı.`
+              : whatsappOn
+                ? "Kullanıcının telefonu yok; e-posta yedeği kapalı."
+                : "WhatsApp kapalı; e-posta yedeği kapalı.",
+          );
+          continue;
+        }
         if (!smtpConfigured()) {
           await logSkip(
             "email",
