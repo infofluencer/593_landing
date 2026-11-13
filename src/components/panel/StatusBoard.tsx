@@ -1122,7 +1122,7 @@ export default function StatusBoard({
                   {strip.columns.map((col) => (
                     <div
                       key={`${strip.key}-${col.id}`}
-                      className="flex w-64 shrink-0 flex-col rounded-xl border border-zinc-200 bg-white"
+                      className="flex min-w-[12rem] flex-1 basis-0 flex-col rounded-xl border border-zinc-200 bg-white"
                       style={{ boxShadow: `inset 0 3px 0 ${strip.color}` }}
                     >
                       <div className="flex items-center gap-2 px-3 py-2">
@@ -1544,7 +1544,7 @@ function BoardColumn({
         setDropRef(node);
       }}
       style={style}
-      className="flex max-h-[calc(100dvh-19rem)] min-h-[24rem] w-72 shrink-0 flex-col gap-2"
+      className="flex max-h-[calc(100dvh-19rem)] min-h-[24rem] min-w-[12rem] flex-1 basis-0 flex-col gap-2"
     >
       <header className="flex items-center gap-2 rounded-xl border border-zinc-200 bg-white px-2 py-2.5 shadow-sm">
         {canEdit ? (
