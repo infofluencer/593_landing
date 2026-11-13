@@ -260,8 +260,8 @@ export function SendAlertButton({ alertId }: { alertId: string }) {
         setError(await readError(res, "Gönderilemedi"));
         return;
       }
-      const j = (await res.json()) as { notified?: boolean };
-      if (!j.notified) setError("İletilemedi; sebebi gönderim kaydında.");
+      const j = (await res.json()) as { notified?: boolean; reason?: string | null };
+      if (!j.notified) setError(`İletilemedi: ${j.reason ?? "sebebi gönderim kaydında."}`);
       router.refresh();
     } catch {
       setError("Sunucuya ulaşılamadı");

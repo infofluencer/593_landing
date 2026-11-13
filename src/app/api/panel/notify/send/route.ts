@@ -22,7 +22,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "alertId gerekli" }, { status: 400 });
   }
 
-  await notifyAlert(alertId);
+  const result = await notifyAlert(alertId, { manual: true });
 
   const alert = await prisma.alert.findUnique({
     where: { id: alertId },
@@ -37,7 +37,7 @@ export async function POST(request: Request) {
     entity: "notification",
     entityId: alertId,
     tenantId: alert.tenantId,
-    summary: `Elle bildirim (${alert.type}): ${notified ? "iletildi" : "iletilemedi"}`,
+    summary: `Elle bildirim (${alert.type}): ${notified ? "iletildi" : `iletilemedi — ${result.reason ?? "?"}`}`.slice(0, 500),
   });
-  return NextResponse.json({ ok: true, notified });
+  return NextResponse.json({ ok: true, notified, reason: notified ? null : result.reason });
 }

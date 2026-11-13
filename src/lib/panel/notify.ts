@@ -452,11 +452,22 @@ async function muteReason(alert: {
   return null;
 }
 
+export type NotifyResult = { delivered: number; reason: string | null };
+
 /**
  * Uyarıyı sorumlu + ekibe iletir. Hiçbir zaman fırlatmaz; sonuç
  * NotificationLog'a yazılır. Aynı seviyede tekrar gönderilmez.
+ *
+ * manual: /bildirimler'deki "Gönder" — adminin açık kararı. WhatsApp ana
+ * anahtarı ve 24 saatlik susturma atlanır, "atlandı" kaydı tekrarlanır ve
+ * iletilemezse sebep döner.
  */
-export async function notifyAlert(alertId: string): Promise<void> {
+export async function notifyAlert(
+  alertId: string,
+  opts: { manual?: boolean } = {},
+): Promise<NotifyResult> {
+  const manual = opts.manual === true;
+  let lastReason: string | null = null;
   try {
     const alert = await prisma.alert.findUnique({
       where: { id: alertId },
@@ -464,9 +475,14 @@ export async function notifyAlert(alertId: string): Promise<void> {
         tenant: { select: { id: true, name: true, slug: true, ownerId: true, currency: true } },
       },
     });
-    if (!alert || alert.resolved) return;
-    if (!shouldNotifyAlert(alert.type, alert.severity)) return;
-    if (alert.notifiedAt && alert.notifiedSeverity === alert.severity) return;
+    if (!alert) return { delivered: 0, reason: "Uyarı bulunamadı." };
+    if (alert.resolved) return { delivered: 0, reason: "Uyarı zaten çözülmüş." };
+    if (!shouldNotifyAlert(alert.type, alert.severity)) {
+      return { delivered: 0, reason: "Bu uyarı türü / seviyesi bildirilmiyor." };
+    }
+    if (alert.notifiedAt && alert.notifiedSeverity === alert.severity) {
+      return { delivered: 0, reason: "Bu uyarı bu seviyede zaten iletilmiş." };
+    }
 
     const recipients = await alertRecipients({
       ownerId: alert.tenant.ownerId,
@@ -481,7 +497,7 @@ export async function notifyAlert(alertId: string): Promise<void> {
       alert.severity === "critical" ? "KRİTİK" : alert.severity === "warn" ? "Uyarı" : "Hata";
 
     // Aynı uyarı için "atlandı" kaydı günde bir kez — her senkronda yığılmasın.
-    const recentSkip = await prisma.notificationLog.findFirst({
+    const recentSkip = manual ? null : await prisma.notificationLog.findFirst({
       where: {
         alertId: alert.id,
         status: "skipped",
@@ -490,16 +506,17 @@ export async function notifyAlert(alertId: string): Promise<void> {
       select: { id: true },
     });
     const logSkip = async (channel: string, recipient: string, error: string) => {
+      lastReason = error;
       if (recentSkip) return;
       await prisma.notificationLog.create({
         data: { tenantId: alert.tenant.id, alertId: alert.id, channel, recipient, status: "skipped", error },
       });
     };
 
-    const muted = await muteReason({ ...alert, tenantId: alert.tenant.id });
+    const muted = manual ? null : await muteReason({ ...alert, tenantId: alert.tenant.id });
     if (muted) {
       await logSkip("none", "-", muted);
-      return;
+      return { delivered: 0, reason: muted };
     }
 
     if (recipients.length === 0) {
@@ -508,10 +525,10 @@ export async function notifyAlert(alertId: string): Promise<void> {
         "-",
         `Alıcı yok — ${teamTitle}nde üye yok ve markaya sorumlu atanmamış.`,
       );
-      return;
+      return { delivered: 0, reason: lastReason };
     }
     let delivered = 0;
-    const whatsappOn = whatsappConfigured() && (await whatsappEnabled());
+    const whatsappOn = whatsappConfigured() && (manual || (await whatsappEnabled()));
     const emailOn = await emailAlertsEnabled();
 
     for (const r of recipients) {
@@ -534,6 +551,7 @@ export async function notifyAlert(alertId: string): Promise<void> {
           });
         } catch (err) {
           waError = err instanceof Error ? err.message : String(err);
+          lastReason = waError;
           await prisma.notificationLog.create({
             data: {
               tenantId: alert.tenant.id,
@@ -589,6 +607,7 @@ export async function notifyAlert(alertId: string): Promise<void> {
             },
           });
         } catch (err) {
+          lastReason = err instanceof Error ? err.message : String(err);
           await prisma.notificationLog.create({
             data: {
               tenantId: alert.tenant.id,
@@ -596,10 +615,12 @@ export async function notifyAlert(alertId: string): Promise<void> {
               channel: "email",
               recipient: r.email,
               status: "failed",
-              error: err instanceof Error ? err.message : String(err),
+              error: lastReason,
             },
           });
         }
+      } else if (!sentVia && !r.email) {
+        lastReason = waError ?? `${r.name}: telefon ve e-posta yok.`;
       }
     }
 
@@ -610,8 +631,10 @@ export async function notifyAlert(alertId: string): Promise<void> {
         data: { notifiedAt: new Date(), notifiedSeverity: alert.severity },
       });
     }
+    return { delivered, reason: delivered > 0 ? null : lastReason ?? "Hiçbir kanaldan iletilemedi." };
   } catch (err) {
     console.error("[notify] alert", alertId, err);
+    return { delivered: 0, reason: err instanceof Error ? err.message : String(err) };
   }
 }
 
